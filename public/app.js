@@ -275,13 +275,23 @@ function ensureImportTaskPanel() {
   }
 }
 
+function updateImportTaskSelection() {
+  const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
+  document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.id === selectedImportTaskId);
+  });
+  const openButton = document.querySelector("#openImportTask");
+  const saveButton = document.querySelector("#newImportTask");
+  const deleteButton = document.querySelector("#deleteImportTask");
+  if (openButton) openButton.disabled = !hasSelection;
+  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导入";
+  if (deleteButton) deleteButton.disabled = !hasSelection;
+}
+
 function renderImportTaskJobs() {
   ensureImportTaskPanel();
   const list = document.querySelector("#importTaskList");
   const tree = document.querySelector("#importTaskTree");
-  const openButton = document.querySelector("#openImportTask");
-  const saveButton = document.querySelector("#newImportTask");
-  const deleteButton = document.querySelector("#deleteImportTask");
   if (!list) return;
   if (!importTaskJobs.length) {
     list.className = "module-task-list empty";
@@ -298,17 +308,18 @@ function renderImportTaskJobs() {
         .join("");
     }
   }
-  const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
-  if (openButton) openButton.disabled = !hasSelection;
-  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导入";
-  if (deleteButton) deleteButton.disabled = !hasSelection;
   document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedImportTaskId = button.dataset.id;
-      renderImportTaskJobs();
+      updateImportTaskSelection();
     });
-    button.addEventListener("dblclick", openSelectedImportTask);
+    button.addEventListener("dblclick", () => {
+      selectedImportTaskId = button.dataset.id;
+      updateImportTaskSelection();
+      openSelectedImportTask();
+    });
   });
+  updateImportTaskSelection();
 }
 
 async function loadImportTaskJobs() {

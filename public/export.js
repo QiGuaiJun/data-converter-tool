@@ -409,13 +409,23 @@ function ensureExportTaskPanel() {
   }
 }
 
+function updateExportTaskSelection() {
+  const hasSelection = Boolean(selectedExportTaskId && exportTaskJobs.some((job) => job.id === selectedExportTaskId));
+  document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.id === selectedExportTaskId);
+  });
+  const openButton = document.querySelector("#openExportTask");
+  const saveButton = document.querySelector("#newExportTask");
+  const deleteButton = document.querySelector("#deleteExportTask");
+  if (openButton) openButton.disabled = !hasSelection;
+  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导出";
+  if (deleteButton) deleteButton.disabled = !hasSelection;
+}
+
 function renderExportTaskJobs() {
   ensureExportTaskPanel();
   const list = document.querySelector("#exportTaskList");
   const tree = document.querySelector("#exportTaskTree");
-  const openButton = document.querySelector("#openExportTask");
-  const saveButton = document.querySelector("#newExportTask");
-  const deleteButton = document.querySelector("#deleteExportTask");
   if (!list) return;
   if (!exportTaskJobs.length) {
     list.className = "module-task-list empty";
@@ -432,17 +442,18 @@ function renderExportTaskJobs() {
         .join("");
     }
   }
-  const hasSelection = Boolean(selectedExportTaskId && exportTaskJobs.some((job) => job.id === selectedExportTaskId));
-  if (openButton) openButton.disabled = !hasSelection;
-  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导出";
-  if (deleteButton) deleteButton.disabled = !hasSelection;
   document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedExportTaskId = button.dataset.id;
-      renderExportTaskJobs();
+      updateExportTaskSelection();
     });
-    button.addEventListener("dblclick", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
+    button.addEventListener("dblclick", () => {
+      selectedExportTaskId = button.dataset.id;
+      updateExportTaskSelection();
+      openSelectedExportTask().catch((error) => setStatus(error.message, "error"));
+    });
   });
+  updateExportTaskSelection();
 }
 
 async function loadExportTaskJobs() {

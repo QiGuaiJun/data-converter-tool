@@ -152,7 +152,7 @@ body {
 
 .module-task-panel {
   grid-column: 1 / -1;
-  min-height: 156px;
+  min-height: 188px;
   border: 1px solid #cfd6df;
   background: #fff;
 }
@@ -194,11 +194,11 @@ body {
 }
 
 .module-task-list {
-  min-height: 118px;
+  min-height: 150px;
   display: grid;
   align-content: start;
   gap: 2px;
-  padding: 8px 10px;
+  padding: 6px 10px;
 }
 
 .module-task-list.empty {
@@ -207,25 +207,32 @@ body {
 }
 
 .module-task-item {
-  min-height: 28px;
+  width: min(360px, 100%);
+  min-height: 26px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 3px 8px;
   border: 1px solid transparent;
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
 
-.module-task-item span {
-  min-width: 34px;
-  color: #1683e8;
+.module-task-item::before {
+  content: "";
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 5px;
+  background: linear-gradient(135deg, #1fc8a8, #3b8cff);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
 }
 
 .module-task-item:hover,
 .module-task-item.active {
-  border-color: #ff6b6b;
-  background: #fffafa;
+  border-color: #2f80d1;
+  background: #dcefff;
 }
 
 .app-workspace {

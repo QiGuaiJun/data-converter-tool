@@ -64,10 +64,24 @@ function renderJobs() {
   $$("#jobList .job-item").forEach((button) =>
     button.addEventListener("click", () => {
       selectedJobId = button.dataset.id;
-      renderJobs();
+      updateJobSelection();
       renderSelectedJob();
     }),
   );
+  $$("#jobList .job-item").forEach((button) =>
+    button.addEventListener("dblclick", () => {
+      selectedJobId = button.dataset.id;
+      const job = jobs.find((item) => item.id === selectedJobId);
+      if (job) openJobDialog(job);
+    }),
+  );
+  updateJobSelection();
+}
+
+function updateJobSelection() {
+  $$("#jobList .job-item").forEach((button) => {
+    button.classList.toggle("active", button.dataset.id === selectedJobId);
+  });
 }
 
 function renderSelectedJob() {
