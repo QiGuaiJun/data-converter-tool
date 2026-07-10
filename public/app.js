@@ -32,6 +32,8 @@ const connectionStatus = document.querySelector("#connectionStatus");
 let selectedFiles = [];
 let currentColumns = [];
 let savedConnections = [];
+let importTaskJobs = [];
+let selectedImportTaskId = "";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -39,6 +41,21 @@ function $(selector) {
 
 function radioValue(name) {
   return document.querySelector(`input[name="${name}"]:checked`)?.value || "";
+}
+
+function setRadioValue(name, value) {
+  const input = document.querySelector(`input[name="${name}"][value="${CSS.escape(String(value || ""))}"]`);
+  if (input) input.checked = true;
+}
+
+function setControlValue(id, value) {
+  const input = document.querySelector(`#${CSS.escape(id)}`);
+  if (!input || value === undefined || value === null) return;
+  if (input.type === "checkbox") {
+    input.checked = String(value) === "true" || value === true;
+  } else {
+    input.value = value;
+  }
 }
 
 function setStatus(message, type = "") {
@@ -201,7 +218,10 @@ async function saveImportTask() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  selectedImportTaskId = result.job.id;
+  await loadImportTaskJobs();
   setStatus(`已保存为任务：${result.job.name}，可在定时任务中调用。`, "success");
+  return result.job;
 }
 
 function ensureImportTaskButton() {
@@ -212,6 +232,134 @@ function ensureImportTaskButton() {
   button.textContent = "保存为任务";
   button.addEventListener("click", () => saveImportTask().catch((error) => setStatus(error.message, "error")));
   previewButton.insertAdjacentElement("afterend", button);
+}
+
+function isImportTaskJob(job) {
+  return (job.steps || [])[0]?.type === "import";
+}
+
+function importTaskStep(job) {
+  return (job.steps || []).find((step) => step.type === "import") || {};
+}
+
+function ensureImportTaskPanel() {
+  const shell = document.querySelector(".import-shell");
+  if (shell && !document.querySelector("#importTaskPanel")) {
+    const panel = document.createElement("section");
+    panel.id = "importTaskPanel";
+    panel.className = "module-task-panel";
+    panel.innerHTML = `
+      <div class="module-task-toolbar">
+        <button id="openImportTask" type="button" disabled>打开导入</button>
+        <button id="newImportTask" type="button">新增导入</button>
+        <button id="deleteImportTask" type="button" disabled>删除导入</button>
+        <span id="importTaskHint">当前模块保存的导入任务</span>
+      </div>
+      <div id="importTaskList" class="module-task-list empty">暂无导入任务</div>`;
+    shell.insertAdjacentElement("afterbegin", panel);
+    document.querySelector("#openImportTask").addEventListener("click", openSelectedImportTask);
+    document.querySelector("#newImportTask").addEventListener("click", () => saveImportTask().catch((error) => setStatus(error.message, "error")));
+    document.querySelector("#deleteImportTask").addEventListener("click", deleteSelectedImportTask);
+  }
+
+  const activeNode = document.querySelector(".module-tree .tree-node.active");
+  if (activeNode && !document.querySelector("#importTaskTree")) {
+    const tree = document.createElement("div");
+    tree.id = "importTaskTree";
+    tree.className = "module-task-tree";
+    activeNode.insertAdjacentElement("afterend", tree);
+  }
+}
+
+function renderImportTaskJobs() {
+  ensureImportTaskPanel();
+  const list = document.querySelector("#importTaskList");
+  const tree = document.querySelector("#importTaskTree");
+  const openButton = document.querySelector("#openImportTask");
+  const deleteButton = document.querySelector("#deleteImportTask");
+  if (!list) return;
+  if (!importTaskJobs.length) {
+    list.className = "module-task-list empty";
+    list.textContent = "暂无导入任务";
+    if (tree) tree.textContent = "";
+  } else {
+    list.className = "module-task-list";
+    list.innerHTML = importTaskJobs
+      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span>导入</span>${escapeHtml(job.name)}</button>`)
+      .join("");
+    if (tree) {
+      tree.innerHTML = importTaskJobs
+        .map((job) => `<button type="button" class="tree-child ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">导入 ${escapeHtml(job.name)}</button>`)
+        .join("");
+    }
+  }
+  const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
+  if (openButton) openButton.disabled = !hasSelection;
+  if (deleteButton) deleteButton.disabled = !hasSelection;
+  document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedImportTaskId = button.dataset.id;
+      renderImportTaskJobs();
+    });
+    button.addEventListener("dblclick", openSelectedImportTask);
+  });
+}
+
+async function loadImportTaskJobs() {
+  ensureImportTaskPanel();
+  const payload = await requestJson("/api/jobs");
+  importTaskJobs = (payload.jobs || []).filter(isImportTaskJob);
+  if (selectedImportTaskId && !importTaskJobs.some((job) => job.id === selectedImportTaskId)) {
+    selectedImportTaskId = "";
+  }
+  renderImportTaskJobs();
+}
+
+function applyImportTaskConfig(config) {
+  for (const [key, value] of Object.entries(config || {})) {
+    setControlValue(key, value);
+  }
+  for (const name of ["targetMode", "importMode", "tableCase", "fieldCase", "targetDbType", "extraColumnMode", "writeMode", "commitMode"]) {
+    if (config?.[name]) setRadioValue(name, config[name]);
+  }
+  if (config?.connectionId && connectionSelect) {
+    connectionSelect.value = config.connectionId;
+  }
+  if (config?.mapping) {
+    try {
+      const mapping = JSON.parse(config.mapping);
+      currentColumns = mapping.map((item) => item.source).filter(Boolean);
+      renderMapping(currentColumns);
+      [...mappingTable.querySelectorAll("tbody tr")].forEach((row, index) => {
+        const item = mapping[index] || {};
+        row.querySelector(".map-enabled").checked = item.enabled !== false;
+        row.querySelector(".map-key").checked = Boolean(item.matchKey);
+        row.querySelector(".map-target").value = item.target || item.source || "";
+        row.querySelector(".map-default").value = item.defaultValue || "";
+      });
+    } catch (_) {
+      renderMapping([]);
+    }
+  }
+  loadTargetTableOptions().catch((error) => setStatus(error.message, "error"));
+}
+
+function openSelectedImportTask() {
+  const job = importTaskJobs.find((item) => item.id === selectedImportTaskId);
+  if (!job) return;
+  const step = importTaskStep(job);
+  applyImportTaskConfig(step.config || {});
+  setStatus(`已打开导入任务：${job.name}${step.config?.path ? `，定时执行路径：${step.config.path}` : ""}`, "success");
+}
+
+async function deleteSelectedImportTask() {
+  const job = importTaskJobs.find((item) => item.id === selectedImportTaskId);
+  if (!job) return;
+  if (!window.confirm(`确定删除导入任务“${job.name}”吗？关联的定时任务也会一起删除。`)) return;
+  await requestJson(`/api/jobs?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
+  selectedImportTaskId = "";
+  await loadImportTaskJobs();
+  setStatus("已删除导入任务。", "success");
 }
 
 async function requestJson(url, options = {}) {
@@ -616,4 +764,5 @@ connectionDialog?.addEventListener("click", (event) => {
   if (event.target === connectionDialog) closeConnectionDialog();
 });
 
-Promise.all([loadConnections(), loadTables(), loadLogs()]).catch((error) => setStatus(error.message, "error"));
+ensureImportTaskPanel();
+Promise.all([loadConnections(), loadTables(), loadLogs(), loadImportTaskJobs()]).catch((error) => setStatus(error.message, "error"));

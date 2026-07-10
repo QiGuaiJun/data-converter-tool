@@ -128,6 +128,106 @@ body {
   background: #edf7ff;
 }
 
+.module-task-tree {
+  display: grid;
+  gap: 2px;
+  margin: -2px 0 6px 34px;
+}
+
+.module-task-tree .tree-child {
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #111;
+  text-align: left;
+  cursor: pointer;
+}
+
+.module-task-tree .tree-child:hover,
+.module-task-tree .tree-child.active {
+  border-color: #8fbadd;
+  background: #e7f3ff;
+}
+
+.module-task-panel {
+  grid-column: 1 / -1;
+  min-height: 156px;
+  border: 1px solid #cfd6df;
+  background: #fff;
+}
+
+.module-task-toolbar {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-bottom: 1px solid #ccd3dc;
+  background: #f5f6f8;
+}
+
+.module-task-toolbar button {
+  min-width: 84px;
+  height: 26px;
+  border: 1px solid #c7c7c7;
+  background: #fff;
+  color: #222;
+  cursor: pointer;
+}
+
+.module-task-toolbar button:not(:disabled):hover {
+  border-color: #8fbadd;
+  background: #eef7ff;
+}
+
+.module-task-toolbar button:disabled {
+  color: #aaa;
+  background: #f4f4f4;
+  cursor: default;
+}
+
+.module-task-toolbar span {
+  margin-left: auto;
+  color: #555;
+  font-size: 13px;
+}
+
+.module-task-list {
+  min-height: 118px;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: 8px 10px;
+}
+
+.module-task-list.empty {
+  place-items: center;
+  color: #777;
+}
+
+.module-task-item {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.module-task-item span {
+  min-width: 34px;
+  color: #1683e8;
+}
+
+.module-task-item:hover,
+.module-task-item.active {
+  border-color: #ff6b6b;
+  background: #fffafa;
+}
+
 .app-workspace {
   min-width: 0;
   min-height: 0;

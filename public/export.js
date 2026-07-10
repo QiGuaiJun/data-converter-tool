@@ -18,6 +18,8 @@ let sources = [];
 let sourceMode = "query";
 let exportDirectoryHandle = null;
 let exportFileHandle = null;
+let exportTaskJobs = [];
+let selectedExportTaskId = "";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -25,6 +27,21 @@ function $(selector) {
 
 function radioValue(name) {
   return document.querySelector(`input[name="${name}"]:checked`)?.value || "";
+}
+
+function setRadioValue(name, value) {
+  const input = document.querySelector(`input[name="${name}"][value="${CSS.escape(String(value || ""))}"]`);
+  if (input) input.checked = true;
+}
+
+function setControlValue(id, value) {
+  const input = document.querySelector(`#${CSS.escape(id)}`);
+  if (!input || value === undefined || value === null) return;
+  if (input.type === "checkbox") {
+    input.checked = String(value) === "true" || value === true;
+  } else {
+    input.value = value;
+  }
 }
 
 function escapeHtml(value) {
@@ -346,7 +363,139 @@ async function saveExportTask() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  selectedExportTaskId = result.job.id;
+  await loadExportTaskJobs();
   setStatus(`已保存为任务：${result.job.name}，可在定时任务中调用。`, "success");
+  return result.job;
+}
+
+function isExportTaskJob(job) {
+  return (job.steps || [])[0]?.type === "export";
+}
+
+function exportTaskStep(job) {
+  return (job.steps || []).find((step) => step.type === "export") || {};
+}
+
+function ensureExportTaskPanel() {
+  const shell = document.querySelector(".export-shell");
+  if (shell && !document.querySelector("#exportTaskPanel")) {
+    const panel = document.createElement("section");
+    panel.id = "exportTaskPanel";
+    panel.className = "module-task-panel";
+    panel.innerHTML = `
+      <div class="module-task-toolbar">
+        <button id="openExportTask" type="button" disabled>打开导出</button>
+        <button id="newExportTask" type="button">新增导出</button>
+        <button id="deleteExportTask" type="button" disabled>删除导出</button>
+        <span id="exportTaskHint">当前模块保存的导出任务</span>
+      </div>
+      <div id="exportTaskList" class="module-task-list empty">暂无导出任务</div>`;
+    shell.insertAdjacentElement("afterbegin", panel);
+    document.querySelector("#openExportTask").addEventListener("click", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
+    document.querySelector("#newExportTask").addEventListener("click", () => saveExportTask().catch((error) => setStatus(error.message, "error")));
+    document.querySelector("#deleteExportTask").addEventListener("click", () => deleteSelectedExportTask().catch((error) => setStatus(error.message, "error")));
+  }
+
+  const activeNode = document.querySelector(".module-tree .tree-node.active");
+  if (activeNode && !document.querySelector("#exportTaskTree")) {
+    const tree = document.createElement("div");
+    tree.id = "exportTaskTree";
+    tree.className = "module-task-tree";
+    activeNode.insertAdjacentElement("afterend", tree);
+  }
+}
+
+function renderExportTaskJobs() {
+  ensureExportTaskPanel();
+  const list = document.querySelector("#exportTaskList");
+  const tree = document.querySelector("#exportTaskTree");
+  const openButton = document.querySelector("#openExportTask");
+  const deleteButton = document.querySelector("#deleteExportTask");
+  if (!list) return;
+  if (!exportTaskJobs.length) {
+    list.className = "module-task-list empty";
+    list.textContent = "暂无导出任务";
+    if (tree) tree.textContent = "";
+  } else {
+    list.className = "module-task-list";
+    list.innerHTML = exportTaskJobs
+      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span>导出</span>${escapeHtml(job.name)}</button>`)
+      .join("");
+    if (tree) {
+      tree.innerHTML = exportTaskJobs
+        .map((job) => `<button type="button" class="tree-child ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">导出 ${escapeHtml(job.name)}</button>`)
+        .join("");
+    }
+  }
+  const hasSelection = Boolean(selectedExportTaskId && exportTaskJobs.some((job) => job.id === selectedExportTaskId));
+  if (openButton) openButton.disabled = !hasSelection;
+  if (deleteButton) deleteButton.disabled = !hasSelection;
+  document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedExportTaskId = button.dataset.id;
+      renderExportTaskJobs();
+    });
+    button.addEventListener("dblclick", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
+  });
+}
+
+async function loadExportTaskJobs() {
+  ensureExportTaskPanel();
+  const payload = await requestJson("/api/jobs");
+  exportTaskJobs = (payload.jobs || []).filter(isExportTaskJob);
+  if (selectedExportTaskId && !exportTaskJobs.some((job) => job.id === selectedExportTaskId)) {
+    selectedExportTaskId = "";
+  }
+  renderExportTaskJobs();
+}
+
+async function applyExportTaskConfig(config) {
+  for (const [key, value] of Object.entries(config || {})) {
+    setControlValue(key, value);
+  }
+  for (const name of ["headerMode", "exportMode", "exportTargetMode"]) {
+    if (config?.[name]) setRadioValue(name, config[name]);
+  }
+  exportConnection.value = config?.targetDbType === "sqlite" ? "__sqlite" : config?.connectionId || exportConnection.value;
+
+  const items = Array.isArray(config?.items) ? config.items : [];
+  if (config?.sourceType === "table" || items.some((item) => item.type === "table")) {
+    sourceMode = "table";
+    await loadSources();
+    const tableNames = new Set(items.map((item) => item.table || item.name).filter(Boolean));
+    exportSourceList.querySelectorAll("input[type='checkbox']").forEach((input) => {
+      input.checked = tableNames.has(input.value);
+    });
+  } else if (items.length > 1) {
+    sourceMode = "multi";
+    exportSql.value = items.map((item) => item.sql).filter(Boolean).join("; ");
+    $("#queryName").value = items[0]?.name || $("#queryName").value || "query";
+    exportSourceList.textContent = "当前使用多个 SQL 查询，使用分号分隔";
+  } else {
+    sourceMode = "query";
+    exportSql.value = config?.sql || items[0]?.sql || exportSql.value;
+    $("#queryName").value = items[0]?.name || $("#queryName").value || "query";
+    exportSourceList.textContent = "当前使用单个 SQL 查询";
+  }
+}
+
+async function openSelectedExportTask() {
+  const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
+  if (!job) return;
+  const step = exportTaskStep(job);
+  await applyExportTaskConfig(step.config || {});
+  setStatus(`已打开导出任务：${job.name}`, "success");
+}
+
+async function deleteSelectedExportTask() {
+  const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
+  if (!job) return;
+  if (!window.confirm(`确定删除导出任务“${job.name}”吗？关联的定时任务也会一起删除。`)) return;
+  await requestJson(`/api/jobs?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
+  selectedExportTaskId = "";
+  await loadExportTaskJobs();
+  setStatus("已删除导出任务。", "success");
 }
 
 document.querySelectorAll("[data-export-tab]").forEach((tab) => {
@@ -396,11 +545,13 @@ $("#stopExport").addEventListener("click", () => setStatus("当前导出任务�
 $("#saveExportConfig").addEventListener("click", () => saveExportTask().catch((error) => setStatus(error.message, "error")));
 $("#explainExport").addEventListener("click", () => setStatus("不支持的 .xls、DBF 和系统自动打开文件夹已在页面禁用。", "warn"));
 
+ensureExportTaskPanel();
 loadConnections()
   .then(() => {
     sourceMode = "query";
     exportSourceList.textContent = "当前使用单个 SQL 查询";
     exportSql.value = exportSql.value || "select 1 as value";
+    loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
     setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
   })
   .catch((error) => setStatus(error.message, "error"));
