@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+
+data/
+uploads/
+exports/
+
+*.db
+*.sqlite
+*.sqlite3
+
+test_mysql_import.py
+
+.env
+.env.*
+*.log

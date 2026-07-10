@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>导入功能 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260708_layout_fix" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item active" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+        <a class="ribbon-item" href="/docs.html"><span class="ribbon-icon violet">DOC</span><span>操作手册</span></a>
+        <a class="ribbon-item" href="/feedback.html"><span class="ribbon-icon sky">?</span><span>咨询建议反馈</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node active" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+    <main class="import-shell">
+      <a class="button module-link" href="/export.html">导出</a>
+      <section class="left-pane">
+        <div class="file-row">
+          <strong>Excel:</strong>
+          <div class="picker-buttons">
+            <label class="button">选择文件<input id="fileInput" type="file" multiple accept=".csv,.txt,.xlsx,.xlsm,.xls,.json,.xml,.dbf" /></label>
+            <label class="button">选择目录<input id="dirInput" type="file" multiple webkitdirectory /></label>
+          </div>
+        </div>
+
+        <div id="fileList" class="file-list">尚未选择文件</div>
+
+        <section class="basic-options">
+          <div class="option-group">
+            <strong>目标表：</strong>
+            <label><input type="radio" name="targetMode" value="auto" checked /> 自动生成</label>
+            <label><input type="radio" name="targetMode" value="manual" /> 手动指定：</label>
+            <input id="tableName" class="line-input" list="targetTableOptions" placeholder="可输入新表名，或从目标库已有表中选择" />
+            <datalist id="targetTableOptions"></datalist>
+          </div>
+
+          <div class="option-group">
+            <strong>字段匹配：</strong>
+            <label><input type="radio" name="matchMode" value="auto" checked /> 自动</label>
+            <select id="matchBy">
+              <option value="name">按名称</option>
+              <option value="order">按顺序</option>
+              <option value="custom">自定义</option>
+            </select>
+            <button id="openMapping" type="button">...</button>
+          </div>
+
+          <div class="option-group split">
+            <strong>数据类型：</strong>
+            <label><input type="radio" name="typeMode" value="text" /> 全部使用文本类型</label>
+            <label><input type="radio" name="typeMode" value="auto" checked /> 自动识别数字及日期类型</label>
+          </div>
+
+          <div class="option-group vertical">
+            <strong>导入模式：</strong>
+            <label><input type="radio" name="importMode" value="append" checked /> 追加：添加记录到目标表</label>
+            <label><input type="radio" name="importMode" value="update" /> 更新：更新目标表相同记录，并添加新记录</label>
+            <label><input type="radio" name="importMode" value="overwrite" /> 覆盖：删除目标表全部记录，并从 Excel 重新导入数据</label>
+            <label><input type="radio" name="importMode" value="rebuild" /> 重建：删除并重新创建目标表，并从 Excel 重新导入数据</label>
+          </div>
+          <div class="option-group import-target-connection">
+            <strong>目标连接：</strong>
+            <select id="connectionSelect">
+              <option value="">读取连接中...</option>
+            </select>
+            <a class="button" href="/connections.html">管理连接</a>
+            <label><input type="radio" name="targetDbType" value="mysql" checked /> MySQL</label>
+            <label><input type="radio" name="targetDbType" value="sqlite" /> 本地 SQLite</label>
+            <input id="dbHost" type="hidden" value="192.168.1.102" />
+            <input id="dbPort" type="hidden" value="3306" />
+            <input id="dbName" type="hidden" value="lcdp_SR" />
+            <input id="dbUser" type="hidden" value="root" />
+            <input id="dbPassword" type="hidden" value="123456" />
+            <input id="dbCharset" type="hidden" value="utf8mb4" />
+          </div>
+        </section>
+      </section>
+
+      <section class="right-pane">
+        <div class="tabs">
+          <button class="tab active" data-tab="excel" type="button">Excel选项</button>
+          <button class="tab" data-tab="clean" type="button">数据清洗选项</button>
+          <button class="tab" data-tab="database" type="button">数据库选项</button>
+          <button class="tab" data-tab="other" type="button">其他选项</button>
+        </div>
+
+        <form id="importForm" class="tab-body">
+          <section class="tab-panel active" data-panel="excel">
+            <div class="inline-row">
+              <span>读取引擎：</span>
+              <label><input type="radio" name="readEngine" value="default" /> 默认引擎</label>
+              <label><input type="radio" name="readEngine" value="fast" /> 加速引擎</label>
+              <label><input type="radio" name="readEngine" value="strong" checked /> 强力引擎</label>
+            </div>
+
+            <fieldset>
+              <legend>表格筛选</legend>
+              <label><input id="recursiveDir" type="checkbox" checked /> 遍历子目录</label>
+              <label><input id="skipSeenFile" type="checkbox" /> 跳过自上次导入后未曾更新过的文件</label>
+              <label><input id="sheetModeAll" type="checkbox" /> 导入全部 Sheet</label>
+              <div class="form-line">
+                <span>指定要导入Sheet的</span>
+                <select id="sheetFilterMode"><option value="name">名称</option><option value="index">序号</option></select>
+                <input id="sheetName" />
+                <button type="button">+</button>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>数据筛选</legend>
+              <div class="form-line">
+                <span>指定要导入列的</span>
+                <select><option>名称</option><option>序号</option></select>
+                <input id="columnFilter" placeholder="支持逗号分隔的列名或序号" />
+                <button type="button">+</button>
+              </div>
+              <div class="two-col">
+                <label>表头所在行号：<input id="headerRow" type="number" min="1" value="1" /></label>
+                <label>数据开始行号：<input id="dataStartRow" type="number" min="1" /></label>
+                <label>要导入的行数：<input id="importRowCount" type="number" min="0" /></label>
+                <label>跳过结尾行数：<input id="skipTailRows" type="number" min="0" /></label>
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>CSV/TXT/XML/JSON</legend>
+              <div class="form-line">
+                <span>编码格式：</span>
+                <select id="encoding">
+                  <option value="auto">自动识别</option>
+                  <option value="utf-8-sig">UTF-8 BOM</option>
+                  <option value="utf-8">UTF-8</option>
+                  <option value="gbk">GBK</option>
+                  <option value="gb18030">GB18030</option>
+                </select>
+                <span>列分隔符：</span>
+                <input id="delimiter" class="short" />
+                <span>行分隔符：</span>
+                <input id="lineDelimiter" class="short" placeholder="\n 或 |" />
+              </div>
+              <div class="form-line">
+                <span>分批导入，每批导入行数：</span>
+                <input id="batchRows" placeholder="影响提交批次" />
+                <label><input id="resumeImport" type="checkbox" /> 断点续传</label>
+              </div>
+              <label>xml/json表示一个表行的标签：<input id="rowTag" /></label>
+            </fieldset>
+
+            <label>Excel密码：<input id="excelPassword" type="password" /></label>
+            <textarea id="remark" placeholder="备注"></textarea>
+          </section>
+
+          <section class="tab-panel" data-panel="clean">
+            <label>将这些单元格值替换为空白单元格：<input id="blankCellValues" /></label>
+            <label>将这些字符替换为空字符：<input id="removeText" /></label>
+            <div class="inline-row">
+              <label><input id="trimValues" type="checkbox" checked /> 去除单元格值首尾空格</label>
+              <label><input id="deleteEmptyRows" type="checkbox" checked /> 删除空行</label>
+            </div>
+            <label>将数据按这些列去重：<input id="dedupeColumns" placeholder="列名或序号，逗号分隔" /></label>
+            <label>使用上一行数据补全这些列的空白单元格：<input id="fillDownColumns" placeholder="列名或序号，逗号分隔" /></label>
+            <label>指定自定义日期格式列：<input id="dateColumns" placeholder="如：日期:%Y/%m/%d" /></label>
+            <label><input id="defaultForEmpty" type="checkbox" /> 将空白单元格替换为表列定义的默认值</label>
+            <label><input id="zeroForNumber" type="checkbox" /> 将数字类型列的空白单元格替换为0</label>
+            <label><input id="emptyAsNull" type="checkbox" checked /> 将空白单元格替换为NULL</label>
+            <label>将空白单元格替换为：<input id="replaceBlankWith" /></label>
+            <div class="two-col">
+              <label>将文本：<input id="replaceTextFrom" /></label>
+              <label>替换为：<input id="replaceTextTo" /></label>
+            </div>
+            <textarea id="customSql" placeholder="自定义SQL，导入当前文件后执行"></textarea>
+          </section>
+
+          <section class="tab-panel" data-panel="database">
+            <fieldset>
+              <legend>目标表</legend>
+              <label>目标表命名规则：
+                <select id="tableNameRule"><option value="auto">自动判断</option><option value="file">按文件名</option><option value="sheet">按Sheet名</option></select>
+              </label>
+              <label>使用正则表达式提取表名：<input id="tableRegex" /></label>
+              <div class="inline-row">
+                <label><input id="symbolToUnderscore" type="checkbox" /> 将表名中的符号都替换为下划线</label>
+                <label><input id="tablePinyin" type="checkbox" /> 将中文表名转换为拼音首字母</label>
+              </div>
+              <div class="two-col">
+                <label>为表名添加前缀：<input id="tablePrefix" /></label>
+                <label>后缀：<input id="tableSuffix" /></label>
+              </div>
+              <div class="inline-row">
+                <span>表名大小写：</span>
+                <label><input type="radio" name="tableCase" value="keep" /> 保持原样</label>
+                <label><input type="radio" name="tableCase" value="upper" /> 使用大写</label>
+                <label><input type="radio" name="tableCase" value="lower" checked /> 使用小写</label>
+              </div>
+              <label>当自动生成的目标表重复时：
+                <select id="duplicateTableMode">
+                  <option value="same">写入同一目标表</option>
+                  <option value="suffix">视为不同目标表并为表名添加后缀</option>
+                  <option value="skip">跳过重复目标表</option>
+                </select>
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend>字段</legend>
+              <div class="form-line">
+                <span>将字段名中的</span>
+                <select id="fieldReplaceFrom" class="short"><option value="">请选择</option><option value="symbol">符号</option><option value="space">空格</option></select>
+                <span>都替换为</span>
+                <select id="fieldReplaceTo" class="short"><option value="_">下划线</option><option value="">空字符</option></select>
+                <label><input id="fieldPinyin" type="checkbox" /> 将中文字段名转换为拼音首字母</label>
+              </div>
+              <div class="inline-row">
+                <span>字段名大小写：</span>
+                <label><input type="radio" name="fieldCase" value="keep" /> 保持原样</label>
+                <label><input type="radio" name="fieldCase" value="upper" /> 使用大写</label>
+                <label><input type="radio" name="fieldCase" value="lower" checked /> 使用小写</label>
+              </div>
+              <div class="two-col">
+                <label>创建表时添加自增主键字段：<input id="autoPkField" /></label>
+                <label>将导入时间存到字段：<input id="importTimeField" /></label>
+                <label>将Excel表格名称（可正则提取）<input id="sheetNameExtract" /></label>
+                <label>存到字段：<input id="sheetNameField" /></label>
+                <label>将值：<input id="fixedValue" /></label>
+                <label>存到字段：<input id="fixedValueField" /></label>
+              </div>
+              <div class="inline-row">
+                <span>当Excel存在多余的列时：</span>
+                <label><input type="radio" name="extraColumnMode" value="ignore" checked /> 忽略多余列</label>
+                <label><input type="radio" name="extraColumnMode" value="add" /> 在表中增加新字段</label>
+              </div>
+              <label><input id="autoExpand" type="checkbox" checked /> 当字段长度不够时，自动扩展其长度</label>
+            </fieldset>
+
+            <div class="inline-row">
+              <span>写入方式：</span>
+              <label><input type="radio" name="writeMode" value="fast" checked /> 快速写入</label>
+              <label><input type="radio" name="writeMode" value="load" /> load写入</label>
+              <label><input type="radio" name="writeMode" value="parallel" /> 并行写入</label>
+              <label><input type="radio" name="writeMode" value="normal" /> 常规写入</label>
+            </div>
+            <div class="inline-row">
+              <span>提交方式：</span>
+              <label><input type="radio" name="commitMode" value="once" checked /> 一次提交</label>
+              <label><input type="radio" name="commitMode" value="batch" /> 分批提交</label>
+              <label><input type="radio" name="commitMode" value="auto" /> 自动提交</label>
+              <label><input id="disableLog" type="checkbox" /> 不记录日志</label>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="other">
+            <label><input id="clearLogBeforeImport" type="checkbox" checked /> 导入前清空日志文件</label>
+            <label><input id="deleteAfterSuccess" type="checkbox" /> 删除导入成功的Excel文件</label>
+            <label>全部导入开始前运行：</label>
+            <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="beforeAllSql"></textarea><button type="button">...</button></div>
+            <label>每次导入成功后运行：</label>
+            <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="afterEachSql"></textarea><button type="button">...</button></div>
+            <label>全部导入结束后运行：</label>
+            <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="afterAllSql"></textarea><button type="button">...</button></div>
+            <label>结束后运行查询语句</label>
+            <textarea id="afterQuerySql"></textarea>
+            <label>并将结果导出到Excel文件：<input id="afterQueryExport" placeholder="例如 result.xlsx" /></label>
+          </section>
+
+          <div class="footer-actions">
+            <span id="status">等待选择文件</span>
+            <button id="previewButton" type="button">预览</button>
+            <button class="primary" type="submit">开始导入</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <section id="mappingDialog" class="dialog hidden">
+      <div class="dialog-card">
+        <div class="dialog-title">
+          <strong>字段映射</strong>
+          <button id="closeMapping" type="button">×</button>
+        </div>
+        <div id="previewMeta" class="meta">暂无预览</div>
+        <div id="mappingTable" class="mapping-empty">预览文件后可调整字段名、跳过字段、设置默认值和更新匹配键</div>
+        <div id="previewTable" class="table-wrap empty">选择文件后可预览前 20 行</div>
+      </div>
+    </section>
+
+    <section class="bottom-dock">
+      <div>
+        <strong>已导入表</strong>
+        <span id="tableMeta">0 张表</span>
+        <div id="tables" class="table-list"></div>
+      </div>
+      <div>
+        <strong>表数据</strong>
+        <span id="selectedTableMeta">未选择</span>
+        <div id="tablePreview" class="table-wrap empty">点击表名查看前 50 行</div>
+      </div>
+      <div>
+        <strong>导入日志</strong>
+        <span>最近 50 条</span>
+        <div id="logs" class="logs"></div>
+      </div>
+    </section>
+
+        </section>
+      </div>
+    </div>
+
+    <script src="/app.js?v=20260708_layout_fix"></script>
+  </body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>新建连接 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260708_layout_fix" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item active" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node active" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+          <main class="connection-page">
+            <section class="connection-list-panel">
+              <div class="panel-title">
+                <strong>数据库连接</strong>
+                <button id="newConn" type="button">新增</button>
+              </div>
+              <div id="connectionList" class="connection-list"></div>
+            </section>
+            <section class="connection-editor-panel">
+              <div class="panel-title">
+                <strong id="editorTitle">新建连接</strong>
+                <span id="connStatus">等待操作</span>
+              </div>
+              <form id="connectionForm" class="connection-editor">
+                <input id="connId" type="hidden" />
+                <label>连接名称：<input id="connName" required /></label>
+                <label>数据库类型：
+                  <select id="connDbType">
+                    <option value="mysql">MySQL / MariaDB</option>
+                  </select>
+                </label>
+                <label>主机：<input id="connHost" value="192.168.1.102" required /></label>
+                <label>端口：<input id="connPort" value="3306" required /></label>
+                <label>用户名：<input id="connUser" value="root" required /></label>
+                <label>密码：<input id="connPassword" type="password" placeholder="编辑已有连接时留空表示不修改" /></label>
+                <label>数据库：
+                  <select id="connDatabase">
+                    <option value="lcdp_SR">lcdp_SR</option>
+                  </select>
+                </label>
+                <label>字符集：<input id="connCharset" value="utf8mb4" /></label>
+                <fieldset>
+                  <legend>SSL</legend>
+                  <label><input id="connSslEnabled" type="checkbox" /> 启用 SSL</label>
+                  <label>CA 文件：<input id="connSslCa" /></label>
+                  <label>证书文件：<input id="connSslCert" /></label>
+                  <label>私钥文件：<input id="connSslKey" /></label>
+                </fieldset>
+                <div class="connection-editor-actions">
+                  <button id="testConn" type="button">测试连接</button>
+                  <button class="primary" id="saveConn" type="submit">保存连接</button>
+                  <button id="deleteConn" type="button">删除连接</button>
+                </div>
+              </form>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+    <script src="/connections.js?v=20260708_layout_fix"></script>
+  </body>
+</html>

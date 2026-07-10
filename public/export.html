@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>导出功能 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260708_export_sql_default" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item active" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+        <a class="ribbon-item" href="/docs.html"><span class="ribbon-icon violet">DOC</span><span>操作手册</span></a>
+        <a class="ribbon-item" href="/feedback.html"><span class="ribbon-icon sky">?</span><span>咨询建议反馈</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node active" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+    <main class="export-shell">
+      <section class="export-topbar">
+        <select id="exportConnection">
+          <option value="">读取连接中...</option>
+        </select>
+        <button id="saveExportConfig" type="button">保存</button>
+        <button id="startExport" type="button">开始</button>
+        <button id="stopExport" type="button">结束</button>
+        <a class="button" href="/">导入</a>
+        <span></span>
+        <button id="explainExport" type="button">选项说明</button>
+      </section>
+
+      <section class="export-left">
+        <strong>导出表或查询结果：</strong>
+        <div class="export-source-row">
+          <div class="export-source-actions">
+            <button id="chooseTables" type="button">选择表</button>
+            <button id="singleQuery" type="button">单个查询</button>
+            <button id="multiQuery" type="button">多个查询</button>
+            <label class="button">选择文件<input id="sqlFileInput" type="file" accept=".sql,.txt" /></label>
+          </div>
+          <div class="export-sql-box">
+            <label class="export-query-name">SQL结果名称：<input id="queryName" value="query" placeholder="用于生成文件名或 Sheet 名" /></label>
+            <textarea id="exportSql" class="export-sql" placeholder="SQL 查询语句；多个查询可用分号分隔">select 1 as value</textarea>
+          </div>
+        </div>
+        <div id="exportSourceList" class="export-source-list">当前使用单个 SQL 查询</div>
+
+        <section class="export-basic">
+          <div class="export-group">
+            <strong>目标Excel：</strong>
+            <label><input type="radio" name="exportTargetMode" value="folder" checked /> 导出到指定文件夹：</label>
+            <input id="exportFolder" value="exports" />
+            <button id="chooseExportFolder" type="button">...</button>
+            <select id="exportExtension">
+              <option value="xlsx">.xlsx</option>
+              <option value="csv">.csv</option>
+              <option value="txt">.txt</option>
+              <option value="json">.json</option>
+              <option value="xml">.xml</option>
+              <option value="xls" disabled>.xls 后续支持</option>
+              <option value="dbf" disabled>.dbf 后续支持</option>
+            </select>
+          </div>
+          <div class="export-group">
+            <span></span>
+            <label><input type="radio" name="exportTargetMode" value="file" /> 导出到指定文件：</label>
+            <input id="outputName" placeholder="不填则按表名或查询名生成" />
+            <button id="chooseExportFile" type="button">...</button>
+          </div>
+
+          <div class="export-group">
+            <strong>目标Sheet：</strong>
+            <label>Sheet名称：</label>
+            <input id="sheetName" value="Sheet1" />
+          </div>
+
+          <div class="export-group">
+            <strong>表头名称：</strong>
+            <label><input type="radio" name="headerMode" value="field" checked /> 使用字段名</label>
+            <label><input type="radio" name="headerMode" value="comment" /> 使用字段注释</label>
+            <label><input type="radio" name="headerMode" value="none" /> 不保留表头</label>
+          </div>
+
+          <div class="export-group vertical">
+            <strong>导出模式：</strong>
+            <label><input type="radio" name="exportMode" value="workbook" checked /> 覆盖工作簿：如果目标文件已存在，则覆盖整个目标文件</label>
+            <label><input type="radio" name="exportMode" value="sheet" /> 覆盖工作表：如果目标文件指定工作表已存在，则仅覆盖指定工作表</label>
+            <label><input type="radio" name="exportMode" value="data" /> 覆盖数据：如果目标文件指定工作表已存在，则仅覆盖指定工作表数据</label>
+          </div>
+        </section>
+      </section>
+
+      <section class="export-right">
+        <div class="tabs export-tabs">
+          <button class="tab active" data-export-tab="data" type="button">数据选项</button>
+          <button class="tab" data-export-tab="format" type="button">格式选项</button>
+          <button class="tab" data-export-tab="other" type="button">其他选项</button>
+        </div>
+
+        <section class="tab-body export-tab-body">
+          <div class="tab-panel active" data-export-panel="data">
+            <label><input id="skipEmptyTable" type="checkbox" /> 跳过空表</label>
+            <label><input id="commentAsFileName" type="checkbox" /> 如果表存在注释，使用表注释作为文件名</label>
+            <label>按字段值分割导出文件：<input id="splitField" /></label>
+            <div class="inline-row">
+              <label><input id="splitIntoFolder" type="checkbox" /> 按字段分割时同时分别存到对应文件夹</label>
+              <label><input id="splitNameWithField" type="checkbox" /> 按字段分割时始终以字段名+表名命名文件</label>
+            </div>
+            <label>指定要导出的字段名称：<input id="exportFields" /></label>
+            <label>指定要导出的过滤条件：<input id="whereClause" placeholder="例如 amount > 0" /></label>
+            <label>将导出时间添加到列：<input id="exportTimeField" /></label>
+            <div class="two-col">
+              <label>为导出的文件名增加前缀：<input id="filePrefix" /></label>
+              <label>后缀：<input id="fileSuffix" /></label>
+            </div>
+            <div class="inline-row">
+              <label>分批导出，每批导出行数：<input id="batchRows" /></label>
+              <label><input id="splitByBatch" type="checkbox" /> 按批次分割导出文件</label>
+            </div>
+            <fieldset>
+              <legend>CSV</legend>
+              <div class="inline-row">
+                <span>编码格式：</span>
+                <select id="encoding">
+                  <option value="utf-8">UTF-8</option>
+                  <option value="utf-8-sig">UTF-8 BOM</option>
+                  <option value="gbk">GBK</option>
+                  <option value="gb18030">GB18030</option>
+                </select>
+                <span>列分隔符：</span>
+                <input id="delimiter" class="short" />
+                <span>行分隔符：</span>
+                <input id="lineDelimiter" class="short" placeholder="\n" />
+              </div>
+            </fieldset>
+            <div class="inline-row">
+              <label><input id="openFileAfterExport" type="checkbox" /> 导出完成后打开文件</label>
+              <label><input id="openFolderAfterExport" type="checkbox" /> 导出完成后打开文件夹</label>
+            </div>
+            <textarea id="exportRemark" placeholder="备注"></textarea>
+          </div>
+
+          <div class="tab-panel" data-export-panel="format">
+            <label>设置行高：<input id="rowHeight" /></label>
+            <label>设置列宽：<input id="columnWidth" /></label>
+            <label>设置字体名称：<input id="fontName" /></label>
+            <label>设置字体大小：<input id="fontSize" /></label>
+            <label>锁定指定列不可编辑：<input id="lockedColumns" /></label>
+            <label><input id="addBorder" type="checkbox" /> 添加边框线</label>
+            <label><input id="lockHeader" type="checkbox" /> 锁定表头行不可编辑</label>
+          </div>
+
+          <div class="tab-panel" data-export-panel="other">
+            <label><input id="clearLogBeforeExport" type="checkbox" checked /> 导出前清空日志文件</label>
+            <label>开始前运行：</label>
+            <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="beforeSql"></textarea><button type="button" disabled>...</button></div>
+            <label>结束后运行：</label>
+            <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="afterSql"></textarea><button type="button" disabled>...</button></div>
+          </div>
+
+          <div class="footer-actions">
+            <span id="exportStatus">等待选择导出对象</span>
+            <button id="previewExport" type="button">预览</button>
+            <button class="primary" id="runExport" type="button">开始导出</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <section class="bottom-dock export-dock">
+      <div>
+        <strong>预览结果</strong>
+        <span id="exportPreviewMeta">暂无</span>
+        <div id="exportPreviewTable" class="table-wrap empty">选择导出对象后可预览前 20 行</div>
+      </div>
+      <div>
+        <strong>导出结果</strong>
+        <span id="exportResultMeta">暂无</span>
+        <div id="exportResults" class="logs">暂无导出文件</div>
+      </div>
+    </section>
+
+        </section>
+      </div>
+    </div>
+
+    <script src="/export.js?v=20260708_export_sql_default"></script>
+  </body>
+</html>

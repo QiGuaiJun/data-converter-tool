@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>作业 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260708_jobs_schedule" />
+  </head>
+  <body data-page="jobs">
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item active" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node active" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+          <main class="job-page">
+            <section class="job-toolbar">
+              <button id="newJob" type="button">新增作业</button>
+              <button id="editJob" type="button">编辑作业</button>
+              <button id="deleteJob" type="button">删除作业</button>
+              <button id="runJob" type="button">立即执行</button>
+              <button id="refreshJobs" type="button">刷新</button>
+              <span id="jobStatus"></span>
+            </section>
+            <section class="job-grid">
+              <div class="job-panel">
+                <strong>作业列表</strong>
+                <div id="jobList" class="job-list"></div>
+              </div>
+              <div class="job-panel">
+                <strong>作业步骤</strong>
+                <div id="stepPreview" class="job-list empty-list">请选择作业</div>
+              </div>
+              <div class="job-panel wide">
+                <strong>运行日志</strong>
+                <div id="jobRuns" class="job-runs">暂无日志</div>
+              </div>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+
+    <dialog id="jobDialog" class="job-dialog">
+      <form method="dialog" class="job-dialog-card">
+        <header><strong id="jobDialogTitle">新增作业</strong><button id="closeJobDialog" type="button">×</button></header>
+        <label>作业名称：<input id="jobName" /></label>
+        <fieldset>
+          <legend>选择要添加的子任务类型</legend>
+          <label><input type="radio" name="stepType" value="import" checked /> 导入</label>
+          <label><input type="radio" name="stepType" value="export" /> 导出</label>
+          <label><input type="radio" name="stepType" value="sync" disabled /> 同步</label>
+          <label><input type="radio" name="stepType" value="query" /> 查询</label>
+          <label><input type="radio" name="stepType" value="job" /> 作业</label>
+        </fieldset>
+        <label>选择连接：<select id="jobConnection"></select></label>
+        <section class="job-step-picker">
+          <div>
+            <strong>可选配置</strong>
+            <div id="stepConfig" class="step-config"></div>
+          </div>
+          <div class="step-move">
+            <button id="addStep" type="button">&gt;&gt;</button>
+            <button id="removeStep" type="button">&lt;&lt;</button>
+            <button id="moveStepUp" type="button">↑</button>
+            <button id="moveStepDown" type="button">↓</button>
+          </div>
+          <div>
+            <strong>已选子任务</strong>
+            <div id="selectedSteps" class="selected-steps"></div>
+          </div>
+        </section>
+        <footer>
+          <button id="saveJob" class="primary" type="button">确认</button>
+          <button id="cancelJob" type="button">取消</button>
+        </footer>
+      </form>
+    </dialog>
+    <script src="/jobs.js?v=20260708_jobs_schedule"></script>
+  </body>
+</html>
