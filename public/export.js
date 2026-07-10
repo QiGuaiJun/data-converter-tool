@@ -424,11 +424,11 @@ function renderExportTaskJobs() {
   } else {
     list.className = "module-task-list";
     list.innerHTML = exportTaskJobs
-      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span>导出</span>${escapeHtml(job.name)}</button>`)
+      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
       .join("");
     if (tree) {
       tree.innerHTML = exportTaskJobs
-        .map((job) => `<button type="button" class="tree-child ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">导出 ${escapeHtml(job.name)}</button>`)
+        .map((job) => `<button type="button" class="tree-child ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
         .join("");
     }
   }

@@ -290,11 +290,11 @@ function renderImportTaskJobs() {
   } else {
     list.className = "module-task-list";
     list.innerHTML = importTaskJobs
-      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span>导入</span>${escapeHtml(job.name)}</button>`)
+      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
       .join("");
     if (tree) {
       tree.innerHTML = importTaskJobs
-        .map((job) => `<button type="button" class="tree-child ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">导入 ${escapeHtml(job.name)}</button>`)
+        .map((job) => `<button type="button" class="tree-child ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
         .join("");
     }
   }
