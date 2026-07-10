@@ -9,6 +9,7 @@ let editingScheduleId = "";
 let editingJobId = "";
 let draftSteps = [];
 let selectedStepIndex = -1;
+let selectedAvailableJobId = "";
 let draftRule = { mode: "interval", amount: 1, unit: "hours" };
 
 async function requestJson(url, options = {}) {
@@ -142,36 +143,48 @@ function updateRuleSummary() {
   $("#ruleSummary").textContent = ruleText(draftRule);
 }
 
+function jobPrimaryType(job) {
+  const steps = job?.steps || [];
+  if (steps.length === 1 && steps[0].type === "job") {
+    const nestedId = steps[0].config?.jobId;
+    const nested = jobs.find((item) => item.id === nestedId);
+    return nested ? jobPrimaryType(nested) : "job";
+  }
+  const types = [...new Set(steps.map((step) => step.type))];
+  if (types.length === 1) return types[0];
+  return types.length ? "job" : "";
+}
+
+function isScheduleBackingJob(job) {
+  return String(job?.name || "").endsWith(" - 自动作业");
+}
+
+function candidateJobsForType(type) {
+  return jobs.filter((job) => {
+    if (job.id === editingJobId) return false;
+    if (isScheduleBackingJob(job)) return false;
+    if (type === "job") return true;
+    return jobPrimaryType(job) === type;
+  });
+}
+
 function renderStepConfig() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
-  const hint = '<p class="hint">连接会随子任务一起保存。</p>';
-  if (type === "import") {
-    $("#stepConfig").innerHTML = `${hint}
-      <label>步骤名称：<input id="stepName" value="导入数据" /></label>
-      <label>文件或目录路径：<input id="importPath" placeholder="例如 C:\\data\\inbox" /></label>
-      <label>目标表：<input id="importTable" placeholder="可为空，按文件名生成" /></label>
-      <label>导入模式：<select id="importMode"><option value="append">追加</option><option value="update">更新</option><option value="overwrite">覆盖</option><option value="rebuild">重建</option></select></label>
-      <label class="inline-check"><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "export") {
-    $("#stepConfig").innerHTML = `${hint}
-      <label>步骤名称：<input id="stepName" value="导出数据" /></label>
-      <label>导出 SQL：<textarea id="exportSql" placeholder="select * from table_name"></textarea></label>
-      <label>结果名称：<input id="exportName" value="job_export" /></label>
-      <label>文件格式：<select id="exportExt"><option value="xlsx">xlsx</option><option value="csv">csv</option><option value="json">json</option><option value="xml">xml</option><option value="txt">txt</option></select></label>
-      <label>Sheet 名称：<input id="sheetName" value="Sheet1" /></label>
-      <label class="inline-check"><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "query") {
-    $("#stepConfig").innerHTML = `${hint}
-      <label>步骤名称：<input id="stepName" value="执行查询" /></label>
-      <label>SQL：<textarea id="querySql" placeholder="select 1"></textarea></label>
-      <label class="inline-check"><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "job") {
-    const options = jobs.filter((job) => job.id !== editingJobId).map((job) => `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name)}（${escapeHtml(jobKindText(job))}）</option>`).join("");
-    $("#stepConfig").innerHTML = `
-      <label>步骤名称：<input id="stepName" value="执行子作业" /></label>
-      <label>选择作业：<select id="nestedJob">${options || '<option value="">暂无可选作业</option>'}</select></label>
-      <label class="inline-check"><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
+  const candidates = candidateJobsForType(type);
+  if (!candidates.some((job) => job.id === selectedAvailableJobId)) {
+    selectedAvailableJobId = candidates[0]?.id || "";
   }
+  $("#stepConfig").innerHTML = candidates.length
+    ? candidates
+        .map((job) => `<button type="button" class="available-job ${job.id === selectedAvailableJobId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><strong>${escapeHtml(job.name)}</strong><span>${escapeHtml(jobKindText(job))}</span></button>`)
+        .join("")
+    : `<div class="empty-list">暂无${typeText(type)}作业，请先在${typeText(type)}页面保存作业</div>`;
+  $$("#stepConfig .available-job").forEach((button) =>
+    button.addEventListener("click", () => {
+      selectedAvailableJobId = button.dataset.id;
+      renderStepConfig();
+    }),
+  );
 }
 
 function jobKindText(job) {
@@ -190,9 +203,26 @@ function draftStepFromForm() {
   return base;
 }
 
+function addSelectedAvailableJob() {
+  const type = document.querySelector('input[name="stepType"]:checked').value;
+  if (type === "sync") throw new Error("同步模块尚未开放。");
+  const job = jobs.find((item) => item.id === selectedAvailableJobId);
+  if (!job) throw new Error(`请先选择一个${typeText(type)}作业。`);
+  draftSteps.push({
+    id: crypto.randomUUID(),
+    type: "job",
+    name: job.name,
+    enabled: true,
+    continueOnError: false,
+    config: { jobId: job.id },
+  });
+  selectedStepIndex = draftSteps.length - 1;
+  renderDraftSteps();
+}
+
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${typeText(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${typeText(jobPrimaryType(jobs.find((job) => job.id === step.config?.jobId)) || step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
 }
@@ -207,6 +237,7 @@ function openScheduleDialog(item = null) {
   editingJobId = job?.id || "";
   draftSteps = job ? JSON.parse(JSON.stringify(job.steps || [])) : [];
   selectedStepIndex = draftSteps.length ? 0 : -1;
+  selectedAvailableJobId = "";
   draftRule = item?.rule || { mode: "interval", amount: 1, unit: "hours" };
   $("#scheduleDialogTitle").textContent = item ? "编辑任务" : "新增任务";
   $("#scheduleName").value = item?.name || "";
@@ -335,11 +366,11 @@ $("#refreshSchedules").addEventListener("click", () => refreshAll().catch((error
 $("#closeScheduleDialog").addEventListener("click", () => $("#scheduleDialog").close());
 $("#cancelSchedule").addEventListener("click", () => $("#scheduleDialog").close());
 $("#saveSchedule").addEventListener("click", () => saveSchedule().catch((error) => setStatus(error.message, "error")));
-$("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromForm()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
+$("#addStep").addEventListener("click", () => { try { addSelectedAvailableJob(); } catch (error) { setStatus(error.message, "error"); } });
 $("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
 $("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
 $("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
-$$('input[name="stepType"]').forEach((item) => item.addEventListener("change", renderStepConfig));
+$$('input[name="stepType"]').forEach((item) => item.addEventListener("change", () => { selectedAvailableJobId = ""; renderStepConfig(); }));
 $("#openScheduleAssistant").addEventListener("click", openAssistant);
 $("#closeAssistant").addEventListener("click", () => $("#assistantDialog").close());
 $("#cancelAssistant").addEventListener("click", () => $("#assistantDialog").close());

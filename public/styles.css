@@ -1723,7 +1723,30 @@ th {
   text-align: left;
 }
 
+.schedule-task-card .available-job {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  margin-bottom: 6px;
+  padding: 5px 8px;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  text-align: left;
+}
+
+.schedule-task-card .available-job span {
+  color: #666;
+  font-size: 12px;
+}
+
 .schedule-task-card .selected-step.active {
+  border-color: #4088d8;
+  background: #edf6ff;
+}
+
+.schedule-task-card .available-job.active {
   border-color: #4088d8;
   background: #edf6ff;
 }
