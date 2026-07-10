@@ -340,20 +340,23 @@ async function runExport() {
 }
 
 async function saveExportTask() {
+  const existingJob = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
+  const existingStep = existingJob ? exportTaskStep(existingJob) : null;
   const config = collectPayload();
-  const defaultName = $("#outputName").value || $("#queryName")?.value || "导出任务";
+  const defaultName = existingJob?.name || $("#outputName").value || $("#queryName")?.value || "导出任务";
   const taskName = prompt("请输入导出任务名称：", defaultName);
   if (!taskName) throw new Error("请填写任务名称。");
   const payload = {
+    id: existingJob?.id,
     name: taskName,
     enabled: true,
     steps: [
       {
-        id: crypto.randomUUID(),
+        id: existingStep?.id || crypto.randomUUID(),
         name: taskName,
         type: "export",
         enabled: true,
-        continueOnError: false,
+        continueOnError: existingStep?.continueOnError || false,
         config,
       },
     ],
@@ -365,7 +368,7 @@ async function saveExportTask() {
   });
   selectedExportTaskId = result.job.id;
   await loadExportTaskJobs();
-  setStatus(`已保存为任务：${result.job.name}，可在定时任务中调用。`, "success");
+  setStatus(`${existingJob ? "已更新" : "已保存"}导出任务：${result.job.name}，可在定时任务中调用。`, "success");
   return result.job;
 }
 
@@ -411,6 +414,7 @@ function renderExportTaskJobs() {
   const list = document.querySelector("#exportTaskList");
   const tree = document.querySelector("#exportTaskTree");
   const openButton = document.querySelector("#openExportTask");
+  const saveButton = document.querySelector("#newExportTask");
   const deleteButton = document.querySelector("#deleteExportTask");
   if (!list) return;
   if (!exportTaskJobs.length) {
@@ -430,6 +434,7 @@ function renderExportTaskJobs() {
   }
   const hasSelection = Boolean(selectedExportTaskId && exportTaskJobs.some((job) => job.id === selectedExportTaskId));
   if (openButton) openButton.disabled = !hasSelection;
+  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导出";
   if (deleteButton) deleteButton.disabled = !hasSelection;
   document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
     button.addEventListener("click", () => {

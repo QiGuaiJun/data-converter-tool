@@ -191,24 +191,28 @@ function formDataToImportConfig(data) {
 }
 
 async function saveImportTask() {
+  const existingJob = importTaskJobs.find((item) => item.id === selectedImportTaskId);
+  const existingStep = existingJob ? importTaskStep(existingJob) : null;
+  const existingConfig = existingStep?.config || {};
   const data = buildFormData(false);
   const config = formDataToImportConfig(data);
-  const defaultPath = selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "";
+  const defaultPath = existingConfig.path || selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "";
   const path = prompt("请输入后台定时执行时可访问的本机文件或目录路径：", defaultPath);
   if (!path) throw new Error("保存任务需要填写文件或目录路径。");
-  const taskName = prompt("请输入导入任务名称：", tableName.value || selectedFiles[0]?.name?.replace(/\.[^.]+$/, "") || "导入任务");
+  const taskName = prompt("请输入导入任务名称：", existingJob?.name || tableName.value || selectedFiles[0]?.name?.replace(/\.[^.]+$/, "") || "导入任务");
   if (!taskName) throw new Error("请填写任务名称。");
   config.path = path;
   const payload = {
+    id: existingJob?.id,
     name: taskName,
     enabled: true,
     steps: [
       {
-        id: crypto.randomUUID(),
+        id: existingStep?.id || crypto.randomUUID(),
         name: taskName,
         type: "import",
         enabled: true,
-        continueOnError: false,
+        continueOnError: existingStep?.continueOnError || false,
         config,
       },
     ],
@@ -220,7 +224,7 @@ async function saveImportTask() {
   });
   selectedImportTaskId = result.job.id;
   await loadImportTaskJobs();
-  setStatus(`已保存为任务：${result.job.name}，可在定时任务中调用。`, "success");
+  setStatus(`${existingJob ? "已更新" : "已保存"}导入任务：${result.job.name}，可在定时任务中调用。`, "success");
   return result.job;
 }
 
@@ -276,6 +280,7 @@ function renderImportTaskJobs() {
   const list = document.querySelector("#importTaskList");
   const tree = document.querySelector("#importTaskTree");
   const openButton = document.querySelector("#openImportTask");
+  const saveButton = document.querySelector("#newImportTask");
   const deleteButton = document.querySelector("#deleteImportTask");
   if (!list) return;
   if (!importTaskJobs.length) {
@@ -295,6 +300,7 @@ function renderImportTaskJobs() {
   }
   const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
   if (openButton) openButton.disabled = !hasSelection;
+  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导入";
   if (deleteButton) deleteButton.disabled = !hasSelection;
   document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
     button.addEventListener("click", () => {
