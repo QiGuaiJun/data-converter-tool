@@ -192,17 +192,33 @@ function formDataToImportConfig(data) {
   return config;
 }
 
+function selectedImportTaskDefaults(existingJob, existingConfig = {}) {
+  return {
+    name: existingJob?.name || tableName.value || selectedFiles[0]?.name?.replace(/\.[^.]+$/, "") || "导入任务",
+    path: existingConfig.path || selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "",
+  };
+}
+
+function syncImportTaskEditor(job) {
+  const step = job ? importTaskStep(job) : null;
+  const defaults = selectedImportTaskDefaults(job, step?.config || {});
+  const nameInput = document.querySelector("#importTaskName");
+  const pathInput = document.querySelector("#importTaskPath");
+  if (nameInput) nameInput.value = defaults.name;
+  if (pathInput) pathInput.value = defaults.path;
+}
+
 async function saveImportTask() {
   const existingJob = importTaskJobs.find((item) => item.id === selectedImportTaskId);
   const existingStep = existingJob ? importTaskStep(existingJob) : null;
   const existingConfig = existingStep?.config || {};
   const data = buildFormData(false);
   const config = formDataToImportConfig(data);
-  const defaultPath = existingConfig.path || selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "";
-  const path = prompt("请输入后台定时执行时可访问的本机文件或目录路径：", defaultPath);
-  if (!path) throw new Error("保存任务需要填写文件或目录路径。");
-  const taskName = prompt("请输入导入任务名称：", existingJob?.name || tableName.value || selectedFiles[0]?.name?.replace(/\.[^.]+$/, "") || "导入任务");
+  const defaults = selectedImportTaskDefaults(existingJob, existingConfig);
+  const taskName = (document.querySelector("#importTaskName")?.value || defaults.name).trim();
+  const path = (document.querySelector("#importTaskPath")?.value || defaults.path).trim();
   if (!taskName) throw new Error("请填写任务名称。");
+  if (!path) throw new Error("请在任务路径中填写后台定时执行时可访问的本机文件或目录路径。");
   config.path = path;
   const payload = {
     id: existingJob?.id,
@@ -262,6 +278,10 @@ function ensureImportTaskPanel() {
         <button id="deleteImportTask" type="button" disabled>删除导入</button>
         <span id="importTaskHint">当前模块保存的导入任务</span>
       </div>
+      <div class="module-task-editor">
+        <label>任务名称<input id="importTaskName" placeholder="例如 春节红包墙" /></label>
+        <label>任务路径<input id="importTaskPath" placeholder="定时任务执行时可访问的文件或目录路径" /></label>
+      </div>
       <div id="importTaskList" class="module-task-list empty">暂无导入任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
     document.querySelector("#openImportTask").addEventListener("click", openSelectedImportTask);
@@ -289,6 +309,7 @@ function updateImportTaskSelection() {
   if (openButton) openButton.disabled = !hasSelection;
   if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导入";
   if (deleteButton) deleteButton.disabled = !hasSelection;
+  syncImportTaskEditor(importTaskJobs.find((job) => job.id === selectedImportTaskId));
 }
 
 function renderImportTaskJobs() {
@@ -369,6 +390,7 @@ function openSelectedImportTask() {
   if (!job) return;
   const step = importTaskStep(job);
   applyImportTaskConfig(step.config || {});
+  syncImportTaskEditor(job);
   setStatus(`已打开导入任务：${job.name}${step.config?.path ? `，定时执行路径：${step.config.path}` : ""}`, "success");
 }
 

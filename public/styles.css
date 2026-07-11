@@ -2188,6 +2188,27 @@ body {
   background: rgba(249, 252, 255, 0.72);
 }
 
+.module-task-editor {
+  display: grid;
+  grid-template-columns: minmax(180px, 300px) minmax(260px, 1fr);
+  gap: 10px 14px;
+  padding: 10px 14px 0;
+  align-items: end;
+}
+
+.module-task-editor label {
+  display: grid;
+  gap: 5px;
+  color: #5f718a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.module-task-editor input {
+  width: 100%;
+  min-width: 0;
+}
+
 .module-task-toolbar span,
 .job-toolbar span {
   color: #98a8bd;
