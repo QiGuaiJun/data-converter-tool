@@ -2468,7 +2468,8 @@ def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, object]:
 
 
 def public_auth_enabled() -> bool:
-    return bool(os.environ.get("ADMIN_PASSWORD", "").strip())
+    enabled_value = os.environ.get("APP_AUTH_ENABLED", "").strip().lower()
+    return enabled_value in {"1", "true", "yes", "on"} and bool(os.environ.get("ADMIN_PASSWORD", "").strip())
 
 
 def check_basic_auth(header_value: str) -> bool:
