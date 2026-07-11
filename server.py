@@ -2488,6 +2488,12 @@ def check_basic_auth(header_value: str) -> bool:
     return hmac.compare_digest(user, admin_user) and hmac.compare_digest(password, admin_password)
 
 
+def bind_host() -> str:
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_ENVIRONMENT_NAME"):
+        return "0.0.0.0"
+    return os.environ.get("HOST", "127.0.0.1")
+
+
 class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def require_auth(self) -> bool:
         if not public_auth_enabled():
@@ -2985,7 +2991,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     ensure_dirs()
     port = int(os.environ.get("PORT", "8765"))
-    host = os.environ.get("HOST", "127.0.0.1")
+    host = bind_host()
     server = ThreadingHTTPServer((host, port), ImportPrototypeHandler)
     stop_event = threading.Event()
     scheduler = threading.Thread(target=scheduler_loop, args=(stop_event,), daemon=True)
