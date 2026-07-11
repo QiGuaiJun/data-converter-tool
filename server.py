@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import base64
 import datetime as dt
+import hmac
 import json
 import mimetypes
 import os
@@ -39,9 +40,15 @@ from xml.sax.saxutils import escape as xml_escape
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
-DATA = ROOT / "data"
-UPLOADS = ROOT / "uploads"
-EXPORTS = ROOT / "exports"
+
+
+def env_path(name: str, fallback: Path) -> Path:
+    return Path(os.environ.get(name, str(fallback))).resolve()
+
+
+DATA = env_path("DATA_DIR", ROOT / "data")
+UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
+EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
 DB_PATH = DATA / "imports.db"
 PASSWORD_PREFIX = "b64:"
 
@@ -2460,7 +2467,42 @@ def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, object]:
     return payload
 
 
+def public_auth_enabled() -> bool:
+    return bool(os.environ.get("ADMIN_PASSWORD", "").strip())
+
+
+def check_basic_auth(header_value: str) -> bool:
+    admin_user = os.environ.get("ADMIN_USER", "admin")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password:
+        return True
+    if not header_value.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(header_value[6:].strip()).decode("utf-8")
+    except Exception:
+        return False
+    user, separator, password = decoded.partition(":")
+    if not separator:
+        return False
+    return hmac.compare_digest(user, admin_user) and hmac.compare_digest(password, admin_password)
+
+
 class ImportPrototypeHandler(SimpleHTTPRequestHandler):
+    def require_auth(self) -> bool:
+        if not public_auth_enabled():
+            return True
+        if urlparse(self.path).path == "/api/ping":
+            return True
+        if check_basic_auth(self.headers.get("Authorization", "")):
+            return True
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="Data Converter"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("Authentication required.".encode("utf-8"))
+        return False
+
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")
@@ -2481,6 +2523,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         return str(target)
 
     def do_GET(self) -> None:
+        if not self.require_auth():
+            return
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/tables":
@@ -2522,6 +2566,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
+        if not self.require_auth():
+            return
         try:
             if self.path == "/api/preview":
                 self.handle_preview()
@@ -2561,6 +2607,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
 
     def do_DELETE(self) -> None:
+        if not self.require_auth():
+            return
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/connections":
@@ -2937,11 +2985,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     ensure_dirs()
     port = int(os.environ.get("PORT", "8765"))
-    server = ThreadingHTTPServer(("127.0.0.1", port), ImportPrototypeHandler)
+    host = os.environ.get("HOST", "127.0.0.1")
+    server = ThreadingHTTPServer((host, port), ImportPrototypeHandler)
     stop_event = threading.Event()
     scheduler = threading.Thread(target=scheduler_loop, args=(stop_event,), daemon=True)
     scheduler.start()
-    print(f"Import prototype running at http://127.0.0.1:{port}", flush=True)
+    print(f"Import prototype running at http://{host}:{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

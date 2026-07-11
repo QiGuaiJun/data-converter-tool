@@ -14,4 +14,5 @@ test_mysql_import.py
 
 .env
 .env.*
+!.env.example
 *.log
