@@ -85,12 +85,14 @@ function setFiles(files) {
 }
 
 function buildFormData(includeAllFiles = true) {
-  if (!selectedFiles.length) {
+  if (includeAllFiles && !selectedFiles.length) {
     throw new Error("请先选择文件。");
   }
   const data = new FormData();
-  for (const file of includeAllFiles ? selectedFiles : [selectedFiles[0]]) {
-    data.append("file", file);
+  if (selectedFiles.length) {
+    for (const file of includeAllFiles ? selectedFiles : [selectedFiles[0]]) {
+      data.append("file", file);
+    }
   }
 
   data.append("tableName", radioValue("targetMode") === "manual" ? tableName.value : "");
@@ -224,6 +226,7 @@ async function saveImportTask() {
   });
   selectedImportTaskId = result.job.id;
   await loadImportTaskJobs();
+  openSelectedImportTask();
   setStatus(`${existingJob ? "已更新" : "已保存"}导入任务：${result.job.name}，可在定时任务中调用。`, "success");
   return result.job;
 }
