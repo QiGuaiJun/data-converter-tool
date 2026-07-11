@@ -44,6 +44,48 @@ EXPORTS_DIR=/app/persistent/exports
 
 仓库已包含 `Dockerfile` 和 `render.yaml`。在 Render 中新建 Blueprint 或 Web Service，连接 GitHub 仓库后设置 `ADMIN_PASSWORD` 即可。
 
+## 数据迁移到公网环境
+
+软件自身的数据保存在 `data/imports.db`，包含：
+
+- 已保存的数据库连接
+- 导入、导出、作业、定时任务配置
+- 运行日志
+
+默认不要把 `data/`、`uploads/`、`exports/` 提交到 GitHub，因为里面可能有数据库密码、源文件和导出结果。
+
+在本地生成只包含配置数据库的备份包：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\create_data_backup.py
+```
+
+如确实需要把上传源文件和导出结果也一起带过去：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\create_data_backup.py --include-uploads --include-exports
+```
+
+生成的文件会放在 `deployment-data/`，例如：
+
+```text
+deployment-data/data-converter-backup-20260712-120000.zip
+```
+
+在云服务器上恢复：
+
+```bash
+python scripts/restore_data_backup.py /path/to/data-converter-backup-xxxx.zip
+```
+
+如果使用 Render 持久化磁盘，恢复前确保环境变量指向持久化目录：
+
+```text
+DATA_DIR=/app/persistent/data
+UPLOADS_DIR=/app/persistent/uploads
+EXPORTS_DIR=/app/persistent/exports
+```
+
 ## 测试
 
 ```powershell
