@@ -2922,9 +2922,10 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_job_run(self) -> None:
         payload = read_json_body(self)
         job_id = str(payload.get("id") or payload.get("jobId") or "").strip()
+        schedule_id = str(payload.get("scheduleId") or "").strip()
         if not job_id:
             raise ValueError("缺少作业编号。")
-        result = run_saved_job(job_id)
+        result = run_saved_job(job_id, schedule_id)
         json_response(self, {"ok": True, "run": result})
 
     def handle_job_delete(self, query: str) -> None:

@@ -107,12 +107,17 @@ function renderSchedules() {
         .join("")
     : '<tr><td colspan="6" class="schedule-empty">暂无定时任务</td></tr>';
 
-  $$("#scheduleTableBody tr[data-id]").forEach((row) =>
+  $$("#scheduleTableBody tr[data-id]").forEach((row) => {
     row.addEventListener("click", () => {
       selectedScheduleId = row.dataset.id;
       renderSchedules();
-    }),
-  );
+    });
+    row.addEventListener("dblclick", () => {
+      selectedScheduleId = row.dataset.id;
+      const item = selectedSchedule();
+      if (item) openScheduleDialog(item);
+    });
+  });
   updateToolbarState();
 }
 
@@ -144,6 +149,10 @@ function updateRuleSummary() {
   $("#ruleSummary").textContent = ruleText(draftRule);
 }
 
+function typeText(type) {
+  return { import: "导入", export: "导出", query: "查询", job: "作业", sync: "同步" }[type] || type;
+}
+
 function jobPrimaryType(job) {
   const steps = job?.steps || [];
   if (steps.length === 1 && steps[0].type === "job") {
@@ -169,6 +178,11 @@ function candidateJobsForType(type) {
   });
 }
 
+function jobKindText(job) {
+  const types = [...new Set((job.steps || []).map((step) => typeText(step.type)))];
+  return types.length ? types.join("+") : "作业";
+}
+
 function renderStepConfig() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
   const candidates = candidateJobsForType(type);
@@ -186,22 +200,6 @@ function renderStepConfig() {
       renderStepConfig();
     }),
   );
-}
-
-function jobKindText(job) {
-  const types = [...new Set((job.steps || []).map((step) => typeText(step.type)))];
-  return types.length ? types.join("+") : "作业";
-}
-
-function draftStepFromForm() {
-  const type = document.querySelector('input[name="stepType"]:checked').value;
-  if (type === "sync") throw new Error("同步模块尚未开放。");
-  const base = { id: crypto.randomUUID(), type, name: $("#stepName").value || "未命名步骤", enabled: true, continueOnError: $("#stepContinue")?.checked || false, config: {} };
-  if (type === "import") base.config = { ...connectionFields(), path: $("#importPath").value, tableName: $("#importTable").value, importMode: $("#importMode").value, fieldCase: "lower", tableCase: "lower" };
-  if (type === "export") base.config = { ...connectionFields(), items: [{ type: "query", name: $("#exportName").value || "job_export", sql: $("#exportSql").value }], extension: $("#exportExt").value, outputName: $("#exportName").value || "job_export", sheetName: $("#sheetName").value, headerMode: "field", exportMode: "workbook" };
-  if (type === "query") base.config = { ...connectionFields(), sql: $("#querySql").value };
-  if (type === "job") base.config = { jobId: $("#nestedJob").value };
-  return base;
 }
 
 function addSelectedAvailableJob() {
@@ -223,13 +221,20 @@ function addSelectedAvailableJob() {
 
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${typeText(jobPrimaryType(jobs.find((job) => job.id === step.config?.jobId)) || step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps
+        .map((step, index) => {
+          const nested = jobs.find((job) => job.id === step.config?.jobId);
+          const primaryType = jobPrimaryType(nested) || step.type;
+          return `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${typeText(primaryType)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`;
+        })
+        .join("")
     : '<div class="empty-list">还没有子任务</div>';
-  $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
-}
-
-function typeText(type) {
-  return { import: "导入", export: "导出", query: "查询", job: "作业", sync: "同步" }[type] || type;
+  $$("#selectedSteps .selected-step").forEach((button) =>
+    button.addEventListener("click", () => {
+      selectedStepIndex = Number(button.dataset.index);
+      renderDraftSteps();
+    }),
+  );
 }
 
 function openScheduleDialog(item = null) {
@@ -304,17 +309,25 @@ async function runSelectedScheduleNow() {
   const item = selectedSchedule();
   if (!item) throw new Error("请先选择定时任务。");
   setStatus("正在立即运行...");
-  const result = await requestJson("/api/jobs/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.jobId }) });
+  const result = await requestJson("/api/jobs/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.jobId, scheduleId: item.id }) });
   await loadRuns();
+  await loadSchedules();
   setStatus(`${result.run.status}：${result.run.message}`, result.run.status === "成功" ? "success" : "error");
 }
 
 async function loadRuns() {
   const item = selectedSchedule();
   if (!item) return;
-  const payload = await requestJson(`/api/job-runs?jobId=${encodeURIComponent(item.jobId)}`);
-  $("#scheduleRuns").innerHTML = (payload.runs || []).length
-    ? payload.runs.map((run) => `<div class="log-item ${run.status === "成功" ? "success" : "failed"}"><strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong><div>${escapeHtml(run.started_at)} · ${escapeHtml(run.elapsed_ms)} ms</div><div>${escapeHtml(run.message)}</div>${(run.steps || []).map((step) => `<small>${step.step_index}. ${escapeHtml(step.step_name)} ${escapeHtml(step.status)} ${escapeHtml(step.message)}</small>`).join("")}</div>`).join("")
+  const bySchedule = await requestJson(`/api/job-runs?scheduleId=${encodeURIComponent(item.id)}`);
+  let runs = bySchedule.runs || [];
+  if (!runs.length && item.jobId) {
+    const byJob = await requestJson(`/api/job-runs?jobId=${encodeURIComponent(item.jobId)}`);
+    runs = byJob.runs || [];
+  }
+  $("#scheduleRuns").innerHTML = runs.length
+    ? runs
+        .map((run) => `<div class="log-item ${run.status === "成功" ? "success" : "failed"}"><strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong><div>${escapeHtml(run.started_at)} · ${escapeHtml(run.elapsed_ms ?? "")} ms</div><div>${escapeHtml(run.message)}</div>${(run.steps || []).map((step) => `<small>${step.step_index}. ${escapeHtml(step.step_name)} ${escapeHtml(step.status)} ${escapeHtml(step.message)}</small>`).join("")}</div>`)
+        .join("")
     : "暂无日志";
 }
 
@@ -358,8 +371,16 @@ function applyAssistant() {
 }
 
 $("#newSchedule").addEventListener("click", () => openScheduleDialog());
-$("#editSchedule").addEventListener("click", () => { const item = selectedSchedule(); if (item) openScheduleDialog(item); });
-$("#deleteSchedule").addEventListener("click", async () => { if (!selectedScheduleId || !confirm("确认删除当前定时任务？")) return; await requestJson(`/api/schedules?id=${encodeURIComponent(selectedScheduleId)}`, { method: "DELETE" }); selectedScheduleId = ""; await loadSchedules(); });
+$("#editSchedule").addEventListener("click", () => {
+  const item = selectedSchedule();
+  if (item) openScheduleDialog(item);
+});
+$("#deleteSchedule").addEventListener("click", async () => {
+  if (!selectedScheduleId || !confirm("确认删除当前定时任务？")) return;
+  await requestJson(`/api/schedules?id=${encodeURIComponent(selectedScheduleId)}`, { method: "DELETE" });
+  selectedScheduleId = "";
+  await loadSchedules();
+});
 $("#startSchedule").addEventListener("click", () => changeState(true).catch((error) => setStatus(error.message, "error")));
 $("#pauseSchedule").addEventListener("click", () => changeState(false).catch((error) => setStatus(error.message, "error")));
 $("#runScheduleNow").addEventListener("click", () => runSelectedScheduleNow().catch((error) => setStatus(error.message, "error")));
@@ -368,11 +389,38 @@ $("#refreshSchedules").addEventListener("click", () => refreshAll().catch((error
 $("#closeScheduleDialog").addEventListener("click", () => $("#scheduleDialog").close());
 $("#cancelSchedule").addEventListener("click", () => $("#scheduleDialog").close());
 $("#saveSchedule").addEventListener("click", () => saveSchedule().catch((error) => setStatus(error.message, "error")));
-$("#addStep").addEventListener("click", () => { try { addSelectedAvailableJob(); } catch (error) { setStatus(error.message, "error"); } });
-$("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
-$("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
-$("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
-$$('input[name="stepType"]').forEach((item) => item.addEventListener("change", () => { selectedAvailableJobId = ""; renderStepConfig(); }));
+$("#addStep").addEventListener("click", () => {
+  try {
+    addSelectedAvailableJob();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
+$("#removeStep").addEventListener("click", () => {
+  if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1);
+  selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1);
+  renderDraftSteps();
+});
+$("#moveStepUp").addEventListener("click", () => {
+  if (selectedStepIndex > 0) {
+    [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]];
+    selectedStepIndex -= 1;
+    renderDraftSteps();
+  }
+});
+$("#moveStepDown").addEventListener("click", () => {
+  if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) {
+    [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]];
+    selectedStepIndex += 1;
+    renderDraftSteps();
+  }
+});
+$$('input[name="stepType"]').forEach((item) =>
+  item.addEventListener("change", () => {
+    selectedAvailableJobId = "";
+    renderStepConfig();
+  }),
+);
 $("#openScheduleAssistant").addEventListener("click", openAssistant);
 $("#closeAssistant").addEventListener("click", () => $("#assistantDialog").close());
 $("#cancelAssistant").addEventListener("click", () => $("#assistantDialog").close());

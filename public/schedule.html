@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>定时任务 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <link rel="stylesheet" href="/styles.css?v=20260712_schedule_fix" />
   </head>
   <body data-page="schedule">
     <div class="desktop-shell">
@@ -38,9 +38,9 @@
         <section class="app-workspace">
           <main class="schedule-desktop-page">
             <div class="schedule-tab-title">
-              <span class="schedule-tab-icon">◷</span>
+              <span class="schedule-tab-icon">TIME</span>
               <span>定时任务</span>
-              <button id="refreshSchedules" type="button" title="刷新">×</button>
+              <button id="refreshSchedules" type="button" title="刷新">刷新</button>
             </div>
 
             <section class="schedule-desktop-toolbar">
@@ -80,7 +80,7 @@
       <form method="dialog" class="schedule-task-card">
         <header>
           <strong id="scheduleDialogTitle">新增任务</strong>
-          <button id="closeScheduleDialog" type="button">×</button>
+          <button id="closeScheduleDialog" type="button" aria-label="关闭">×</button>
         </header>
 
         <label class="schedule-name-line">任务名称：<input id="scheduleName" /></label>
@@ -127,8 +127,8 @@
         </section>
 
         <footer>
-          <button id="saveSchedule" class="primary" type="button">确　认</button>
-          <button id="cancelSchedule" type="button">取　消</button>
+          <button id="saveSchedule" class="primary" type="button">确认</button>
+          <button id="cancelSchedule" type="button">取消</button>
         </footer>
       </form>
     </dialog>
@@ -137,7 +137,7 @@
       <form method="dialog" class="schedule-assistant-card">
         <header>
           <strong>定时设置助手</strong>
-          <button id="closeAssistant" type="button">×</button>
+          <button id="closeAssistant" type="button" aria-label="关闭">×</button>
         </header>
         <fieldset class="assistant-mode-row">
           <legend>定时方式：</legend>
@@ -164,8 +164,8 @@
           <input id="assistantTime" type="time" step="1" value="09:00:00" />
         </section>
         <footer>
-          <button id="applyAssistant" class="primary" type="button">设　置</button>
-          <button id="cancelAssistant" type="button">取　消</button>
+          <button id="applyAssistant" class="primary" type="button">设置</button>
+          <button id="cancelAssistant" type="button">取消</button>
         </footer>
       </form>
     </dialog>
@@ -174,15 +174,15 @@
       <form method="dialog" class="schedule-log-card">
         <header>
           <strong>运行日志</strong>
-          <button id="closeLogDialog" type="button">×</button>
+          <button id="closeLogDialog" type="button" aria-label="关闭">×</button>
         </header>
         <div id="scheduleRuns" class="schedule-run-list">暂无日志</div>
         <footer>
-          <button id="closeLogFooter" type="button">关　闭</button>
+          <button id="closeLogFooter" type="button">关闭</button>
         </footer>
       </form>
     </dialog>
 
-    <script src="/schedule.js?v=20260710_schedule_desktop"></script>
+    <script src="/schedule.js?v=20260712_schedule_fix"></script>
   </body>
 </html>

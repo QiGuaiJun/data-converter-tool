@@ -3005,6 +3005,24 @@ th {
   min-width: 104px;
 }
 
+.schedule-task-card footer button.primary,
+.schedule-assistant-card footer button.primary {
+  border-color: #2f80ed;
+  background: linear-gradient(180deg, #5a9cff, #2f80ed);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(47, 128, 237, 0.22);
+}
+
+.schedule-task-card footer button.primary:disabled,
+.schedule-assistant-card footer button.primary:disabled {
+  border-color: #b9d7ff;
+  background: #e8f3ff;
+  color: #5d7fa9;
+  opacity: 1;
+  box-shadow: none;
+}
+
 .schedule-assistant-card {
   width: min(520px, calc(100vw - 48px));
   min-height: 360px;
