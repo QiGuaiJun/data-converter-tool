@@ -44,7 +44,16 @@ PUBLIC = ROOT / "public"
 
 
 def env_path(name: str, fallback: Path) -> Path:
-    return Path(os.environ.get(name, str(fallback))).resolve()
+    raw_value = os.environ.get(name, "").strip()
+    volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if raw_value:
+        path = Path(raw_value)
+        if volume_mount and not path.is_absolute():
+            return (Path(volume_mount) / path).resolve()
+        return path.resolve()
+    if volume_mount:
+        return (Path(volume_mount) / fallback.name).resolve()
+    return fallback.resolve()
 
 
 DATA = env_path("DATA_DIR", ROOT / "data")
