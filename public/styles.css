@@ -2322,6 +2322,30 @@ input[type="checkbox"] {
   grid-template-columns: minmax(460px, 0.78fr) minmax(620px, 1.22fr);
 }
 
+.import-shell.task-overview-mode {
+  grid-template-columns: 1fr;
+  grid-auto-rows: minmax(0, 1fr);
+  padding-bottom: 24px;
+}
+
+.import-shell.task-overview-mode .left-pane,
+.import-shell.task-overview-mode .right-pane,
+.import-shell.task-overview-mode .module-link {
+  display: none;
+}
+
+.import-shell.task-overview-mode .module-task-panel {
+  min-height: calc(100vh - 180px);
+}
+
+.import-shell.task-overview-mode .module-task-list {
+  min-height: calc(100vh - 340px);
+}
+
+body.import-task-overview .bottom-dock {
+  display: none;
+}
+
 .export-shell {
   grid-template-columns: minmax(620px, 0.92fr) minmax(620px, 1.08fr);
   gap: 14px 16px;

@@ -35,6 +35,7 @@ let savedConnections = [];
 let importTaskJobs = [];
 let selectedImportTaskId = "";
 let openedImportTaskId = "";
+let importEditorVisible = false;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -62,6 +63,31 @@ function setControlValue(id, value) {
 function setStatus(message, type = "") {
   statusBox.textContent = message;
   statusBox.className = type;
+}
+
+function setImportEditorVisible(visible) {
+  importEditorVisible = Boolean(visible);
+  const shell = document.querySelector(".import-shell");
+  if (shell) shell.classList.toggle("task-overview-mode", !importEditorVisible);
+  document.body.classList.toggle("import-task-overview", !importEditorVisible);
+}
+
+function clearImportEditor() {
+  selectedFiles = [];
+  currentColumns = [];
+  importForm.reset();
+  renderMapping([]);
+  if (connectionSelect && savedConnections.length) connectionSelect.value = savedConnections[0].id;
+  fileList.textContent = "尚未选择文件";
+  previewMeta.textContent = "暂无预览";
+  previewTable.className = "table-wrap empty";
+  previewTable.textContent = "选择文件后可预览前 20 行";
+  tableName.value = "";
+  const nameInput = document.querySelector("#importTaskName");
+  const pathInput = document.querySelector("#importTaskPath");
+  if (nameInput) nameInput.value = "";
+  if (pathInput) pathInput.value = "";
+  setStatus("已新建导入任务，请配置文件、目标表和导入选项。");
 }
 
 function setFiles(files) {
@@ -304,7 +330,7 @@ function ensureImportTaskPanel() {
       <div id="importTaskList" class="module-task-list empty">暂无导入任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
     document.querySelector("#openImportTask").addEventListener("click", openSelectedImportTask);
-    document.querySelector("#newImportTask").addEventListener("click", () => saveImportTask().catch((error) => setStatus(error.message, "error")));
+    document.querySelector("#newImportTask").addEventListener("click", startNewImportTask);
     document.querySelector("#deleteImportTask").addEventListener("click", deleteSelectedImportTask);
   }
 
@@ -315,6 +341,14 @@ function ensureImportTaskPanel() {
     tree.className = "module-task-tree";
     activeNode.insertAdjacentElement("afterend", tree);
   }
+}
+
+function startNewImportTask() {
+  selectedImportTaskId = "";
+  openedImportTaskId = "";
+  updateImportTaskSelection();
+  clearImportEditor();
+  setImportEditorVisible(true);
 }
 
 function updateImportTaskSelection() {
@@ -412,6 +446,7 @@ function openSelectedImportTask() {
   const job = importTaskJobs.find((item) => item.id === selectedImportTaskId);
   if (!job) return;
   openedImportTaskId = job.id;
+  setImportEditorVisible(true);
   const step = importTaskStep(job);
   applyImportTaskConfig(step.config || {});
   syncImportTaskEditor(job);
@@ -832,4 +867,5 @@ connectionDialog?.addEventListener("click", (event) => {
 });
 
 ensureImportTaskPanel();
+setImportEditorVisible(false);
 Promise.all([loadConnections(), loadTables(), loadLogs(), loadImportTaskJobs()]).catch((error) => setStatus(error.message, "error"));
