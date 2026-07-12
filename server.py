@@ -25,6 +25,7 @@ from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import msoffcrypto
 import pymysql
@@ -1848,8 +1849,16 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
     return {"sourceName": source_name, "columns": columns, "rows": [[cell_to_text(cell) for cell in row] for row in rows]}
 
 
+def app_now() -> dt.datetime:
+    timezone_name = os.environ.get("APP_TIMEZONE", "Asia/Shanghai")
+    try:
+        return dt.datetime.now(ZoneInfo(timezone_name)).replace(tzinfo=None)
+    except ZoneInfoNotFoundError:
+        return dt.datetime.utcnow() + dt.timedelta(hours=8)
+
+
 def now_text() -> str:
-    return dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return app_now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def parse_datetime(value: str) -> dt.datetime | None:
@@ -2018,7 +2027,7 @@ def save_schedule(payload: dict[str, object]) -> dict[str, object]:
 
 
 def compute_next_run(rule: dict[str, object], start_at: str = "", end_at: str = "", last_run_at: str | None = None, from_time: dt.datetime | None = None) -> str:
-    base = from_time or dt.datetime.now()
+    base = from_time or app_now()
     start = parse_datetime(start_at)
     end = parse_datetime(end_at)
     if start and base < start:
@@ -2035,7 +2044,12 @@ def compute_next_run(rule: dict[str, object], start_at: str = "", end_at: str = 
         amount = max(int(rule.get("amount") or 1), 1)
         unit = str(rule.get("unit") or "minutes")
         seconds = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}.get(unit, 60) * amount
-        candidate = (last or base) + dt.timedelta(seconds=seconds)
+        if last:
+            candidate = last + dt.timedelta(seconds=seconds)
+        elif start:
+            candidate = start
+        else:
+            candidate = base + dt.timedelta(seconds=seconds)
         if candidate < base:
             steps = int((base - candidate).total_seconds() // seconds) + 1
             candidate += dt.timedelta(seconds=seconds * steps)

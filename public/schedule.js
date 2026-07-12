@@ -36,7 +36,8 @@ function normalizeDateTimeValue(value, fallback = "") {
 function localDateValue(offsetMinutes = 0) {
   const date = new Date(Date.now() + offsetMinutes * 60000);
   date.setMilliseconds(0);
-  return date.toISOString().slice(0, 19);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 function connectionFields() {
@@ -278,17 +279,18 @@ async function saveSchedule() {
     id: editingScheduleId,
     name,
     jobId: job.id,
-    enabled: editingScheduleId ? selectedSchedule()?.enabled || false : false,
+    enabled: true,
     startAt: $("#scheduleStart").value,
     endAt: $("#scheduleEnd").value,
     rule: draftRule,
     logRetentionDays: $("#keepLogs").checked ? Number($("#logRetentionDays").value || 3) : 9999,
     emailOnFail: false,
   };
-  await requestJson("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  const saved = await requestJson("/api/schedules", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  selectedScheduleId = saved.schedule.id;
   $("#scheduleDialog").close();
   await Promise.all([loadJobs(), loadSchedules()]);
-  setStatus("定时任务已保存。", "success");
+  setStatus(`定时任务已保存并启用，下次运行：${saved.schedule.nextRunAt || "未计算"}`, "success");
 }
 
 async function changeState(enabled) {
