@@ -34,6 +34,7 @@ let currentColumns = [];
 let savedConnections = [];
 let importTaskJobs = [];
 let selectedImportTaskId = "";
+let openedImportTaskId = "";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -208,12 +209,24 @@ function syncImportTaskEditor(job) {
   if (pathInput) pathInput.value = defaults.path;
 }
 
+function importModeLabel(mode) {
+  return {
+    append: "追加",
+    update: "更新",
+    overwrite: "覆盖",
+    rebuild: "重建",
+  }[mode] || mode || "未选择";
+}
+
 async function saveImportTask() {
-  const existingJob = importTaskJobs.find((item) => item.id === selectedImportTaskId);
+  const editingJobId = selectedImportTaskId || openedImportTaskId;
+  const existingJob = importTaskJobs.find((item) => item.id === editingJobId);
   const existingStep = existingJob ? importTaskStep(existingJob) : null;
   const existingConfig = existingStep?.config || {};
   const data = buildFormData(false);
   const config = formDataToImportConfig(data);
+  const selectedMode = radioValue("importMode") || existingConfig.importMode || "append";
+  config.importMode = selectedMode;
   const defaults = selectedImportTaskDefaults(existingJob, existingConfig);
   const taskName = (document.querySelector("#importTaskName")?.value || defaults.name).trim();
   const path = (document.querySelector("#importTaskPath")?.value || defaults.path).trim();
@@ -241,9 +254,15 @@ async function saveImportTask() {
     body: JSON.stringify(payload),
   });
   selectedImportTaskId = result.job.id;
+  openedImportTaskId = result.job.id;
   await loadImportTaskJobs();
+  const savedJob = importTaskJobs.find((item) => item.id === result.job.id);
+  const savedMode = importTaskStep(savedJob || result.job).config?.importMode;
+  if (savedMode !== selectedMode) {
+    throw new Error(`保存校验失败：当前选择为${importModeLabel(selectedMode)}，但任务保存为${importModeLabel(savedMode)}。`);
+  }
   openSelectedImportTask();
-  setStatus(`${existingJob ? "已更新" : "已保存"}导入任务：${result.job.name}，可在定时任务中调用。`, "success");
+  setStatus(`${existingJob ? "已更新" : "已保存"}导入任务：${result.job.name}，导入模式：${importModeLabel(savedMode)}。`, "success");
   return result.job;
 }
 
@@ -339,6 +358,7 @@ function renderImportTaskJobs() {
     });
     button.addEventListener("dblclick", () => {
       selectedImportTaskId = button.dataset.id;
+      openedImportTaskId = button.dataset.id;
       updateImportTaskSelection();
       openSelectedImportTask();
     });
@@ -352,6 +372,9 @@ async function loadImportTaskJobs() {
   importTaskJobs = (payload.jobs || []).filter(isImportTaskJob);
   if (selectedImportTaskId && !importTaskJobs.some((job) => job.id === selectedImportTaskId)) {
     selectedImportTaskId = "";
+  }
+  if (openedImportTaskId && !importTaskJobs.some((job) => job.id === openedImportTaskId)) {
+    openedImportTaskId = "";
   }
   renderImportTaskJobs();
 }
@@ -388,6 +411,7 @@ function applyImportTaskConfig(config) {
 function openSelectedImportTask() {
   const job = importTaskJobs.find((item) => item.id === selectedImportTaskId);
   if (!job) return;
+  openedImportTaskId = job.id;
   const step = importTaskStep(job);
   applyImportTaskConfig(step.config || {});
   syncImportTaskEditor(job);
@@ -400,6 +424,7 @@ async function deleteSelectedImportTask() {
   if (!window.confirm(`确定删除导入任务“${job.name}”吗？关联的定时任务也会一起删除。`)) return;
   await requestJson(`/api/jobs?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
   selectedImportTaskId = "";
+  openedImportTaskId = "";
   await loadImportTaskJobs();
   setStatus("已删除导入任务。", "success");
 }
