@@ -2572,6 +2572,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/ping":
                 json_response(self, {"ok": True, "version": "export-v2-download"})
                 return
+            if parsed.path == "/api/storage/status":
+                self.handle_storage_status()
+                return
             if parsed.path == "/api/connections":
                 self.handle_connections()
                 return
@@ -2793,6 +2796,41 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 """
             ).fetchall()
         json_response(self, {"ok": True, "logs": [dict(row) for row in rows]})
+
+    def handle_storage_status(self) -> None:
+        ensure_dirs()
+        volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+        write_test_path = DATA / ".storage-write-test"
+        write_ok = False
+        write_error = ""
+        try:
+            write_test_path.write_text(now_text(), encoding="utf-8")
+            write_ok = write_test_path.exists()
+        except Exception as exc:
+            write_error = str(exc)
+        def inside_volume(path: Path) -> bool:
+            if not volume_mount:
+                return False
+            try:
+                path.resolve().relative_to(Path(volume_mount).resolve())
+                return True
+            except ValueError:
+                return False
+        json_response(
+            self,
+            {
+                "ok": True,
+                "railwayVolumeMountPath": volume_mount,
+                "persistentReady": bool(volume_mount) and inside_volume(DB_PATH) and write_ok,
+                "dataDir": str(DATA),
+                "uploadsDir": str(UPLOADS),
+                "exportsDir": str(EXPORTS),
+                "databasePath": str(DB_PATH),
+                "databaseExists": DB_PATH.exists(),
+                "writeTestOk": write_ok,
+                "writeTestError": write_error,
+            },
+        )
 
     def handle_connections(self) -> None:
         with connect_db() as conn:
