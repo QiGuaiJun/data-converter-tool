@@ -75,7 +75,17 @@ function connectionPayload() {
   if (exportConnection.value === "__sqlite") {
     return { targetDbType: "sqlite", connectionId: "" };
   }
-  return { targetDbType: "mysql", connectionId: exportConnection.value };
+  const item = connections.find((connection) => connection.id === exportConnection.value);
+  const payload = { targetDbType: item?.dbType || "mysql", connectionId: exportConnection.value };
+  if (item) {
+    payload.dbHost = item.host || "";
+    payload.dbPort = String(item.port || "");
+    payload.dbUser = item.user || "";
+    payload.dbName = item.database || "";
+    payload.dbCharset = item.charset || "utf8mb4";
+    payload.sslEnabled = item.sslEnabled ? "true" : "false";
+  }
+  return payload;
 }
 
 async function loadConnections() {
@@ -92,7 +102,10 @@ async function loadConnections() {
   sqlite.value = "__sqlite";
   sqlite.textContent = "本地 SQLite";
   exportConnection.append(sqlite);
-  if (!connections.length) exportConnection.value = "__sqlite";
+  exportConnection.value = connections[0]?.id || "__sqlite";
+  if (!connections.length) {
+    setStatus("当前没有保存的数据库连接。导出业务表前，请先到“新建连接”保存 MySQL 连接。", "warn");
+  }
 }
 
 async function loadSources() {
@@ -473,7 +486,28 @@ async function applyExportTaskConfig(config) {
   for (const name of ["headerMode", "exportMode", "exportTargetMode"]) {
     if (config?.[name]) setRadioValue(name, config[name]);
   }
+  if (config?.targetDbType && config.targetDbType !== "sqlite" && config?.connectionId && !connections.some((item) => item.id === config.connectionId)) {
+    const option = document.createElement("option");
+    option.value = config.connectionId;
+    option.textContent = config.dbHost ? `保存的连接快照 (${config.dbHost}/${config.dbName || ""})` : "连接已丢失，请重新选择";
+    exportConnection.prepend(option);
+    if (config.dbHost) {
+      connections.push({
+        id: config.connectionId,
+        dbType: config.targetDbType,
+        host: config.dbHost,
+        port: config.dbPort,
+        user: config.dbUser,
+        database: config.dbName,
+        charset: config.dbCharset || "utf8mb4",
+        sslEnabled: config.sslEnabled === "true",
+      });
+    }
+  }
   exportConnection.value = config?.targetDbType === "sqlite" ? "__sqlite" : config?.connectionId || exportConnection.value;
+  if (config?.targetDbType && config.targetDbType !== "sqlite" && exportConnection.value === "__sqlite") {
+    setStatus("这个导出任务原来使用 MySQL，但当前没有找到保存的连接。请先新建连接，然后重新保存导出任务。", "error");
+  }
 
   const items = Array.isArray(config?.items) ? config.items : [];
   if (config?.sourceType === "table" || items.some((item) => item.type === "table")) {

@@ -310,12 +310,53 @@ def load_saved_connection(connection_id: str) -> dict[str, object]:
 
 def resolve_connection_fields(fields: dict[str, str]) -> dict[str, str]:
     connection_id = fields.get("connectionId", "").strip()
+    if fields.get("dbPasswordSecret") and not fields.get("dbPassword"):
+        fields = dict(fields)
+        fields["dbPassword"] = decode_secret(fields.get("dbPasswordSecret", ""))
     if not connection_id:
         return fields
-    saved = load_saved_connection(connection_id)
+    try:
+        saved = load_saved_connection(connection_id)
+    except ValueError:
+        has_snapshot = any(fields.get(key, "").strip() for key in ["dbHost", "dbName", "dbUser"])
+        if has_snapshot:
+            merged = dict(fields)
+            merged["connectionId"] = ""
+            return merged
+        raise
     merged = dict(fields)
     merged.update({key: str(value) for key, value in saved.items()})
     return merged
+
+
+def has_direct_connection_fields(fields: dict[str, str]) -> bool:
+    return bool(fields.get("dbHost", "").strip() and fields.get("dbName", "").strip())
+
+
+def friendly_export_error(exc: Exception, fields: dict[str, str]) -> str:
+    message = str(exc)
+    if target_db_type(fields) == "sqlite" and "no such table" in message.lower():
+        return f"{message}。当前导出任务使用的是本地 SQLite，未连接到业务数据库；请先在“新建连接”保存 MySQL 连接，并打开导出任务重新保存。"
+    if "选择的数据库连接不存在" in message:
+        return "导出任务保存的数据库连接不存在；请先在“新建连接”保存连接，然后打开导出任务重新保存。"
+    return message
+
+
+def attach_connection_snapshot(config: dict[str, object]) -> dict[str, object]:
+    connection_id = str(config.get("connectionId") or "").strip()
+    if not connection_id:
+        return config
+    try:
+        saved = load_saved_connection(connection_id)
+    except ValueError:
+        return config
+    snapshot = dict(config)
+    password = str(saved.pop("dbPassword", "") or "")
+    snapshot.update(saved)
+    if password:
+        snapshot["dbPasswordSecret"] = encode_secret(password)
+        snapshot.pop("dbPassword", None)
+    return snapshot
 
 
 def target_db_type(fields: dict[str, str]) -> str:
@@ -1719,8 +1760,8 @@ def group_rows_by_field(columns: list[str], rows: list[list[object]], split_fiel
 
 def run_export_job(payload: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
-    if fields.get("targetDbType") != "sqlite" and not fields.get("connectionId"):
-        raise ValueError("请选择数据库连接。")
+    if fields.get("targetDbType") != "sqlite" and not fields.get("connectionId") and not has_direct_connection_fields(fields):
+        raise ValueError("请选择数据库连接，或重新打开导出任务后保存一次连接配置。")
     items = payload.get("items")
     if not isinstance(items, list) or not items:
         single = {"type": payload.get("sourceType") or "table", "name": payload.get("table") or "query", "table": payload.get("table"), "sql": payload.get("sql")}
@@ -1933,7 +1974,7 @@ def normalize_steps(raw_steps: object) -> list[dict[str, object]]:
                 "type": step_type,
                 "enabled": raw.get("enabled", True) not in (False, "false", "0", 0, "off"),
                 "continueOnError": raw.get("continueOnError", False) in (True, "true", "1", 1, "on"),
-                "config": raw.get("config") if isinstance(raw.get("config"), dict) else {},
+                "config": attach_connection_snapshot(raw.get("config") if isinstance(raw.get("config"), dict) else {}),
             }
         )
     return steps
@@ -2196,7 +2237,11 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 result = execute_import_step(config)
                 step_message = f"导入 {result['files']} 个文件，写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行。"
             elif step_type == "export":
-                result = run_export_job(config)
+                try:
+                    result = run_export_job(config)
+                except Exception as exc:
+                    fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
+                    raise ValueError(friendly_export_error(exc, fields)) from exc
                 step_message = f"导出 {len(result['files'])} 个文件，{result['rows']} 行。"
             elif step_type == "query":
                 result = execute_query_step(config)
@@ -3013,7 +3058,11 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_export_run(self) -> None:
         payload = read_json_body(self)
-        result = run_export_job(payload)
+        try:
+            result = run_export_job(payload)
+        except Exception as exc:
+            fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+            raise ValueError(friendly_export_error(exc, fields)) from exc
         json_response(
             self,
             {
