@@ -2564,6 +2564,12 @@ def bind_host() -> str:
 
 
 class ImportPrototypeHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format: str, *args: object) -> None:
+        try:
+            print(f"{self.address_string()} - {format % args}", flush=True)
+        except Exception:
+            pass
+
     def require_auth(self) -> bool:
         if not public_auth_enabled():
             return True

@@ -11,7 +11,7 @@ if (!(Test-Path $VenvPython)) {
 & $VenvPython -m pip install --upgrade pip
 & $VenvPython -m pip install -r requirements.txt
 & $VenvPython -m pip install -r requirements-packaging.txt
-& $VenvPython -m PyInstaller --clean DataConverterTool.spec
+& $VenvPython -m PyInstaller --clean --noconfirm DataConverterTool.spec
 
 $AppDir = Join-Path $ProjectRoot "dist\DataConverterTool"
 New-Item -ItemType Directory -Force -Path (Join-Path $AppDir "data") | Out-Null
