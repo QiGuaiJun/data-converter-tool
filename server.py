@@ -3188,9 +3188,13 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_export_download(self, query: str) -> None:
         params = parse_qs(query)
         raw_path = params.get("path", [""])[0]
-        if not raw_path:
+        legacy_name = Path(params.get("name", [""])[0]).name
+        if raw_path:
+            path = Path(raw_path).resolve()
+        elif legacy_name:
+            path = (EXPORTS / legacy_name).resolve()
+        else:
             raise ValueError("缺少文件名。")
-        path = Path(raw_path).resolve()
         if not path.exists() or not path.is_file():
             raise ValueError("导出文件不存在。")
         name = path.name
