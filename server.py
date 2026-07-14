@@ -311,6 +311,10 @@ def load_saved_connection(connection_id: str) -> dict[str, object]:
 
 
 def resolve_connection_fields(fields: dict[str, str]) -> dict[str, str]:
+    if fields.get("targetDbType", "").strip().lower() == "sqlite":
+        merged = dict(fields)
+        merged["connectionId"] = ""
+        return merged
     connection_id = fields.get("connectionId", "").strip()
     if fields.get("dbPasswordSecret") and not fields.get("dbPassword"):
         fields = dict(fields)
@@ -1446,6 +1450,32 @@ def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
                 count = 0
             result.append({"name": row["name"], "type": row["type"], "comment": "", "rows": count})
         return result
+    finally:
+        conn.close()
+
+
+def target_table_names(fields: dict[str, str]) -> list[str]:
+    conn = connect_target_db(fields)
+    try:
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute("show full tables")
+                rows = cursor.fetchall()
+            names: list[str] = []
+            for row in rows:
+                if len(row) > 1 and str(row[1]).upper() != "BASE TABLE":
+                    continue
+                names.append(str(row[0]))
+            return names
+        rows = conn.execute(
+            """
+            select name
+            from sqlite_master
+            where type = 'table' and name not like 'sqlite_%' and name not like '\\_%' escape '\\'
+            order by name
+            """
+        ).fetchall()
+        return [str(row["name"]) for row in rows]
     finally:
         conn.close()
 
@@ -2881,8 +2911,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_target_tables(self, query: str) -> None:
         raw = {key: values[-1] for key, values in parse_qs(query).items()}
         fields = {key: str(value) for key, value in raw.items()}
-        sources = export_sources(fields)
-        json_response(self, {"ok": True, "tables": [str(item["name"]) for item in sources if item.get("type") != "VIEW"]})
+        json_response(self, {"ok": True, "tables": target_table_names(fields)})
 
     def handle_table_preview(self, query: str) -> None:
         params = parse_qs(query)

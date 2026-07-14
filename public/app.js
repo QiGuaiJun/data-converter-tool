@@ -36,6 +36,7 @@ let selectedImportTaskId = "";
 let openedImportTaskId = "";
 let importEditorVisible = false;
 let selectedTaskSourcePath = "";
+let activeImportTaskConfig = {};
 
 function $(selector) {
   return document.querySelector(selector);
@@ -76,6 +77,7 @@ function clearImportEditor() {
   selectedFiles = [];
   selectedTaskSourcePath = "";
   currentColumns = [];
+  activeImportTaskConfig = {};
   importForm.reset();
   renderMapping([]);
   if (connectionSelect && savedConnections.length) connectionSelect.value = savedConnections[0].id;
@@ -453,6 +455,7 @@ async function loadImportTaskJobs() {
 }
 
 function applyImportTaskConfig(config) {
+  activeImportTaskConfig = { ...(config || {}) };
   for (const [key, value] of Object.entries(config || {})) {
     setControlValue(key, value);
   }
@@ -463,8 +466,14 @@ function applyImportTaskConfig(config) {
   for (const name of ["targetMode", "matchMode", "typeMode", "importMode", "tableCase", "fieldCase", "targetDbType", "extraColumnMode", "writeMode", "commitMode"]) {
     if (restoredConfig?.[name]) setRadioValue(name, restoredConfig[name]);
   }
-  if (config?.connectionId && connectionSelect) {
-    connectionSelect.value = config.connectionId;
+  if (connectionSelect) {
+    const matchedConnection = findConnectionForConfig(config || {});
+    if (matchedConnection) {
+      connectionSelect.value = matchedConnection.id;
+      applyConnection(matchedConnection);
+    } else if (config?.connectionId && savedConnections.some((item) => item.id === config.connectionId)) {
+      connectionSelect.value = config.connectionId;
+    }
   }
   if (config?.mapping) {
     try {
@@ -580,6 +589,25 @@ function applyConnection(connection) {
   $("#dbCharset").value = connection.charset || "utf8mb4";
 }
 
+function sameText(left, right) {
+  return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+}
+
+function findConnectionForConfig(config = {}) {
+  const wantedId = String(config.connectionId || "").trim();
+  if (wantedId) {
+    const byId = savedConnections.find((item) => item.id === wantedId);
+    if (byId) return byId;
+  }
+  return savedConnections.find(
+    (item) =>
+      sameText(item.host, config.dbHost) &&
+      sameText(item.port || "3306", config.dbPort || "3306") &&
+      sameText(item.database, config.dbName) &&
+      sameText(item.user, config.dbUser),
+  );
+}
+
 function openConnectionDialog(connection = {}) {
   fillConnectionDialog(connection);
   connectionDialog.classList.remove("hidden");
@@ -612,28 +640,46 @@ async function loadConnections(selectedId = connectionSelect.value) {
 function connectionParams() {
   const params = new URLSearchParams();
   params.set("targetDbType", radioValue("targetDbType"));
-  params.set("connectionId", connectionSelect?.value || "");
+  const selectedConnectionId = connectionSelect?.value || "";
+  params.set("connectionId", selectedConnectionId);
   for (const id of ["dbHost", "dbPort", "dbName", "dbUser", "dbPassword", "dbCharset"]) {
     params.set(id, $(`#${id}`).value);
+  }
+  if (!selectedConnectionId && activeImportTaskConfig?.dbPasswordSecret && !$("#dbPassword").value) {
+    params.set("dbPasswordSecret", activeImportTaskConfig.dbPasswordSecret);
+  }
+  if (activeImportTaskConfig?.sslEnabled) params.set("sslEnabled", activeImportTaskConfig.sslEnabled);
+  for (const key of ["sslCa", "sslCert", "sslKey"]) {
+    if (activeImportTaskConfig?.[key]) params.set(key, activeImportTaskConfig[key]);
   }
   return params;
 }
 
 async function loadTargetTableOptions(preferredValue = tableName.value) {
-  const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
-  const tableItems = payload.tables || [];
-  tableName.innerHTML = '<option value="">请选择目标数据库中的表</option>';
-  for (const item of tableItems) {
-    const option = document.createElement("option");
-    option.value = item;
-    option.textContent = item;
-    tableName.append(option);
+  tableName.disabled = true;
+  try {
+    const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
+    const tableItems = payload.tables || [];
+    tableName.innerHTML = '<option value="">请选择目标数据库中的表</option>';
+    for (const item of tableItems) {
+      const option = document.createElement("option");
+      option.value = item;
+      option.textContent = item;
+      tableName.append(option);
+    }
+    if (preferredValue && tableItems.includes(preferredValue)) {
+      tableName.value = preferredValue;
+    } else if (preferredValue) {
+      const option = document.createElement("option");
+      option.value = preferredValue;
+      option.textContent = `${preferredValue}（当前任务保存）`;
+      tableName.append(option);
+      tableName.value = preferredValue;
+    }
+    return tableItems;
+  } finally {
+    tableName.disabled = false;
   }
-  if (preferredValue && tableItems.includes(preferredValue)) {
-    tableName.value = preferredValue;
-  }
-  tableName.disabled = tableItems.length === 0;
-  return tableItems;
 }
 
 function useManualTargetTable() {
