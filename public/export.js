@@ -20,6 +20,7 @@ let exportDirectoryHandle = null;
 let exportFileHandle = null;
 let exportTaskJobs = [];
 let selectedExportTaskId = "";
+let exportEditorVisible = false;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -56,6 +57,38 @@ function escapeHtml(value) {
 function setStatus(message, type = "") {
   exportStatus.textContent = message;
   exportStatus.className = type;
+}
+
+function setExportEditorVisible(visible) {
+  exportEditorVisible = Boolean(visible);
+  document.querySelector(".export-shell")?.classList.toggle("task-overview-mode", !exportEditorVisible);
+}
+
+function resetExportEditor() {
+  document.querySelectorAll(".export-left input, .export-left select, .export-left textarea, .export-right input, .export-right select, .export-right textarea").forEach((control) => {
+    if (control.type === "checkbox" || control.type === "radio") control.checked = control.defaultChecked;
+    else if (control.tagName === "SELECT") control.selectedIndex = 0;
+    else control.value = control.defaultValue;
+  });
+  sourceMode = "query";
+  exportSql.value = "select 1 as value";
+  exportSourceList.textContent = "当前使用单个 SQL 查询";
+  exportSourceList.classList.add("hidden");
+  exportPreviewMeta.textContent = "暂无预览";
+  exportPreviewTable.className = "table-wrap empty";
+  exportPreviewTable.textContent = "配置导出对象后可预览";
+  exportResultMeta.textContent = "暂无导出结果";
+  exportResults.textContent = "暂无导出文件";
+  exportDirectoryHandle = null;
+  exportFileHandle = null;
+}
+
+function startNewExportTask() {
+  selectedExportTaskId = "";
+  updateExportTaskSelection();
+  resetExportEditor();
+  setExportEditorVisible(true);
+  setStatus("已新建导出任务，请配置导出内容和选项。", "success");
 }
 
 function fileNameFromPath(path) {
@@ -120,6 +153,7 @@ async function loadSources() {
 function renderSources() {
   sourceMode = "table";
   exportSql.value = "";
+  exportSourceList.classList.remove("hidden");
   if (!sources.length) {
     exportSourceList.textContent = "当前连接没有可导出的表";
     return;
@@ -164,7 +198,11 @@ function collectPayload() {
     sourceType: sourceMode === "table" ? "table" : "query",
     table: items[0]?.table || "",
     sql: sourceMode === "table" ? "" : exportSql.value.trim(),
+    queryName: ($("#queryName")?.value || "query").trim() || "query",
+    sourceMode,
     extension: $("#exportExtension").value,
+    exportFolder: $("#exportFolder").value,
+    exportFileName: $("#exportFileName").value.trim(),
     outputName: $("#outputName").value,
     sheetName: $("#sheetName").value,
     headerMode: radioValue("headerMode"),
@@ -186,6 +224,8 @@ function collectPayload() {
     lineDelimiter: $("#lineDelimiter").value,
     openFileAfterExport: $("#openFileAfterExport").checked ? "true" : "false",
     openFolderAfterExport: $("#openFolderAfterExport").checked ? "true" : "false",
+    exportRemark: $("#exportRemark").value,
+    activeExportTab: document.querySelector("[data-export-tab].active")?.dataset.exportTab || "data",
     rowHeight: $("#rowHeight").value,
     columnWidth: $("#columnWidth").value,
     fontName: $("#fontName").value,
@@ -212,36 +252,33 @@ function renderTable(container, columns, rows) {
 }
 
 async function chooseFolder() {
-  if (!window.showDirectoryPicker) {
-    setStatus("当前浏览器不支持直接选择文件夹，请导出后点击下载文件。", "warn");
-    return;
-  }
-  exportDirectoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+  const result = await requestJson("/api/export/choose-target", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "folder" }),
+  });
+  if (!result.path) return;
+  exportDirectoryHandle = null;
   exportFileHandle = null;
   document.querySelector('input[name="exportTargetMode"][value="folder"]').checked = true;
-  $("#exportFolder").value = exportDirectoryHandle.name;
-  setStatus(`已选择导出文件夹：${exportDirectoryHandle.name}`, "success");
+  $("#exportFolder").value = result.path;
+  setStatus(`已选择导出文件夹：${result.path}`, "success");
 }
 
 async function chooseFile() {
-  if (!window.showSaveFilePicker) {
-    setStatus("当前浏览器不支持直接选择目标文件，请导出后点击下载文件。", "warn");
-    return;
-  }
   const extension = $("#exportExtension").value || "xlsx";
-  exportFileHandle = await window.showSaveFilePicker({
-    suggestedName: ($("#outputName").value || "export").replace(/\.[^.]+$/, "") + `.${extension}`,
-    types: [
-      {
-        description: "Export file",
-        accept: { "application/octet-stream": [`.${extension}`] },
-      },
-    ],
+  const suggestedName = ($("#outputName").value || "export").replace(/\.[^.]+$/, "") + `.${extension}`;
+  const result = await requestJson("/api/export/choose-target", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "file", extension, suggestedName }),
   });
+  if (!result.path) return;
   exportDirectoryHandle = null;
+  exportFileHandle = null;
   document.querySelector('input[name="exportTargetMode"][value="file"]').checked = true;
-  $("#outputName").value = exportFileHandle.name.replace(/\.[^.]+$/, "");
-  setStatus(`已选择目标文件：${exportFileHandle.name}`, "success");
+  $("#outputName").value = result.path;
+  setStatus(`已选择目标文件：${result.path}`, "success");
 }
 
 async function copyExportedFiles(result) {
@@ -356,9 +393,8 @@ async function saveExportTask() {
   const existingJob = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
   const existingStep = existingJob ? exportTaskStep(existingJob) : null;
   const config = collectPayload();
-  const defaultName = existingJob?.name || $("#outputName").value || $("#queryName")?.value || "导出任务";
-  const taskName = prompt("请输入导出任务名称：", defaultName);
-  if (!taskName) throw new Error("请填写任务名称。");
+  const defaultName = existingJob?.name || $("#exportFileName").value || $("#outputName").value || "导出任务";
+  const taskName = defaultName.trim() || "导出任务";
   const payload = {
     id: existingJob?.id,
     name: taskName,
@@ -409,7 +445,7 @@ function ensureExportTaskPanel() {
       <div id="exportTaskList" class="module-task-list empty">暂无导出任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
     document.querySelector("#openExportTask").addEventListener("click", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
-    document.querySelector("#newExportTask").addEventListener("click", () => saveExportTask().catch((error) => setStatus(error.message, "error")));
+    document.querySelector("#newExportTask").addEventListener("click", startNewExportTask);
     document.querySelector("#deleteExportTask").addEventListener("click", () => deleteSelectedExportTask().catch((error) => setStatus(error.message, "error")));
   }
 
@@ -428,10 +464,10 @@ function updateExportTaskSelection() {
     button.classList.toggle("active", button.dataset.id === selectedExportTaskId);
   });
   const openButton = document.querySelector("#openExportTask");
-  const saveButton = document.querySelector("#newExportTask");
+  const newButton = document.querySelector("#newExportTask");
   const deleteButton = document.querySelector("#deleteExportTask");
   if (openButton) openButton.disabled = !hasSelection;
-  if (saveButton) saveButton.textContent = hasSelection ? "保存修改" : "新增导出";
+  if (newButton) newButton.textContent = "新增导出";
   if (deleteButton) deleteButton.disabled = !hasSelection;
 }
 
@@ -447,11 +483,11 @@ function renderExportTaskJobs() {
   } else {
     list.className = "module-task-list";
     list.innerHTML = exportTaskJobs
-      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
+      .map((job) => `<button type="button" class="module-task-item task-export ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">OUT</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
       .join("");
     if (tree) {
       tree.innerHTML = exportTaskJobs
-        .map((job) => `<button type="button" class="tree-child ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
+        .map((job) => `<button type="button" class="tree-child task-export ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">OUT</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
         .join("");
     }
   }
@@ -517,23 +553,35 @@ async function applyExportTaskConfig(config) {
     exportSourceList.querySelectorAll("input[type='checkbox']").forEach((input) => {
       input.checked = tableNames.has(input.value);
     });
-  } else if (items.length > 1) {
+  } else if (config?.sourceMode === "multi" || items.length > 1) {
     sourceMode = "multi";
     exportSql.value = items.map((item) => item.sql).filter(Boolean).join("; ");
-    $("#queryName").value = items[0]?.name || $("#queryName").value || "query";
+    $("#queryName").value = config?.queryName || items[0]?.name || $("#queryName").value || "query";
     exportSourceList.textContent = "当前使用多个 SQL 查询，使用分号分隔";
+    exportSourceList.classList.add("hidden");
   } else {
     sourceMode = "query";
     exportSql.value = config?.sql || items[0]?.sql || exportSql.value;
-    $("#queryName").value = items[0]?.name || $("#queryName").value || "query";
+    $("#queryName").value = config?.queryName || items[0]?.name || $("#queryName").value || "query";
     exportSourceList.textContent = "当前使用单个 SQL 查询";
+    exportSourceList.classList.add("hidden");
   }
+
+  const activeTab = config?.activeExportTab || "data";
+  document.querySelectorAll("[data-export-tab]").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.exportTab === activeTab);
+  });
+  document.querySelectorAll("[data-export-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.exportPanel === activeTab);
+  });
 }
 
 async function openSelectedExportTask() {
   const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
   if (!job) return;
   const step = exportTaskStep(job);
+  resetExportEditor();
+  setExportEditorVisible(true);
   await applyExportTaskConfig(step.config || {});
   setStatus(`已打开导出任务：${job.name}`, "success");
 }
@@ -545,6 +593,7 @@ async function deleteSelectedExportTask() {
   await requestJson(`/api/jobs?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
   selectedExportTaskId = "";
   await loadExportTaskJobs();
+  setExportEditorVisible(false);
   setStatus("已删除导出任务。", "success");
 }
 
@@ -561,12 +610,14 @@ $("#chooseTables").addEventListener("click", () => loadSources().catch((error) =
 $("#singleQuery").addEventListener("click", () => {
   sourceMode = "query";
   exportSourceList.textContent = "当前使用单个 SQL 查询";
+  exportSourceList.classList.add("hidden");
   $("#queryName").value = $("#queryName").value || "query";
   exportSql.value = exportSql.value || "select 1 as value";
 });
 $("#multiQuery").addEventListener("click", () => {
   sourceMode = "multi";
   exportSourceList.textContent = "当前使用多个 SQL 查询，使用分号分隔";
+  exportSourceList.classList.add("hidden");
   $("#queryName").value = $("#queryName").value || "query";
   exportSql.value = exportSql.value || "select 1 as value; select 2 as value";
 });
@@ -579,10 +630,12 @@ sqlFileInput.addEventListener("change", async () => {
     $("#queryName").value = file.name.replace(/\.[^.]+$/, "") || "query";
   }
   exportSourceList.textContent = `已读取 SQL 文件：${file.name}`;
+  exportSourceList.classList.add("hidden");
 });
 exportConnection.addEventListener("change", () => {
   sourceMode = "query";
   exportSourceList.textContent = "当前使用单个 SQL 查询";
+  exportSourceList.classList.add("hidden");
   exportSql.value = exportSql.value || "select 1 as value";
   setStatus("已切换连接。可直接编写 SQL，或点击“选择表”读取表列表。", "success");
 });
@@ -596,10 +649,12 @@ $("#saveExportConfig").addEventListener("click", () => saveExportTask().catch((e
 $("#explainExport").addEventListener("click", () => setStatus("不支持的 .xls、DBF 和系统自动打开文件夹已在页面禁用。", "warn"));
 
 ensureExportTaskPanel();
+setExportEditorVisible(false);
 loadConnections()
   .then(() => {
     sourceMode = "query";
     exportSourceList.textContent = "当前使用单个 SQL 查询";
+    exportSourceList.classList.add("hidden");
     exportSql.value = exportSql.value || "select 1 as value";
     loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
     setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");

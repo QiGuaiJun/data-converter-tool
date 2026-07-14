@@ -59,6 +59,7 @@ def env_path(name: str, fallback: Path) -> Path:
 DATA = env_path("DATA_DIR", ROOT / "data")
 UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
 EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
+TASK_SOURCES = DATA / "task_sources"
 DB_PATH = DATA / "imports.db"
 PASSWORD_PREFIX = "b64:"
 
@@ -85,6 +86,7 @@ def ensure_dirs() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
     EXPORTS.mkdir(parents=True, exist_ok=True)
+    TASK_SOURCES.mkdir(parents=True, exist_ok=True)
 
 
 def connect_db() -> sqlite3.Connection:
@@ -1558,6 +1560,24 @@ def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -
     prefix = safe_file_stem(str(fields.get("filePrefix") or ""), "")
     suffix = safe_file_stem(str(fields.get("fileSuffix") or ""), "")
     name = safe_file_stem(f"{prefix}{base_name}{suffix}", "export")
+    target_mode = str(fields.get("exportTargetMode") or "folder").strip().lower()
+    if target_mode == "folder":
+        folder_value = str(fields.get("exportFolder") or "").strip()
+        if folder_value:
+            folder = Path(folder_value).expanduser()
+            if not folder.is_absolute():
+                raise ValueError(f"目标文件夹必须是完整路径，当前保存的是：{folder_value}")
+            if not folder.exists() or not folder.is_dir():
+                raise ValueError(f"目标文件夹不存在：{folder}")
+            return folder / f"{name}.{extension}"
+    elif target_mode == "file":
+        file_value = str(fields.get("outputName") or "").strip()
+        if file_value:
+            output = Path(file_value).expanduser()
+            if output.is_absolute():
+                if not output.parent.exists() or not output.parent.is_dir():
+                    raise ValueError(f"目标文件所在文件夹不存在：{output.parent}")
+                return output.with_suffix(f".{extension}")
     return EXPORTS / f"{name}.{extension}"
 
 
@@ -1810,7 +1830,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                 if parse_bool(fields, "skipEmptyTable", False) and row_count == 0:
                     continue
                 total_rows += row_count
-            path = export_target_path(str(fields.get("outputName") or "export"), "xlsx", fields)
+            path = export_target_path(str(fields.get("exportFileName") or fields.get("outputName") or "export"), "xlsx", fields)
             workbook.save(path)
             written_files.append(str(path))
         else:
@@ -1819,7 +1839,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                     continue
                 sql, source_name = export_query_from_item(item, fields)
                 sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
-                base_name = str(fields.get("outputName") or source_name)
+                base_name = str(fields.get("exportFileName") or fields.get("outputName") or source_name)
                 path = export_target_path(base_name, extension, fields)
 
                 if can_stream:
@@ -2190,12 +2210,18 @@ def execute_query_step(config: dict[str, object]) -> dict[str, object]:
 
 def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
-    files = collect_local_files(str(config.get("path") or config.get("sourcePath") or ""))
+    source_path = str(config.get("path") or config.get("sourcePath") or "")
+    files = collect_local_files(source_path)
     results = [import_uploaded_file(uploaded, fields) for uploaded in files]
     return {
         "files": len(results),
+        "sourcePath": source_path,
+        "fileNames": [str(item["fileName"]) for item in results],
+        "tableNames": sorted({str(item["tableName"]) for item in results}),
+        "rowsRead": sum(int(item["rowsRead"]) for item in results),
         "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
         "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
+        "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
     }
 
 
@@ -2218,6 +2244,10 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         )
     status = "成功"
     message = ""
+    completed_steps = 0
+    failed_steps = 0
+    skipped_steps = sum(1 for step in job["steps"] if not step.get("enabled", True))
+    last_error = ""
     for index, step in enumerate(job["steps"], start=1):
         if not step.get("enabled", True):
             continue
@@ -2225,6 +2255,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         step_started = dt.datetime.now()
         step_status = "成功"
         step_message = ""
+        should_stop = False
         with connect_db() as conn:
             conn.execute(
                 "insert into _job_run_steps (id, run_id, step_index, step_name, step_type, started_at, status) values (?, ?, ?, ?, ?, ?, ?)",
@@ -2235,7 +2266,11 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             config = step.get("config") if isinstance(step.get("config"), dict) else {}
             if step_type == "import":
                 result = execute_import_step(config)
-                step_message = f"导入 {result['files']} 个文件，写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行。"
+                step_message = (
+                    f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
+                    f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
+                    f"写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行。"
+                )
             elif step_type == "export":
                 try:
                     result = run_export_job(config)
@@ -2248,8 +2283,10 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 step_message = f"SQL 执行完成，影响/读取 {result['rows']} 行。"
             elif step_type == "job":
                 nested = str(config.get("jobId") or "")
-                run_saved_job(nested, schedule_id, visited.copy())
-                step_message = "子作业执行完成。"
+                nested_result = run_saved_job(nested, schedule_id, visited.copy())
+                if nested_result["status"] != "成功":
+                    raise ValueError(f"子作业执行失败：{nested_result['message']}")
+                step_message = f"子作业执行成功：{nested_result['message']}"
             elif step_type == "sync":
                 raise ValueError("同步模块尚未开放。")
             else:
@@ -2257,9 +2294,12 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         except Exception as exc:
             step_status = "失败"
             step_message = str(exc)
-            if not step.get("continueOnError", False):
-                status = "失败"
-                message = step_message
+            failed_steps += 1
+            status = "失败"
+            last_error = step_message
+            should_stop = not step.get("continueOnError", False)
+        else:
+            completed_steps += 1
         finally:
             ended = dt.datetime.now()
             with connect_db() as conn:
@@ -2267,11 +2307,13 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     "update _job_run_steps set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
                     (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - step_started).total_seconds() * 1000), step_status, step_message, step_id),
                 )
-        if status == "失败":
+        if should_stop:
             break
     ended = dt.datetime.now()
     if status == "成功":
-        message = "作业执行完成。"
+        message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
+    else:
+        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
     with connect_db() as conn:
         conn.execute(
             "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
@@ -2659,6 +2701,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if self.path == "/api/import":
                 self.handle_import()
                 return
+            if self.path == "/api/task-source":
+                self.handle_task_source()
+                return
             if self.path == "/api/connections/test":
                 self.handle_connection_test()
                 return
@@ -2670,6 +2715,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if self.path == "/api/export/run":
                 self.handle_export_run()
+                return
+            if self.path == "/api/export/choose-target":
+                self.handle_export_choose_target()
                 return
             if self.path == "/api/jobs":
                 self.handle_job_save()
@@ -2797,6 +2845,28 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             },
         )
 
+    def handle_task_source(self) -> None:
+        _, uploaded_files = parse_multipart(self)
+        if not uploaded_files:
+            raise ValueError("请选择要关联到任务的源文件。")
+        source_dir = TASK_SOURCES / uuid.uuid4().hex
+        source_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for uploaded in uploaded_files:
+            target = source_dir / Path(uploaded.filename).name
+            uploaded.path.replace(target)
+            paths.append(str(target.resolve()))
+        source_path = paths[0] if len(paths) == 1 else str(source_dir.resolve())
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sourcePath": source_path,
+                "files": paths,
+                "message": f"已关联 {len(paths)} 个任务源文件。",
+            },
+        )
+
     def handle_tables(self) -> None:
         with connect_db() as conn:
             rows = conn.execute(
@@ -2890,6 +2960,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_connection_test(self) -> None:
         payload = read_json_body(self)
+        connection_id = str(payload.get("id") or "").strip()
+        if connection_id and not str(payload.get("password") or ""):
+            with connect_db() as conn:
+                saved = conn.execute("select password from _db_connections where id = ?", (connection_id,)).fetchone()
+            if saved:
+                payload["password"] = decode_secret(saved["password"])
         result = test_mysql_connection(payload)
         json_response(
             self,
@@ -3074,21 +3150,50 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "files": result["files"],
-                "downloadUrls": ["/api/export/download?name=" + quote(Path(path).name) for path in result["files"]],
+                "downloadUrls": ["/api/export/download?path=" + quote(str(path)) for path in result["files"]],
                 "rows": result["rows"],
                 "elapsedMs": result["elapsedMs"],
                 "message": f"导出完成：{len(result['files'])} 个文件，{result['rows']} 行。",
             },
         )
 
+    def handle_export_choose_target(self) -> None:
+        payload = read_json_body(self)
+        kind = str(payload.get("kind") or "folder").strip().lower()
+        extension = str(payload.get("extension") or "xlsx").strip().lstrip(".") or "xlsx"
+        suggested_name = str(payload.get("suggestedName") or f"export.{extension}").strip()
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            root.update()
+            if kind == "file":
+                selected = filedialog.asksaveasfilename(
+                    parent=root,
+                    title="选择导出文件",
+                    initialfile=Path(suggested_name).name,
+                    defaultextension=f".{extension}",
+                    filetypes=[("导出文件", f"*.{extension}"), ("所有文件", "*.*")],
+                )
+            else:
+                selected = filedialog.askdirectory(parent=root, title="选择导出文件夹", mustexist=True)
+            root.destroy()
+        except Exception as exc:
+            raise ValueError(f"无法打开本机路径选择窗口：{exc}") from exc
+        json_response(self, {"ok": True, "path": str(Path(selected).resolve()) if selected else ""})
+
     def handle_export_download(self, query: str) -> None:
         params = parse_qs(query)
-        name = Path(params.get("name", [""])[0]).name
-        if not name:
+        raw_path = params.get("path", [""])[0]
+        if not raw_path:
             raise ValueError("缺少文件名。")
-        path = EXPORTS / name
+        path = Path(raw_path).resolve()
         if not path.exists() or not path.is_file():
             raise ValueError("导出文件不存在。")
+        name = path.name
         ascii_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem, flags=re.ASCII).strip("_") or "export"
         ascii_suffix = re.sub(r"[^A-Za-z0-9.]+", "", path.suffix, flags=re.ASCII)
         ascii_name = f"{ascii_stem}{ascii_suffix}"

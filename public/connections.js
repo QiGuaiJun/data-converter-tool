@@ -4,6 +4,8 @@ const statusBox = document.querySelector("#connStatus");
 const editorTitle = document.querySelector("#editorTitle");
 
 let connections = [];
+let databaseLoadTimer = 0;
+let databaseRequestId = 0;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -59,7 +61,7 @@ function resetForm() {
   $("#connPort").value = "3306";
   $("#connUser").value = "root";
   $("#connPassword").value = "";
-  $("#connDatabase").innerHTML = '<option value="lcdp_SR">lcdp_SR</option>';
+  $("#connDatabase").innerHTML = '<option value="">请先填写连接信息</option>';
   $("#connCharset").value = "utf8mb4";
   setStatus("等待操作");
 }
@@ -102,18 +104,55 @@ async function loadConnections() {
   renderList();
 }
 
-async function testConnection() {
-  setStatus("正在测试连接...");
+function canLoadDatabases() {
+  return $("#connHost").value.trim() && $("#connPort").value.trim() && $("#connUser").value.trim();
+}
+
+async function loadDatabases({ showSuccess = false } = {}) {
+  if (!canLoadDatabases()) {
+    $("#connDatabase").innerHTML = '<option value="">请先填写主机、端口和用户名</option>';
+    return;
+  }
+
+  const requestId = ++databaseRequestId;
+  const selected = $("#connDatabase").value;
+  $("#connDatabase").disabled = true;
+  $("#connDatabase").innerHTML = '<option value="">正在读取数据库...</option>';
+  setStatus("正在读取数据库...");
+  const connectionPayload = payloadFromForm();
+  connectionPayload.database = "";
   const payload = await requestJson("/api/connections/test", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payloadFromForm()),
+    body: JSON.stringify(connectionPayload),
   });
+  if (requestId !== databaseRequestId) return;
   $("#connDatabase").innerHTML = payload.databases.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("");
-  if (payload.databases.includes("lcdp_SR")) {
-    $("#connDatabase").value = "lcdp_SR";
+  if (selected && payload.databases.includes(selected)) {
+    $("#connDatabase").value = selected;
   }
-  setStatus(`连接成功：MySQL ${payload.version}`, "success");
+  if (!payload.databases.length) {
+    $("#connDatabase").innerHTML = '<option value="">当前账号没有可见数据库</option>';
+  }
+  $("#connDatabase").disabled = false;
+  setStatus(showSuccess ? `连接成功：MySQL ${payload.version}` : `已读取 ${payload.databases.length} 个数据库`, "success");
+}
+
+async function testConnection() {
+  await loadDatabases({ showSuccess: true });
+}
+
+function scheduleDatabaseLoad() {
+  window.clearTimeout(databaseLoadTimer);
+  databaseLoadTimer = window.setTimeout(() => {
+    loadDatabases().catch(handleDatabaseLoadError);
+  }, 400);
+}
+
+function handleDatabaseLoadError(error) {
+  $("#connDatabase").disabled = false;
+  $("#connDatabase").innerHTML = '<option value="">读取失败，请检查连接信息</option>';
+  setStatus(error.message, "error");
 }
 
 async function saveConnection(event) {
@@ -143,8 +182,14 @@ async function deleteConnection() {
 }
 
 $("#newConn").addEventListener("click", resetForm);
-$("#testConn").addEventListener("click", () => testConnection().catch((error) => setStatus(error.message, "error")));
+$("#testConn").addEventListener("click", () => testConnection().catch(handleDatabaseLoadError));
 $("#deleteConn").addEventListener("click", () => deleteConnection().catch((error) => setStatus(error.message, "error")));
 form.addEventListener("submit", (event) => saveConnection(event).catch((error) => setStatus(error.message, "error")));
+for (const selector of ["#connHost", "#connPort", "#connUser", "#connPassword"]) {
+  $(selector).addEventListener("change", scheduleDatabaseLoad);
+}
+$("#connDatabase").addEventListener("pointerdown", () => {
+  if ($("#connDatabase").options.length <= 1) scheduleDatabaseLoad();
+});
 
 loadConnections().catch((error) => setStatus(error.message, "error"));

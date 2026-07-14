@@ -2,7 +2,6 @@ const fileInput = document.querySelector("#fileInput");
 const dirInput = document.querySelector("#dirInput");
 const fileList = document.querySelector("#fileList");
 const tableName = document.querySelector("#tableName");
-const targetTableOptions = document.querySelector("#targetTableOptions");
 const importForm = document.querySelector("#importForm");
 const importButton = importForm.querySelector(".primary");
 const statusBox = document.querySelector("#status");
@@ -36,6 +35,7 @@ let importTaskJobs = [];
 let selectedImportTaskId = "";
 let openedImportTaskId = "";
 let importEditorVisible = false;
+let selectedTaskSourcePath = "";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -74,6 +74,7 @@ function setImportEditorVisible(visible) {
 
 function clearImportEditor() {
   selectedFiles = [];
+  selectedTaskSourcePath = "";
   currentColumns = [];
   importForm.reset();
   renderMapping([]);
@@ -90,7 +91,7 @@ function clearImportEditor() {
   setStatus("已新建导入任务，请配置文件、目标表和导入选项。");
 }
 
-function setFiles(files) {
+async function setFiles(files) {
   selectedFiles = [...files].filter((file) => /\.(csv|txt|xlsx|xlsm|xls|json|xml|dbf)$/i.test(file.name));
   currentColumns = [];
   renderMapping([]);
@@ -105,10 +106,29 @@ function setFiles(files) {
   fileList.innerHTML = selectedFiles
     .map((file, index) => `<div class="file-item"><span>${index + 1}</span>${escapeHtml(file.webkitRelativePath || file.name)}</div>`)
     .join("");
-  if (!tableName.value && selectedFiles.length === 1) {
-    tableName.value = selectedFiles[0].name.replace(/\.[^.]+$/, "");
+  const taskPath = document.querySelector("#importTaskPath");
+  if (taskPath) {
+    setStatus("正在上传并关联任务源文件...");
+    const source = await uploadTaskSource(selectedFiles);
+    selectedTaskSourcePath = source.sourcePath;
+    taskPath.value = source.sourcePath;
+    taskPath.placeholder = "已自动关联网页托管源文件";
+    taskPath.classList.remove("invalid-path");
+    taskPath.dispatchEvent(new Event("change", { bubbles: true }));
   }
-  setStatus(`已选择 ${selectedFiles.length} 个文件，可以预览或导入。`, "success");
+  setStatus(`已选择 ${selectedFiles.length} 个文件，正在读取目标数据库表...`);
+  const tables = await loadTargetTableOptions();
+  tableName.title = tables.length ? `目标数据库共有 ${tables.length} 张表` : "目标数据库暂无数据表";
+  setStatus(
+    `已选择 ${selectedFiles.length} 个文件；已实时读取目标数据库 ${tables.length} 张表，请在目标表输入框中选择。`,
+    "success",
+  );
+}
+
+async function uploadTaskSource(files) {
+  const data = new FormData();
+  for (const file of files) data.append("file", file, file.webkitRelativePath || file.name);
+  return requestJson("/api/task-source", { method: "POST", body: data });
 }
 
 function buildFormData(includeAllFiles = true) {
@@ -123,6 +143,9 @@ function buildFormData(includeAllFiles = true) {
   }
 
   data.append("tableName", radioValue("targetMode") === "manual" ? tableName.value : "");
+  data.append("targetMode", radioValue("targetMode"));
+  data.append("matchMode", radioValue("matchMode"));
+  data.append("typeMode", radioValue("typeMode"));
   data.append("connectionId", connectionSelect?.value || "");
   data.append("importMode", radioValue("importMode"));
   data.append("hasHeader", "true");
@@ -222,8 +245,12 @@ function formDataToImportConfig(data) {
 function selectedImportTaskDefaults(existingJob, existingConfig = {}) {
   return {
     name: existingJob?.name || tableName.value || selectedFiles[0]?.name?.replace(/\.[^.]+$/, "") || "导入任务",
-    path: existingConfig.path || selectedFiles[0]?.webkitRelativePath || selectedFiles[0]?.name || "",
+    path: existingConfig.path || "",
   };
+}
+
+function isAbsoluteTaskPath(path) {
+  return /^[A-Za-z]:[\\/]/.test(path) || /^\\\\[^\\]+[\\][^\\]+/.test(path) || path.startsWith("/");
 }
 
 function syncImportTaskEditor(job) {
@@ -232,7 +259,16 @@ function syncImportTaskEditor(job) {
   const nameInput = document.querySelector("#importTaskName");
   const pathInput = document.querySelector("#importTaskPath");
   if (nameInput) nameInput.value = defaults.name;
-  if (pathInput) pathInput.value = defaults.path;
+  if (pathInput) {
+    const validPath = defaults.path && isAbsoluteTaskPath(defaults.path);
+    pathInput.value = validPath ? defaults.path : "";
+    pathInput.placeholder = validPath
+      ? "已关联本机源文件"
+      : defaults.path
+        ? `旧任务未保存完整路径，请重新选择：${defaults.path}`
+        : "选择源文件后自动关联完整路径";
+    pathInput.classList.toggle("invalid-path", Boolean(defaults.path) && !validPath);
+  }
 }
 
 function importModeLabel(mode) {
@@ -258,6 +294,9 @@ async function saveImportTask() {
   const path = (document.querySelector("#importTaskPath")?.value || defaults.path).trim();
   if (!taskName) throw new Error("请填写任务名称。");
   if (!path) throw new Error("请在任务路径中填写后台定时执行时可访问的本机文件或目录路径。");
+  if (!isAbsoluteTaskPath(path)) {
+    throw new Error(`定时任务必须填写完整路径，不能只填写文件名：${path}。例如：D:\\data\\${path}`);
+  }
   config.path = path;
   const payload = {
     id: existingJob?.id,
@@ -325,7 +364,7 @@ function ensureImportTaskPanel() {
       </div>
       <div class="module-task-editor">
         <label>任务名称<input id="importTaskName" placeholder="例如 春节红包墙" /></label>
-        <label>任务路径<input id="importTaskPath" placeholder="定时任务执行时可访问的文件或目录路径" /></label>
+        <label>文件路径<input id="importTaskPath" placeholder="选择源文件后自动关联完整路径" /></label>
       </div>
       <div id="importTaskList" class="module-task-list empty">暂无导入任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
@@ -377,11 +416,11 @@ function renderImportTaskJobs() {
   } else {
     list.className = "module-task-list";
     list.innerHTML = importTaskJobs
-      .map((job) => `<button type="button" class="module-task-item ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
+      .map((job) => `<button type="button" class="module-task-item task-import ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">IN</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
       .join("");
     if (tree) {
       tree.innerHTML = importTaskJobs
-        .map((job) => `<button type="button" class="tree-child ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}">${escapeHtml(job.name)}</button>`)
+        .map((job) => `<button type="button" class="tree-child task-import ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">IN</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
         .join("");
     }
   }
@@ -417,8 +456,12 @@ function applyImportTaskConfig(config) {
   for (const [key, value] of Object.entries(config || {})) {
     setControlValue(key, value);
   }
-  for (const name of ["targetMode", "importMode", "tableCase", "fieldCase", "targetDbType", "extraColumnMode", "writeMode", "commitMode"]) {
-    if (config?.[name]) setRadioValue(name, config[name]);
+  const restoredConfig = { ...config };
+  restoredConfig.targetMode ||= restoredConfig.tableName ? "manual" : "auto";
+  restoredConfig.matchMode ||= restoredConfig.mapping && restoredConfig.mapping !== "[]" ? "custom" : "auto";
+  restoredConfig.typeMode ||= "auto";
+  for (const name of ["targetMode", "matchMode", "typeMode", "importMode", "tableCase", "fieldCase", "targetDbType", "extraColumnMode", "writeMode", "commitMode"]) {
+    if (restoredConfig?.[name]) setRadioValue(name, restoredConfig[name]);
   }
   if (config?.connectionId && connectionSelect) {
     connectionSelect.value = config.connectionId;
@@ -439,7 +482,19 @@ function applyImportTaskConfig(config) {
       renderMapping([]);
     }
   }
-  loadTargetTableOptions().catch((error) => setStatus(error.message, "error"));
+  loadTargetTableOptions(config?.tableName || "").catch((error) => setStatus(error.message, "error"));
+}
+
+function restoreTaskSource(path) {
+  selectedFiles = [];
+  selectedTaskSourcePath = String(path || "");
+  if (!selectedTaskSourcePath) {
+    fileList.textContent = "尚未选择文件";
+    return;
+  }
+  const name = selectedTaskSourcePath.split(/[\\/]/).filter(Boolean).at(-1) || selectedTaskSourcePath;
+  fileList.innerHTML = `<div class="file-item persisted-file"><span>1</span><div><strong>${escapeHtml(name)}</strong><small>${escapeHtml(selectedTaskSourcePath)}</small></div></div>`;
+  previewMeta.textContent = `已关联任务源文件：${name}`;
 }
 
 function openSelectedImportTask() {
@@ -449,6 +504,7 @@ function openSelectedImportTask() {
   setImportEditorVisible(true);
   const step = importTaskStep(job);
   applyImportTaskConfig(step.config || {});
+  restoreTaskSource(step.config?.path || "");
   syncImportTaskEditor(job);
   setStatus(`已打开导入任务：${job.name}${step.config?.path ? `，定时执行路径：${step.config.path}` : ""}`, "success");
 }
@@ -563,18 +619,21 @@ function connectionParams() {
   return params;
 }
 
-async function loadTargetTableOptions() {
-  try {
-    const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
-    targetTableOptions.innerHTML = "";
-    for (const item of payload.tables || []) {
-      const option = document.createElement("option");
-      option.value = item;
-      targetTableOptions.append(option);
-    }
-  } catch (error) {
-    targetTableOptions.innerHTML = "";
+async function loadTargetTableOptions(preferredValue = tableName.value) {
+  const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
+  const tableItems = payload.tables || [];
+  tableName.innerHTML = '<option value="">请选择目标数据库中的表</option>';
+  for (const item of tableItems) {
+    const option = document.createElement("option");
+    option.value = item;
+    option.textContent = item;
+    tableName.append(option);
   }
+  if (preferredValue && tableItems.includes(preferredValue)) {
+    tableName.value = preferredValue;
+  }
+  tableName.disabled = tableItems.length === 0;
+  return tableItems;
 }
 
 function useManualTargetTable() {
@@ -832,10 +891,23 @@ document.querySelectorAll(".conn-tab").forEach((tab) => {
   });
 });
 
-fileInput.addEventListener("change", () => setFiles(fileInput.files));
-dirInput.addEventListener("change", () => setFiles(dirInput.files));
+fileInput.addEventListener("change", () => setFiles(fileInput.files).catch((error) => setStatus(`文件关联失败：${error.message}`, "error")));
+dirInput.addEventListener("change", () => setFiles(dirInput.files).catch((error) => setStatus(`文件关联失败：${error.message}`, "error")));
 tableName.addEventListener("input", useManualTargetTable);
 tableName.addEventListener("change", useManualTargetTable);
+document.querySelector('input[name="targetMode"][value="manual"]').addEventListener("click", () => {
+  loadTargetTableOptions()
+    .then((items) => {
+      setStatus(`已读取目标数据库 ${items.length} 张表，请选择目标表。`, "success");
+      tableName.focus();
+      try {
+        if (typeof tableName.showPicker === "function") tableName.showPicker();
+      } catch (_) {
+        // 部分浏览器不允许异步展开，选项仍已加载，用户再次点击即可查看。
+      }
+    })
+    .catch((error) => setStatus(`目标表读取失败：${error.message}`, "error"));
+});
 previewButton.addEventListener("click", previewFile);
 importForm.addEventListener("submit", importFiles);
 ensureImportTaskButton();

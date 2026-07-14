@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>定时任务 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260712_schedule_fix" />
+    <link rel="stylesheet" href="/styles.css?v=20260714_sidebar_palette" />
   </head>
   <body data-page="schedule">
     <div class="desktop-shell">
@@ -40,7 +40,10 @@
             <div class="schedule-tab-title">
               <span class="schedule-tab-icon">TIME</span>
               <span>定时任务</span>
-              <button id="refreshSchedules" type="button" title="刷新">刷新</button>
+              <div class="schedule-live-refresh">
+                <span id="lastRefreshTime">刷新时间 · --:--:--</span>
+                <button id="refreshSchedules" type="button" title="立即刷新"><span class="refresh-icon">↻</span><span>刷新</span></button>
+              </div>
             </div>
 
             <section class="schedule-desktop-toolbar">
@@ -183,6 +186,6 @@
       </form>
     </dialog>
 
-    <script src="/schedule.js?v=20260712_schedule_fix"></script>
+    <script src="/schedule.js?v=20260714_refresh_time_label"></script>
   </body>
 </html>
