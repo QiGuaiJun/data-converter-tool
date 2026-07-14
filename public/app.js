@@ -2,6 +2,7 @@ const fileInput = document.querySelector("#fileInput");
 const dirInput = document.querySelector("#dirInput");
 const fileList = document.querySelector("#fileList");
 const tableName = document.querySelector("#tableName");
+const targetTableOptions = document.querySelector("#targetTableOptions");
 const importForm = document.querySelector("#importForm");
 const importButton = importForm.querySelector(".primary");
 const statusBox = document.querySelector("#status");
@@ -656,27 +657,34 @@ function connectionParams() {
 }
 
 async function loadTargetTableOptions(preferredValue = tableName.value) {
+  const keepValue = preferredValue || tableName.value || "";
   tableName.disabled = true;
   try {
     const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
     const tableItems = payload.tables || [];
-    tableName.innerHTML = '<option value="">请选择目标数据库中的表</option>';
+    if (targetTableOptions) targetTableOptions.innerHTML = "";
     for (const item of tableItems) {
       const option = document.createElement("option");
       option.value = item;
-      option.textContent = item;
-      tableName.append(option);
+      if (targetTableOptions) targetTableOptions.append(option);
     }
-    if (preferredValue && tableItems.includes(preferredValue)) {
-      tableName.value = preferredValue;
-    } else if (preferredValue) {
-      const option = document.createElement("option");
-      option.value = preferredValue;
-      option.textContent = `${preferredValue}（当前任务保存）`;
-      tableName.append(option);
-      tableName.value = preferredValue;
+    if (keepValue) {
+      tableName.value = keepValue;
+      if (!tableItems.includes(keepValue) && targetTableOptions) {
+        const option = document.createElement("option");
+        option.value = keepValue;
+        targetTableOptions.append(option);
+      }
     }
+    tableName.placeholder = tableItems.length ? "请选择目标数据库中的表，或直接输入表名" : "目标库暂无表，可直接输入新表名";
+    tableName.title = tableItems.length ? `已读取 ${tableItems.length} 张目标表` : "目标库暂无表，可直接输入新表名";
     return tableItems;
+  } catch (error) {
+    if (targetTableOptions) targetTableOptions.innerHTML = "";
+    if (keepValue) tableName.value = keepValue;
+    tableName.placeholder = "目标表读取失败，可直接输入表名";
+    tableName.title = `目标表读取失败：${error.message}`;
+    throw error;
   } finally {
     tableName.disabled = false;
   }

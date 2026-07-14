@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>导入功能 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260714_task_type_icons" />
+    <link rel="stylesheet" href="/styles.css?v=20260714_target_table_input" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -54,9 +54,8 @@
             <strong>目标表：</strong>
             <label><input type="radio" name="targetMode" value="auto" checked /> 自动生成</label>
             <label><input type="radio" name="targetMode" value="manual" /> 手动指定：</label>
-            <select id="tableName" class="line-input">
-              <option value="">请选择目标数据库中的表</option>
-            </select>
+            <input id="tableName" class="line-input" list="targetTableOptions" placeholder="请选择目标数据库中的表，或直接输入表名" />
+            <datalist id="targetTableOptions"></datalist>
           </div>
 
           <div class="option-group">
@@ -330,6 +329,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=20260714_task_type_icons"></script>
+    <script src="/app.js?v=20260714_target_table_input"></script>
   </body>
 </html>

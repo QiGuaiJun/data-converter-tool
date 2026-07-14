@@ -2688,6 +2688,10 @@ legend,
   min-width: 320px;
 }
 
+input.line-input[list] {
+  width: min(520px, 100%);
+}
+
 .tabs {
   height: 44px;
   gap: 8px;
