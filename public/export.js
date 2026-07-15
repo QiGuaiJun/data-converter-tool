@@ -62,6 +62,8 @@ function setStatus(message, type = "") {
 function setExportEditorVisible(visible) {
   exportEditorVisible = Boolean(visible);
   document.querySelector(".export-shell")?.classList.toggle("task-overview-mode", !exportEditorVisible);
+  document.body.classList.toggle("export-task-overview", !exportEditorVisible);
+  document.body.classList.toggle("export-task-editor", exportEditorVisible);
 }
 
 function resetExportEditor() {
@@ -89,6 +91,23 @@ function startNewExportTask() {
   resetExportEditor();
   setExportEditorVisible(true);
   setStatus("已新建导出任务，请配置导出内容和选项。", "success");
+}
+
+function applyPendingQueryExport() {
+  const sql = sessionStorage.getItem("pendingExportSql");
+  if (!sql) return false;
+  const name = sessionStorage.getItem("pendingExportName") || "query";
+  sessionStorage.removeItem("pendingExportSql");
+  sessionStorage.removeItem("pendingExportName");
+  resetExportEditor();
+  sourceMode = "query";
+  exportSql.value = sql;
+  $("#queryName").value = name;
+  $("#exportFileName").value = name;
+  exportSourceList.classList.add("hidden");
+  setExportEditorVisible(true);
+  setStatus("已从 SQL 查询模块带入查询，可继续配置导出选项。", "success");
+  return true;
 }
 
 function fileNameFromPath(path) {
@@ -657,6 +676,6 @@ loadConnections()
     exportSourceList.classList.add("hidden");
     exportSql.value = exportSql.value || "select 1 as value";
     loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
-    setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
+    if (!applyPendingQueryExport()) setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
   })
   .catch((error) => setStatus(error.message, "error"));

@@ -334,18 +334,20 @@ async function runSelectedScheduleNow() {
 }
 
 async function loadRuns() {
-  const item = selectedSchedule();
-  if (!item) return;
-  const bySchedule = await requestJson(`/api/job-runs?scheduleId=${encodeURIComponent(item.id)}`);
-  let runs = bySchedule.runs || [];
-  if (!runs.length && item.jobId) {
-    const byJob = await requestJson(`/api/job-runs?jobId=${encodeURIComponent(item.jobId)}`);
-    runs = byJob.runs || [];
+  const payload = await requestJson("/api/job-runs");
+  const allRuns = payload.runs || [];
+  const scheduleMap = new Map(schedules.map((item) => [item.id, item]));
+  const mergedRuns = [];
+  for (const item of schedules) {
+    const related = allRuns.filter((run) => run.schedule_id === item.id);
+    mergedRuns.push(...mergeScheduleRuns(related, item.jobId));
   }
-  runs = mergeScheduleRuns(runs, item.jobId);
-  $("#scheduleRuns").innerHTML = runs.length
-    ? runs.map(renderRunLog).join("")
-    : `<div class="schedule-no-runs"><strong>该任务尚未执行</strong><span>首次计划运行时间：${escapeHtml(item.nextRunAt || "尚未安排")}</span><span>可点击“立即运行”进行测试。</span></div>`;
+  const orphanRuns = allRuns.filter((run) => run.schedule_id && !scheduleMap.has(run.schedule_id));
+  mergedRuns.push(...orphanRuns);
+  mergedRuns.sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+  $("#scheduleRuns").innerHTML = mergedRuns.length
+    ? mergedRuns.map(renderRunLog).join("")
+    : `<div class="schedule-no-runs"><strong>暂无定时任务运行日志</strong><span>任务执行后会在这里统一显示成功或失败信息。</span></div>`;
 }
 
 function mergeScheduleRuns(runs, rootJobId) {

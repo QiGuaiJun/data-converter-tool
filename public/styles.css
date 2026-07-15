@@ -278,6 +278,219 @@ body {
   gap: 8px;
 }
 
+/* SQL query workspace */
+.query-page {
+  height: calc(100vh - 80px);
+  min-height: 620px;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: auto 320px minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.query-toolbar,
+.query-saved-panel,
+.query-editor-panel,
+.query-result-panel,
+.query-history-panel {
+  border: 1px solid #d9e6f5;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 24px rgba(67, 105, 156, 0.06);
+}
+
+.query-toolbar {
+  min-height: 54px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.query-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.query-toolbar select { min-width: 300px; }
+.query-toolbar #queryStatus { margin-left: auto; color: #6e8099; }
+.query-toolbar #queryStatus.success { color: #13834c; }
+.query-toolbar #queryStatus.error { color: #d33b4f; }
+
+.query-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.query-saved-panel,
+.query-editor-panel,
+.query-result-panel,
+.query-history-panel { min-height: 0; overflow: hidden; }
+
+.query-saved-panel header,
+.query-result-panel header,
+.query-history-panel header {
+  min-height: 46px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e4edf8;
+}
+
+.query-list {
+  height: calc(100% - 46px);
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+}
+
+.query-list.empty,
+.query-history.empty { display: grid; place-items: center; color: #8a9aaf; }
+
+.query-list-item {
+  width: 100%;
+  min-height: 52px;
+  padding: 7px 9px;
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 9px;
+  text-align: left;
+  border-color: transparent;
+  background: transparent;
+}
+
+.query-list-item > span:last-child { min-width: 0; display: grid; gap: 3px; }
+.query-list-item strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.query-list-item small { color: #94a2b5; }
+.query-list-item .task-type-icon { border-color: #d9cff7; background: #f5f1ff; color: #7554d4; }
+.query-list-item.active { border-color: #c8b9f3; background: #f3efff; color: #6744cb; }
+
+.query-editor-panel { padding: 14px; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; }
+.query-name-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.query-name-row label { display: flex; align-items: center; gap: 8px; flex: 1; }
+.query-name-row input { width: min(520px, 100%); }
+.query-name-row > span,
+.query-shortcut { color: #8a9aaf; font-size: 12px; }
+#querySql { min-height: 230px; resize: none; font: 14px/1.65 Consolas, "Microsoft YaHei", monospace; }
+
+.query-result-panel { display: grid; grid-template-rows: auto 1fr; }
+.query-result-panel .table-wrap {
+  min-height: 0;
+  max-height: none;
+  height: 100%;
+  overflow: auto;
+  border: 0;
+  border-radius: 0;
+}
+.query-result-panel table { width: max-content; min-width: 100%; white-space: nowrap; }
+
+.query-history-panel { min-height: 180px; }
+.query-history-panel { display: none; }
+.query-history { max-height: 240px; padding: 10px; display: grid; gap: 7px; overflow: auto; }
+.query-history-item { width: 100%; padding: 8px 10px; display: grid; grid-template-columns: 180px 120px minmax(240px, 1fr) minmax(180px, 0.6fr); align-items: center; gap: 10px; text-align: left; background: #fff; }
+.query-history-item.success { border-left: 4px solid #24a35a; }
+.query-history-item.failed { border-left: 4px solid #df4254; }
+.query-history-item strong { display: flex; gap: 8px; }
+.query-history-item.success strong span { color: #168a48; }
+.query-history-item.failed strong span { color: #d32f45; }
+.query-history-item small,
+.query-history-item em { color: #7f8fa5; font-style: normal; }
+.query-history-item code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .query-layout { grid-template-columns: 1fr; }
+  .query-saved-panel { min-height: 180px; }
+  .query-history-item { grid-template-columns: 1fr; }
+}
+
+/* Database tables workspace */
+.tables-page {
+  height: calc(100vh - 80px);
+  min-height: 620px;
+  padding: 16px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.tables-toolbar,
+.tables-list-panel,
+.table-detail-panel {
+  border: 1px solid #d9e6f5;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 24px rgba(67, 105, 156, 0.06);
+}
+
+.tables-toolbar {
+  min-height: 54px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.tables-toolbar label { display: flex; align-items: center; gap: 8px; }
+.tables-toolbar select { min-width: 300px; }
+.tables-toolbar input { width: 240px; }
+.tables-toolbar #tableStatus { margin-left: auto; color: #75869c; }
+.tables-toolbar #tableStatus.success { color: #16834b; }
+.tables-toolbar #tableStatus.error { color: #d43c51; }
+
+.tables-layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.tables-list-panel,
+.table-detail-panel { min-height: 0; overflow: hidden; }
+.tables-list-panel { display: grid; grid-template-rows: 46px minmax(0, 1fr); }
+.tables-list-panel > header { padding: 8px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e3edf8; }
+
+.tables-list { min-height: 0; padding: 10px; display: grid; align-content: start; gap: 6px; overflow: auto; }
+.tables-list.empty { place-items: center; color: #8b9aaf; }
+.table-list-item { width: 100%; min-height: 58px; padding: 7px 9px; display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 9px; text-align: left; border-color: transparent; background: transparent; }
+.table-list-item:hover,
+.table-list-item.active { border-color: #b8d8fb; background: #ebf5ff; }
+.table-list-item > span:nth-child(2) { min-width: 0; display: grid; gap: 3px; }
+.table-list-item strong,
+.table-list-item small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.table-list-item small,
+.table-list-item em { color: #8b9aaf; font-size: 11px; font-style: normal; }
+.table-type-icon { width: 38px; height: 22px; display: inline-grid; place-items: center; border: 1px solid #cce0fb; border-radius: 7px; background: #eff6ff; color: #347fd5; font-size: 10px; font-weight: 800; }
+
+.table-detail-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.table-detail-header { min-height: 64px; padding: 8px 14px 0; display: flex; align-items: end; justify-content: space-between; gap: 16px; border-bottom: 1px solid #e3edf8; }
+.table-detail-header > div:first-child { align-self: center; display: grid; gap: 3px; }
+.table-detail-header > div:first-child span { color: #8797ad; font-size: 12px; }
+.table-tabs { border-bottom: 0; }
+.table-detail-body { min-height: 0; position: relative; }
+.table-detail-view { position: absolute; inset: 0; display: none; overflow: hidden; }
+.table-detail-view.active { display: block; }
+.table-detail-view .table-wrap { width: 100%; height: 100%; max-height: none; overflow: auto; border: 0; border-radius: 0; }
+.table-detail-view table { width: max-content; min-width: 100%; white-space: nowrap; }
+#tableDdl { height: 100%; margin: 0; padding: 18px; overflow: auto; background: #fbfdff; color: #27384f; font: 13px/1.65 Consolas, "Microsoft YaHei", monospace; white-space: pre-wrap; }
+
+@media (max-width: 1050px) {
+  .tables-page { height: auto; overflow: visible; }
+  .tables-layout { grid-template-columns: 1fr; }
+  .tables-list-panel { min-height: 260px; }
+  .table-detail-panel { min-height: 520px; }
+}
+
 .module-task-item:hover,
 .module-task-item.active {
   border-color: #2f80d1;
@@ -2612,6 +2825,17 @@ input[type="checkbox"] {
 
 body.import-task-overview .bottom-dock {
   display: none;
+}
+
+body.import-task-editor #importTaskTree,
+body.export-task-editor #exportTaskTree,
+.import-shell:not(.task-overview-mode) #importTaskList,
+.export-shell:not(.task-overview-mode) #exportTaskList {
+  display: none;
+}
+
+.export-shell:not(.task-overview-mode) #exportTaskPanel {
+  min-height: auto;
 }
 
 .export-shell {

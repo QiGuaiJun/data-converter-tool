@@ -205,6 +205,18 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        create table if not exists _saved_queries (
+            id text primary key,
+            name text not null,
+            connection_id text not null default '',
+            sql_text text not null,
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
     for column, ddl in {
         "rows_read": "integer not null default 0",
         "rows_updated": "integer not null default 0",
@@ -1480,6 +1492,76 @@ def target_table_names(fields: dict[str, str]) -> list[str]:
         conn.close()
 
 
+def target_table_details(fields: dict[str, str], table_name: str) -> dict[str, object]:
+    table_name = table_name.strip()
+    if not table_name:
+        raise ValueError("请选择要查看的表。")
+    conn = connect_target_db(fields)
+    try:
+        columns: list[dict[str, object]] = []
+        ddl = ""
+        table_type = "TABLE"
+        comment = ""
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    select table_type, table_comment
+                    from information_schema.tables
+                    where table_schema = database() and table_name = %s
+                    """,
+                    (table_name,),
+                )
+                table_row = cursor.fetchone()
+                if not table_row:
+                    raise ValueError("目标表不存在或当前账号无权访问。")
+                table_type = str(table_row[0] or "TABLE")
+                comment = str(table_row[1] or "")
+                cursor.execute(
+                    """
+                    select ordinal_position, column_name, column_type, is_nullable,
+                           column_default, column_key, extra, column_comment
+                    from information_schema.columns
+                    where table_schema = database() and table_name = %s
+                    order by ordinal_position
+                    """,
+                    (table_name,),
+                )
+                columns = [
+                    {
+                        "position": row[0],
+                        "name": row[1],
+                        "type": row[2],
+                        "nullable": row[3] == "YES",
+                        "default": cell_to_text(row[4]),
+                        "key": row[5] or "",
+                        "extra": row[6] or "",
+                        "comment": row[7] or "",
+                    }
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(f"show create {'view' if table_type == 'VIEW' else 'table'} {db_quote(table_name, fields)}")
+                create_row = cursor.fetchone()
+                ddl = str(create_row[1] if create_row and len(create_row) > 1 else "")
+                cursor.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+                preview_columns = [str(item[0]) for item in cursor.description or []]
+                preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        else:
+            exists = conn.execute("select type, sql from sqlite_master where name = ? and type in ('table', 'view')", (table_name,)).fetchone()
+            if not exists:
+                raise ValueError("目标表不存在。")
+            table_type = str(exists["type"] or "table").upper()
+            ddl = str(exists["sql"] or "")
+            for row in conn.execute(f"pragma table_info({db_quote(table_name, fields)})").fetchall():
+                columns.append({"position": row["cid"] + 1, "name": row["name"], "type": row["type"], "nullable": not bool(row["notnull"]), "default": cell_to_text(row["dflt_value"]), "key": "PRI" if row["pk"] else "", "extra": "", "comment": ""})
+            cursor = conn.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+            preview_columns = [str(item[0]) for item in cursor.description or []]
+            preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        return {"name": table_name, "type": table_type, "comment": comment, "columns": columns, "ddl": ddl, "previewColumns": preview_columns, "previewRows": preview_rows}
+    finally:
+        conn.close()
+
+
 def export_split_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -1947,6 +2029,51 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
     finally:
         conn.close()
     return {"sourceName": source_name, "columns": columns, "rows": [[cell_to_text(cell) for cell in row] for row in rows]}
+
+
+def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
+    sql = str(payload.get("sql") or "").strip().rstrip(";").strip()
+    if not sql:
+        raise ValueError("请输入要执行的 SQL。")
+    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", sql)
+    command = first_word.group(1).lower() if first_word else ""
+    if command not in {"select", "show", "describe", "desc", "explain", "with"}:
+        raise ValueError("查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。")
+    if ";" in sql:
+        raise ValueError("一次只能执行一条 SQL 查询。")
+
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+    started = time.time()
+    message = "查询执行成功。"
+    columns: list[str] = []
+    rows: list[list[str]] = []
+    truncated = False
+    conn = connect_target_db(fields)
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql)
+            columns = [str(item[0]) for item in cursor.description or []]
+            raw_rows = cursor.fetchmany(1001) if cursor.description else []
+            truncated = len(raw_rows) > 1000
+            rows = [[cell_to_text(cell) for cell in row] for row in raw_rows[:1000]]
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
+    elapsed_ms = int((time.time() - started) * 1000)
+    return {"columns": columns, "rows": rows, "rowCount": len(rows), "elapsedMs": elapsed_ms, "truncated": truncated, "message": message}
+
+
+def saved_query_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "connectionId": row["connection_id"],
+        "sql": row["sql_text"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
 
 
 def app_now() -> dt.datetime:
@@ -2686,6 +2813,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/target-tables":
                 self.handle_target_tables(parsed.query)
                 return
+            if parsed.path == "/api/target-table-details":
+                self.handle_target_table_details(parsed.query)
+                return
             if parsed.path == "/api/table":
                 self.handle_table_preview(parsed.query)
                 return
@@ -2709,6 +2839,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/job-runs":
                 self.handle_job_runs(parsed.query)
+                return
+            if parsed.path == "/api/queries":
+                self.handle_queries()
                 return
             if parsed.path == "/api/export/sources":
                 self.handle_export_sources(parsed.query)
@@ -2749,6 +2882,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if self.path == "/api/export/choose-target":
                 self.handle_export_choose_target()
                 return
+            if self.path == "/api/query/run":
+                self.handle_query_run()
+                return
+            if self.path == "/api/queries":
+                self.handle_query_save()
+                return
             if self.path == "/api/jobs":
                 self.handle_job_save()
                 return
@@ -2781,6 +2920,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/schedules":
                 self.handle_schedule_delete(parsed.query)
+                return
+            if parsed.path == "/api/queries":
+                self.handle_query_delete(parsed.query)
                 return
             error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -2912,6 +3054,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         raw = {key: values[-1] for key, values in parse_qs(query).items()}
         fields = {key: str(value) for key, value in raw.items()}
         json_response(self, {"ok": True, "tables": target_table_names(fields)})
+
+    def handle_target_table_details(self, query: str) -> None:
+        raw = {key: values[-1] for key, values in parse_qs(query).items()}
+        fields = {key: str(value) for key, value in raw.items()}
+        table_name = fields.pop("name", "")
+        json_response(self, {"ok": True, "table": target_table_details(fields, table_name)})
 
     def handle_table_preview(self, query: str) -> None:
         params = parse_qs(query)
@@ -3153,6 +3301,49 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 for step in steps:
                     steps_by_run[step["run_id"]].append(dict(step))
         json_response(self, {"ok": True, "runs": [{**dict(row), "steps": steps_by_run.get(row["id"], [])} for row in runs]})
+
+    def handle_queries(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _saved_queries order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "queries": [saved_query_public(row) for row in rows]})
+
+    def handle_query_run(self) -> None:
+        payload = read_json_body(self)
+        try:
+            result = run_readonly_query(payload)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+        json_response(self, {"ok": True, **result})
+
+    def handle_query_save(self) -> None:
+        payload = read_json_body(self)
+        query_id = str(payload.get("id") or uuid.uuid4().hex)
+        name = str(payload.get("name") or "").strip()
+        sql = str(payload.get("sql") or "").strip()
+        connection_id = str(payload.get("connectionId") or "").strip()
+        if not name:
+            raise ValueError("请填写查询名称。")
+        if not sql:
+            raise ValueError("请输入要保存的 SQL。")
+        now = now_text()
+        with connect_db() as conn:
+            old = conn.execute("select created_at from _saved_queries where id = ?", (query_id,)).fetchone()
+            conn.execute(
+                "insert or replace into _saved_queries (id, name, connection_id, sql_text, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+                (query_id, name, connection_id, sql, old["created_at"] if old else now, now),
+            )
+            conn.commit()
+            row = conn.execute("select * from _saved_queries where id = ?", (query_id,)).fetchone()
+        json_response(self, {"ok": True, "query": saved_query_public(row)})
+
+    def handle_query_delete(self, query: str) -> None:
+        query_id = parse_qs(query).get("id", [""])[0]
+        if not query_id:
+            raise ValueError("缺少查询 ID。")
+        with connect_db() as conn:
+            conn.execute("delete from _saved_queries where id = ?", (query_id,))
+            conn.commit()
+        json_response(self, {"ok": True})
 
     def handle_export_sources(self, query: str) -> None:
         params = parse_qs(query)

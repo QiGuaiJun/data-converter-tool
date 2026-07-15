@@ -72,6 +72,7 @@ function setImportEditorVisible(visible) {
   const shell = document.querySelector(".import-shell");
   if (shell) shell.classList.toggle("task-overview-mode", !importEditorVisible);
   document.body.classList.toggle("import-task-overview", !importEditorVisible);
+  document.body.classList.toggle("import-task-editor", importEditorVisible);
 }
 
 function clearImportEditor() {
