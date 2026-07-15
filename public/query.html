@@ -3,10 +3,66 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>查询 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <title>SQL 查询 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260715_fixed_query_result" />
   </head>
-  <body data-module="query">
-    <script src="/module-pages.js?v=20260707_desktop_pages"></script>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item active" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node active" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+          <main class="query-page">
+            <section class="query-toolbar">
+              <label>数据库连接：<select id="queryConnection"></select></label>
+              <button id="runQuery" class="primary" type="button">执行查询</button>
+              <button id="newQuery" type="button">新建</button>
+              <button id="saveQuery" type="button">保存查询</button>
+              <button id="deleteQuery" type="button" disabled>删除查询</button>
+              <button id="sendToExport" type="button">转到导出</button>
+              <span id="queryStatus">等待执行</span>
+            </section>
+            <section class="query-layout">
+              <aside class="query-saved-panel">
+                <header><strong>已保存查询</strong><button id="refreshQueries" type="button">刷新</button></header>
+                <div id="savedQueryList" class="query-list empty">暂无保存的查询</div>
+              </aside>
+              <section class="query-editor-panel">
+                <div class="query-name-row"><label>查询名称：<input id="queryName" placeholder="例如 销售明细查询" /></label><span>仅允许只读 SQL</span></div>
+                <textarea id="querySql" spellcheck="false" placeholder="请输入 SELECT、SHOW、DESCRIBE 或 EXPLAIN 查询">SELECT 1 AS value</textarea>
+                <div class="query-shortcut">快捷键：Ctrl + Enter 执行查询</div>
+              </section>
+            </section>
+            <section class="query-result-panel">
+              <header><strong>查询结果</strong><span id="queryResultMeta">尚未执行</span></header>
+              <div id="queryResult" class="table-wrap empty">执行查询后在这里显示结果</div>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+    <script src="/query.js?v=20260715_table_handoff"></script>
   </body>
 </html>

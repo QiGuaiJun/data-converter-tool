@@ -24,6 +24,22 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
+function renderRunLog(run) {
+  const steps = run.steps || [];
+  const successCount = steps.filter((step) => step.status === "成功").length;
+  const failedCount = steps.filter((step) => step.status === "失败").length;
+  return `<div class="log-item ${run.status === "成功" ? "success" : "failed"}">
+    <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
+    <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms)} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
+    <div class="run-message">${escapeHtml(run.message)}</div>
+    ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
+      <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
+      <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
+      <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
+    </div>`).join("")}
+  </div>`;
+}
+
 function connectionFields() {
   const id = $("#jobConnection").value;
   if (!id || id === "__sqlite") return { targetDbType: "sqlite" };
@@ -51,9 +67,7 @@ async function loadRuns() {
   const query = selectedJobId ? `?jobId=${encodeURIComponent(selectedJobId)}` : "";
   const payload = await requestJson(`/api/job-runs${query}`);
   $("#jobRuns").innerHTML = (payload.runs || []).length
-    ? payload.runs
-        .map((run) => `<div class="log-item ${run.status === "成功" ? "success" : "failed"}"><strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong><div>${escapeHtml(run.started_at)} · ${escapeHtml(run.elapsed_ms)} ms</div><div>${escapeHtml(run.message)}</div>${(run.steps || []).map((step) => `<small>${step.step_index}. ${escapeHtml(step.step_name)} ${escapeHtml(step.status)} ${escapeHtml(step.message)}</small>`).join("")}</div>`)
-        .join("")
+    ? payload.runs.map(renderRunLog).join("")
     : "暂无日志";
 }
 

@@ -11,6 +11,7 @@ let draftSteps = [];
 let selectedStepIndex = -1;
 let selectedAvailableJobId = "";
 let draftRule = { mode: "interval", amount: 1, unit: "hours" };
+let scheduleRefreshRunning = false;
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -65,10 +66,27 @@ async function loadSchedules() {
   if (selectedScheduleId && !schedules.some((item) => item.id === selectedScheduleId)) selectedScheduleId = "";
   if (!selectedScheduleId && schedules[0]) selectedScheduleId = schedules[0].id;
   renderSchedules();
+  const refreshTime = $("#lastRefreshTime");
+  if (refreshTime) refreshTime.textContent = `刷新时间 · ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
 }
 
 async function refreshAll() {
   await Promise.all([loadConnections(), loadJobs(), loadSchedules()]);
+}
+
+async function refreshSchedulesLive(includeAll = false) {
+  if (scheduleRefreshRunning || document.hidden) return;
+  scheduleRefreshRunning = true;
+  const button = $("#refreshSchedules");
+  button?.classList.add("refreshing");
+  try {
+    if (includeAll) await refreshAll();
+    else await loadSchedules();
+    if ($("#logDialog")?.open) await loadRuns();
+  } finally {
+    scheduleRefreshRunning = false;
+    button?.classList.remove("refreshing");
+  }
 }
 
 function selectedSchedule() {
@@ -86,7 +104,7 @@ function statusText(item) {
 }
 
 function lastResultText(item) {
-  if (!item?.lastRunAt) return "";
+  if (!item?.lastRunAt) return "尚未执行";
   return item.lastStatus || "";
 }
 
@@ -100,7 +118,7 @@ function renderSchedules() {
             <td>${escapeHtml(statusText(item))}</td>
             <td>${escapeHtml(ruleText(item.rule))}</td>
             <td>${escapeHtml(item.nextRunAt || "")}</td>
-            <td>${escapeHtml(item.lastRunAt || "")}</td>
+            <td>${escapeHtml(item.lastRunAt || "尚未执行")}</td>
             <td>${escapeHtml(lastResultText(item))}</td>
           </tr>`,
         )
@@ -316,19 +334,77 @@ async function runSelectedScheduleNow() {
 }
 
 async function loadRuns() {
-  const item = selectedSchedule();
-  if (!item) return;
-  const bySchedule = await requestJson(`/api/job-runs?scheduleId=${encodeURIComponent(item.id)}`);
-  let runs = bySchedule.runs || [];
-  if (!runs.length && item.jobId) {
-    const byJob = await requestJson(`/api/job-runs?jobId=${encodeURIComponent(item.jobId)}`);
-    runs = byJob.runs || [];
+  const payload = await requestJson("/api/job-runs");
+  const allRuns = payload.runs || [];
+  const scheduleMap = new Map(schedules.map((item) => [item.id, item]));
+  const mergedRuns = [];
+  for (const item of schedules) {
+    const related = allRuns.filter((run) => run.schedule_id === item.id);
+    mergedRuns.push(...mergeScheduleRuns(related, item.jobId));
   }
-  $("#scheduleRuns").innerHTML = runs.length
-    ? runs
-        .map((run) => `<div class="log-item ${run.status === "成功" ? "success" : "failed"}"><strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong><div>${escapeHtml(run.started_at)} · ${escapeHtml(run.elapsed_ms ?? "")} ms</div><div>${escapeHtml(run.message)}</div>${(run.steps || []).map((step) => `<small>${step.step_index}. ${escapeHtml(step.step_name)} ${escapeHtml(step.status)} ${escapeHtml(step.message)}</small>`).join("")}</div>`)
-        .join("")
-    : "暂无日志";
+  const orphanRuns = allRuns.filter((run) => run.schedule_id && !scheduleMap.has(run.schedule_id));
+  mergedRuns.push(...orphanRuns);
+  mergedRuns.sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+  $("#scheduleRuns").innerHTML = mergedRuns.length
+    ? mergedRuns.map(renderRunLog).join("")
+    : `<div class="schedule-no-runs"><strong>暂无定时任务运行日志</strong><span>任务执行后会在这里统一显示成功或失败信息。</span></div>`;
+}
+
+function mergeScheduleRuns(runs, rootJobId) {
+  const groups = new Map();
+  for (const run of runs) {
+    const key = `${run.schedule_id || "manual"}|${run.started_at}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(run);
+  }
+
+  const merged = [];
+  for (const group of groups.values()) {
+    const root = group.find((run) => run.job_id === rootJobId) || group[0];
+    const related = group.filter((run) => run !== root);
+    if (!related.length) {
+      merged.push(root);
+      continue;
+    }
+
+    const childSteps = related.flatMap((child) =>
+      (child.steps || []).map((step) => ({
+        ...step,
+        step_name: `${child.job_name} / ${step.step_name}`,
+      })),
+    );
+    const directSteps = (root.steps || []).filter((step) => step.step_type !== "job");
+    const allRuns = [root, ...related];
+    const failedRuns = allRuns.filter((run) => run.status !== "成功");
+    const endedTimes = allRuns.map((run) => run.ended_at).filter(Boolean).sort();
+    merged.push({
+      ...root,
+      ended_at: endedTimes.at(-1) || root.ended_at,
+      elapsed_ms: Math.max(...allRuns.map((run) => Number(run.elapsed_ms || 0))),
+      status: failedRuns.length ? "失败" : "成功",
+      message: failedRuns.length
+        ? `本次任务执行失败：${failedRuns.map((run) => `${run.job_name}：${run.message}`).join("；")}`
+        : `本次任务执行成功，共完成 ${directSteps.length + childSteps.length} 个实际步骤。`,
+      steps: [...directSteps, ...childSteps].map((step, index) => ({ ...step, step_index: index + 1 })),
+    });
+  }
+  return merged.sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
+}
+
+function renderRunLog(run) {
+  const steps = run.steps || [];
+  const successCount = steps.filter((step) => step.status === "成功").length;
+  const failedCount = steps.filter((step) => step.status === "失败").length;
+  return `<div class="log-item ${run.status === "成功" ? "success" : "failed"}">
+    <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
+    <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms ?? "")} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
+    <div class="run-message">${escapeHtml(run.message)}</div>
+    ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
+      <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
+      <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
+      <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
+    </div>`).join("")}
+  </div>`;
 }
 
 async function openLogDialog() {
@@ -385,7 +461,7 @@ $("#startSchedule").addEventListener("click", () => changeState(true).catch((err
 $("#pauseSchedule").addEventListener("click", () => changeState(false).catch((error) => setStatus(error.message, "error")));
 $("#runScheduleNow").addEventListener("click", () => runSelectedScheduleNow().catch((error) => setStatus(error.message, "error")));
 $("#viewScheduleLog").addEventListener("click", () => openLogDialog().catch((error) => setStatus(error.message, "error")));
-$("#refreshSchedules").addEventListener("click", () => refreshAll().catch((error) => setStatus(error.message, "error")));
+$("#refreshSchedules").addEventListener("click", () => refreshSchedulesLive(true).catch((error) => setStatus(error.message, "error")));
 $("#closeScheduleDialog").addEventListener("click", () => $("#scheduleDialog").close());
 $("#cancelSchedule").addEventListener("click", () => $("#scheduleDialog").close());
 $("#saveSchedule").addEventListener("click", () => saveSchedule().catch((error) => setStatus(error.message, "error")));
@@ -430,4 +506,7 @@ $("#closeLogDialog").addEventListener("click", () => $("#logDialog").close());
 $("#closeLogFooter").addEventListener("click", () => $("#logDialog").close());
 
 refreshAll().catch((error) => setStatus(error.message, "error"));
-setInterval(() => loadSchedules().catch(() => {}), 10000);
+setInterval(() => refreshSchedulesLive().catch(() => {}), 1000);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshSchedulesLive().catch(() => {});
+});

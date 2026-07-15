@@ -3,10 +3,71 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>表 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <title>表管理 - 数据导表工具</title>
+    <link rel="stylesheet" href="/styles.css?v=20260715_tables_module" />
   </head>
-  <body data-module="tables">
-    <script src="/module-pages.js?v=20260707_desktop_pages"></script>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item active" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node active" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+        </aside>
+        <section class="app-workspace">
+          <main class="tables-page">
+            <section class="tables-toolbar">
+              <label>数据库连接：<select id="tableConnection"></select></label>
+              <label>搜索表：<input id="tableSearch" placeholder="输入表名或注释" /></label>
+              <button id="refreshTables" class="primary" type="button">刷新表列表</button>
+              <button id="openInQuery" type="button" disabled>转到查询</button>
+              <button id="openInExport" type="button" disabled>转到导出</button>
+              <span id="tableStatus">等待读取</span>
+            </section>
+            <section class="tables-layout">
+              <aside class="tables-list-panel">
+                <header><strong>数据库对象</strong><span id="tableCount">0 个</span></header>
+                <div id="tableList" class="tables-list empty">暂无表</div>
+              </aside>
+              <section class="table-detail-panel">
+                <header class="table-detail-header">
+                  <div><strong id="selectedTableName">请选择表</strong><span id="selectedTableMeta"></span></div>
+                  <div class="tabs table-tabs">
+                    <button class="tab active" data-table-tab="columns" type="button">字段结构</button>
+                    <button class="tab" data-table-tab="preview" type="button">数据预览</button>
+                    <button class="tab" data-table-tab="ddl" type="button">建表 DDL</button>
+                  </div>
+                </header>
+                <div class="table-detail-body">
+                  <section class="table-detail-view active" data-table-view="columns"><div id="tableColumns" class="table-wrap empty">选择表后显示字段结构</div></section>
+                  <section class="table-detail-view" data-table-view="preview"><div id="tablePreview" class="table-wrap empty">选择表后显示前100行数据</div></section>
+                  <section class="table-detail-view" data-table-view="ddl"><pre id="tableDdl">选择表后显示建表语句</pre></section>
+                </div>
+              </section>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+    <script src="/tables.js?v=20260715_tables_module"></script>
   </body>
 </html>

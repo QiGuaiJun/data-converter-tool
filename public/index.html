@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>导入功能 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <link rel="stylesheet" href="/styles.css?v=20260715_target_table_editor" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -54,7 +54,7 @@
             <strong>目标表：</strong>
             <label><input type="radio" name="targetMode" value="auto" checked /> 自动生成</label>
             <label><input type="radio" name="targetMode" value="manual" /> 手动指定：</label>
-            <input id="tableName" class="line-input" list="targetTableOptions" placeholder="可输入新表名，或从目标库已有表中选择" />
+            <input id="tableName" class="line-input" list="targetTableOptions" placeholder="请选择目标数据库中的表，或直接输入表名" />
             <datalist id="targetTableOptions"></datalist>
           </div>
 
@@ -92,7 +92,7 @@
             <label><input type="radio" name="targetDbType" value="sqlite" /> 本地 SQLite</label>
             <input id="dbHost" type="hidden" value="192.168.1.102" />
             <input id="dbPort" type="hidden" value="3306" />
-            <input id="dbName" type="hidden" value="lcdp_SR" />
+            <input id="dbName" type="hidden" value="" />
             <input id="dbUser" type="hidden" value="root" />
             <input id="dbPassword" type="hidden" value="123456" />
             <input id="dbCharset" type="hidden" value="utf8mb4" />
@@ -329,6 +329,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=20260710_module_tasks"></script>
+    <script src="/app.js?v=20260715_target_table_editor"></script>
   </body>
 </html>

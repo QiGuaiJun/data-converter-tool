@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>新建连接 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <link rel="stylesheet" href="/styles.css?v=20260714_sidebar_palette" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -61,7 +61,7 @@
                 <label>密码：<input id="connPassword" type="password" placeholder="编辑已有连接时留空表示不修改" /></label>
                 <label>数据库：
                   <select id="connDatabase">
-                    <option value="lcdp_SR">lcdp_SR</option>
+                    <option value="">请先填写连接信息</option>
                   </select>
                 </label>
                 <label>字符集：<input id="connCharset" value="utf8mb4" /></label>
@@ -83,6 +83,6 @@
         </section>
       </div>
     </div>
-    <script src="/connections.js?v=20260708_layout_fix"></script>
+    <script src="/connections.js?v=20260714_dynamic_databases"></script>
   </body>
 </html>

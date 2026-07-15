@@ -59,6 +59,7 @@ def env_path(name: str, fallback: Path) -> Path:
 DATA = env_path("DATA_DIR", ROOT / "data")
 UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
 EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
+TASK_SOURCES = DATA / "task_sources"
 DB_PATH = DATA / "imports.db"
 PASSWORD_PREFIX = "b64:"
 
@@ -85,6 +86,7 @@ def ensure_dirs() -> None:
     DATA.mkdir(parents=True, exist_ok=True)
     UPLOADS.mkdir(parents=True, exist_ok=True)
     EXPORTS.mkdir(parents=True, exist_ok=True)
+    TASK_SOURCES.mkdir(parents=True, exist_ok=True)
 
 
 def connect_db() -> sqlite3.Connection:
@@ -203,6 +205,18 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        create table if not exists _saved_queries (
+            id text primary key,
+            name text not null,
+            connection_id text not null default '',
+            sql_text text not null,
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
     for column, ddl in {
         "rows_read": "integer not null default 0",
         "rows_updated": "integer not null default 0",
@@ -309,6 +323,10 @@ def load_saved_connection(connection_id: str) -> dict[str, object]:
 
 
 def resolve_connection_fields(fields: dict[str, str]) -> dict[str, str]:
+    if fields.get("targetDbType", "").strip().lower() == "sqlite":
+        merged = dict(fields)
+        merged["connectionId"] = ""
+        return merged
     connection_id = fields.get("connectionId", "").strip()
     if fields.get("dbPasswordSecret") and not fields.get("dbPassword"):
         fields = dict(fields)
@@ -1448,6 +1466,102 @@ def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
         conn.close()
 
 
+def target_table_names(fields: dict[str, str]) -> list[str]:
+    conn = connect_target_db(fields)
+    try:
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute("show full tables")
+                rows = cursor.fetchall()
+            names: list[str] = []
+            for row in rows:
+                if len(row) > 1 and str(row[1]).upper() != "BASE TABLE":
+                    continue
+                names.append(str(row[0]))
+            return names
+        rows = conn.execute(
+            """
+            select name
+            from sqlite_master
+            where type = 'table' and name not like 'sqlite_%' and name not like '\\_%' escape '\\'
+            order by name
+            """
+        ).fetchall()
+        return [str(row["name"]) for row in rows]
+    finally:
+        conn.close()
+
+
+def target_table_details(fields: dict[str, str], table_name: str) -> dict[str, object]:
+    table_name = table_name.strip()
+    if not table_name:
+        raise ValueError("请选择要查看的表。")
+    conn = connect_target_db(fields)
+    try:
+        columns: list[dict[str, object]] = []
+        ddl = ""
+        table_type = "TABLE"
+        comment = ""
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    select table_type, table_comment
+                    from information_schema.tables
+                    where table_schema = database() and table_name = %s
+                    """,
+                    (table_name,),
+                )
+                table_row = cursor.fetchone()
+                if not table_row:
+                    raise ValueError("目标表不存在或当前账号无权访问。")
+                table_type = str(table_row[0] or "TABLE")
+                comment = str(table_row[1] or "")
+                cursor.execute(
+                    """
+                    select ordinal_position, column_name, column_type, is_nullable,
+                           column_default, column_key, extra, column_comment
+                    from information_schema.columns
+                    where table_schema = database() and table_name = %s
+                    order by ordinal_position
+                    """,
+                    (table_name,),
+                )
+                columns = [
+                    {
+                        "position": row[0],
+                        "name": row[1],
+                        "type": row[2],
+                        "nullable": row[3] == "YES",
+                        "default": cell_to_text(row[4]),
+                        "key": row[5] or "",
+                        "extra": row[6] or "",
+                        "comment": row[7] or "",
+                    }
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(f"show create {'view' if table_type == 'VIEW' else 'table'} {db_quote(table_name, fields)}")
+                create_row = cursor.fetchone()
+                ddl = str(create_row[1] if create_row and len(create_row) > 1 else "")
+                cursor.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+                preview_columns = [str(item[0]) for item in cursor.description or []]
+                preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        else:
+            exists = conn.execute("select type, sql from sqlite_master where name = ? and type in ('table', 'view')", (table_name,)).fetchone()
+            if not exists:
+                raise ValueError("目标表不存在。")
+            table_type = str(exists["type"] or "table").upper()
+            ddl = str(exists["sql"] or "")
+            for row in conn.execute(f"pragma table_info({db_quote(table_name, fields)})").fetchall():
+                columns.append({"position": row["cid"] + 1, "name": row["name"], "type": row["type"], "nullable": not bool(row["notnull"]), "default": cell_to_text(row["dflt_value"]), "key": "PRI" if row["pk"] else "", "extra": "", "comment": ""})
+            cursor = conn.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+            preview_columns = [str(item[0]) for item in cursor.description or []]
+            preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        return {"name": table_name, "type": table_type, "comment": comment, "columns": columns, "ddl": ddl, "previewColumns": preview_columns, "previewRows": preview_rows}
+    finally:
+        conn.close()
+
+
 def export_split_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -1558,6 +1672,24 @@ def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -
     prefix = safe_file_stem(str(fields.get("filePrefix") or ""), "")
     suffix = safe_file_stem(str(fields.get("fileSuffix") or ""), "")
     name = safe_file_stem(f"{prefix}{base_name}{suffix}", "export")
+    target_mode = str(fields.get("exportTargetMode") or "folder").strip().lower()
+    if target_mode == "folder":
+        folder_value = str(fields.get("exportFolder") or "").strip()
+        if folder_value:
+            folder = Path(folder_value).expanduser()
+            if not folder.is_absolute():
+                raise ValueError(f"目标文件夹必须是完整路径，当前保存的是：{folder_value}")
+            if not folder.exists() or not folder.is_dir():
+                raise ValueError(f"目标文件夹不存在：{folder}")
+            return folder / f"{name}.{extension}"
+    elif target_mode == "file":
+        file_value = str(fields.get("outputName") or "").strip()
+        if file_value:
+            output = Path(file_value).expanduser()
+            if output.is_absolute():
+                if not output.parent.exists() or not output.parent.is_dir():
+                    raise ValueError(f"目标文件所在文件夹不存在：{output.parent}")
+                return output.with_suffix(f".{extension}")
     return EXPORTS / f"{name}.{extension}"
 
 
@@ -1810,7 +1942,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                 if parse_bool(fields, "skipEmptyTable", False) and row_count == 0:
                     continue
                 total_rows += row_count
-            path = export_target_path(str(fields.get("outputName") or "export"), "xlsx", fields)
+            path = export_target_path(str(fields.get("exportFileName") or fields.get("outputName") or "export"), "xlsx", fields)
             workbook.save(path)
             written_files.append(str(path))
         else:
@@ -1819,7 +1951,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                     continue
                 sql, source_name = export_query_from_item(item, fields)
                 sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
-                base_name = str(fields.get("outputName") or source_name)
+                base_name = str(fields.get("exportFileName") or fields.get("outputName") or source_name)
                 path = export_target_path(base_name, extension, fields)
 
                 if can_stream:
@@ -1897,6 +2029,51 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
     finally:
         conn.close()
     return {"sourceName": source_name, "columns": columns, "rows": [[cell_to_text(cell) for cell in row] for row in rows]}
+
+
+def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
+    sql = str(payload.get("sql") or "").strip().rstrip(";").strip()
+    if not sql:
+        raise ValueError("请输入要执行的 SQL。")
+    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", sql)
+    command = first_word.group(1).lower() if first_word else ""
+    if command not in {"select", "show", "describe", "desc", "explain", "with"}:
+        raise ValueError("查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。")
+    if ";" in sql:
+        raise ValueError("一次只能执行一条 SQL 查询。")
+
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+    started = time.time()
+    message = "查询执行成功。"
+    columns: list[str] = []
+    rows: list[list[str]] = []
+    truncated = False
+    conn = connect_target_db(fields)
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql)
+            columns = [str(item[0]) for item in cursor.description or []]
+            raw_rows = cursor.fetchmany(1001) if cursor.description else []
+            truncated = len(raw_rows) > 1000
+            rows = [[cell_to_text(cell) for cell in row] for row in raw_rows[:1000]]
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
+    elapsed_ms = int((time.time() - started) * 1000)
+    return {"columns": columns, "rows": rows, "rowCount": len(rows), "elapsedMs": elapsed_ms, "truncated": truncated, "message": message}
+
+
+def saved_query_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "connectionId": row["connection_id"],
+        "sql": row["sql_text"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
 
 
 def app_now() -> dt.datetime:
@@ -2190,12 +2367,18 @@ def execute_query_step(config: dict[str, object]) -> dict[str, object]:
 
 def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
-    files = collect_local_files(str(config.get("path") or config.get("sourcePath") or ""))
+    source_path = str(config.get("path") or config.get("sourcePath") or "")
+    files = collect_local_files(source_path)
     results = [import_uploaded_file(uploaded, fields) for uploaded in files]
     return {
         "files": len(results),
+        "sourcePath": source_path,
+        "fileNames": [str(item["fileName"]) for item in results],
+        "tableNames": sorted({str(item["tableName"]) for item in results}),
+        "rowsRead": sum(int(item["rowsRead"]) for item in results),
         "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
         "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
+        "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
     }
 
 
@@ -2218,6 +2401,10 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         )
     status = "成功"
     message = ""
+    completed_steps = 0
+    failed_steps = 0
+    skipped_steps = sum(1 for step in job["steps"] if not step.get("enabled", True))
+    last_error = ""
     for index, step in enumerate(job["steps"], start=1):
         if not step.get("enabled", True):
             continue
@@ -2225,6 +2412,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         step_started = dt.datetime.now()
         step_status = "成功"
         step_message = ""
+        should_stop = False
         with connect_db() as conn:
             conn.execute(
                 "insert into _job_run_steps (id, run_id, step_index, step_name, step_type, started_at, status) values (?, ?, ?, ?, ?, ?, ?)",
@@ -2235,7 +2423,11 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             config = step.get("config") if isinstance(step.get("config"), dict) else {}
             if step_type == "import":
                 result = execute_import_step(config)
-                step_message = f"导入 {result['files']} 个文件，写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行。"
+                step_message = (
+                    f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
+                    f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
+                    f"写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行。"
+                )
             elif step_type == "export":
                 try:
                     result = run_export_job(config)
@@ -2248,8 +2440,10 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 step_message = f"SQL 执行完成，影响/读取 {result['rows']} 行。"
             elif step_type == "job":
                 nested = str(config.get("jobId") or "")
-                run_saved_job(nested, schedule_id, visited.copy())
-                step_message = "子作业执行完成。"
+                nested_result = run_saved_job(nested, schedule_id, visited.copy())
+                if nested_result["status"] != "成功":
+                    raise ValueError(f"子作业执行失败：{nested_result['message']}")
+                step_message = f"子作业执行成功：{nested_result['message']}"
             elif step_type == "sync":
                 raise ValueError("同步模块尚未开放。")
             else:
@@ -2257,9 +2451,12 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         except Exception as exc:
             step_status = "失败"
             step_message = str(exc)
-            if not step.get("continueOnError", False):
-                status = "失败"
-                message = step_message
+            failed_steps += 1
+            status = "失败"
+            last_error = step_message
+            should_stop = not step.get("continueOnError", False)
+        else:
+            completed_steps += 1
         finally:
             ended = dt.datetime.now()
             with connect_db() as conn:
@@ -2267,11 +2464,13 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     "update _job_run_steps set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
                     (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - step_started).total_seconds() * 1000), step_status, step_message, step_id),
                 )
-        if status == "失败":
+        if should_stop:
             break
     ended = dt.datetime.now()
     if status == "成功":
-        message = "作业执行完成。"
+        message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
+    else:
+        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
     with connect_db() as conn:
         conn.execute(
             "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
@@ -2614,6 +2813,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/target-tables":
                 self.handle_target_tables(parsed.query)
                 return
+            if parsed.path == "/api/target-table-details":
+                self.handle_target_table_details(parsed.query)
+                return
             if parsed.path == "/api/table":
                 self.handle_table_preview(parsed.query)
                 return
@@ -2638,6 +2840,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/job-runs":
                 self.handle_job_runs(parsed.query)
                 return
+            if parsed.path == "/api/queries":
+                self.handle_queries()
+                return
             if parsed.path == "/api/export/sources":
                 self.handle_export_sources(parsed.query)
                 return
@@ -2659,6 +2864,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if self.path == "/api/import":
                 self.handle_import()
                 return
+            if self.path == "/api/task-source":
+                self.handle_task_source()
+                return
             if self.path == "/api/connections/test":
                 self.handle_connection_test()
                 return
@@ -2670,6 +2878,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if self.path == "/api/export/run":
                 self.handle_export_run()
+                return
+            if self.path == "/api/export/choose-target":
+                self.handle_export_choose_target()
+                return
+            if self.path == "/api/query/run":
+                self.handle_query_run()
+                return
+            if self.path == "/api/queries":
+                self.handle_query_save()
                 return
             if self.path == "/api/jobs":
                 self.handle_job_save()
@@ -2703,6 +2920,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/schedules":
                 self.handle_schedule_delete(parsed.query)
+                return
+            if parsed.path == "/api/queries":
+                self.handle_query_delete(parsed.query)
                 return
             error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -2797,6 +3017,28 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             },
         )
 
+    def handle_task_source(self) -> None:
+        _, uploaded_files = parse_multipart(self)
+        if not uploaded_files:
+            raise ValueError("请选择要关联到任务的源文件。")
+        source_dir = TASK_SOURCES / uuid.uuid4().hex
+        source_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for uploaded in uploaded_files:
+            target = source_dir / Path(uploaded.filename).name
+            uploaded.path.replace(target)
+            paths.append(str(target.resolve()))
+        source_path = paths[0] if len(paths) == 1 else str(source_dir.resolve())
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sourcePath": source_path,
+                "files": paths,
+                "message": f"已关联 {len(paths)} 个任务源文件。",
+            },
+        )
+
     def handle_tables(self) -> None:
         with connect_db() as conn:
             rows = conn.execute(
@@ -2811,8 +3053,13 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_target_tables(self, query: str) -> None:
         raw = {key: values[-1] for key, values in parse_qs(query).items()}
         fields = {key: str(value) for key, value in raw.items()}
-        sources = export_sources(fields)
-        json_response(self, {"ok": True, "tables": [str(item["name"]) for item in sources if item.get("type") != "VIEW"]})
+        json_response(self, {"ok": True, "tables": target_table_names(fields)})
+
+    def handle_target_table_details(self, query: str) -> None:
+        raw = {key: values[-1] for key, values in parse_qs(query).items()}
+        fields = {key: str(value) for key, value in raw.items()}
+        table_name = fields.pop("name", "")
+        json_response(self, {"ok": True, "table": target_table_details(fields, table_name)})
 
     def handle_table_preview(self, query: str) -> None:
         params = parse_qs(query)
@@ -2890,6 +3137,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_connection_test(self) -> None:
         payload = read_json_body(self)
+        connection_id = str(payload.get("id") or "").strip()
+        if connection_id and not str(payload.get("password") or ""):
+            with connect_db() as conn:
+                saved = conn.execute("select password from _db_connections where id = ?", (connection_id,)).fetchone()
+            if saved:
+                payload["password"] = decode_secret(saved["password"])
         result = test_mysql_connection(payload)
         json_response(
             self,
@@ -3049,6 +3302,49 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                     steps_by_run[step["run_id"]].append(dict(step))
         json_response(self, {"ok": True, "runs": [{**dict(row), "steps": steps_by_run.get(row["id"], [])} for row in runs]})
 
+    def handle_queries(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _saved_queries order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "queries": [saved_query_public(row) for row in rows]})
+
+    def handle_query_run(self) -> None:
+        payload = read_json_body(self)
+        try:
+            result = run_readonly_query(payload)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+        json_response(self, {"ok": True, **result})
+
+    def handle_query_save(self) -> None:
+        payload = read_json_body(self)
+        query_id = str(payload.get("id") or uuid.uuid4().hex)
+        name = str(payload.get("name") or "").strip()
+        sql = str(payload.get("sql") or "").strip()
+        connection_id = str(payload.get("connectionId") or "").strip()
+        if not name:
+            raise ValueError("请填写查询名称。")
+        if not sql:
+            raise ValueError("请输入要保存的 SQL。")
+        now = now_text()
+        with connect_db() as conn:
+            old = conn.execute("select created_at from _saved_queries where id = ?", (query_id,)).fetchone()
+            conn.execute(
+                "insert or replace into _saved_queries (id, name, connection_id, sql_text, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+                (query_id, name, connection_id, sql, old["created_at"] if old else now, now),
+            )
+            conn.commit()
+            row = conn.execute("select * from _saved_queries where id = ?", (query_id,)).fetchone()
+        json_response(self, {"ok": True, "query": saved_query_public(row)})
+
+    def handle_query_delete(self, query: str) -> None:
+        query_id = parse_qs(query).get("id", [""])[0]
+        if not query_id:
+            raise ValueError("缺少查询 ID。")
+        with connect_db() as conn:
+            conn.execute("delete from _saved_queries where id = ?", (query_id,))
+            conn.commit()
+        json_response(self, {"ok": True})
+
     def handle_export_sources(self, query: str) -> None:
         params = parse_qs(query)
         fields = {
@@ -3074,21 +3370,54 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             {
                 "ok": True,
                 "files": result["files"],
-                "downloadUrls": ["/api/export/download?name=" + quote(Path(path).name) for path in result["files"]],
+                "downloadUrls": ["/api/export/download?path=" + quote(str(path)) for path in result["files"]],
                 "rows": result["rows"],
                 "elapsedMs": result["elapsedMs"],
                 "message": f"导出完成：{len(result['files'])} 个文件，{result['rows']} 行。",
             },
         )
 
+    def handle_export_choose_target(self) -> None:
+        payload = read_json_body(self)
+        kind = str(payload.get("kind") or "folder").strip().lower()
+        extension = str(payload.get("extension") or "xlsx").strip().lstrip(".") or "xlsx"
+        suggested_name = str(payload.get("suggestedName") or f"export.{extension}").strip()
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            root.update()
+            if kind == "file":
+                selected = filedialog.asksaveasfilename(
+                    parent=root,
+                    title="选择导出文件",
+                    initialfile=Path(suggested_name).name,
+                    defaultextension=f".{extension}",
+                    filetypes=[("导出文件", f"*.{extension}"), ("所有文件", "*.*")],
+                )
+            else:
+                selected = filedialog.askdirectory(parent=root, title="选择导出文件夹", mustexist=True)
+            root.destroy()
+        except Exception as exc:
+            raise ValueError(f"无法打开本机路径选择窗口：{exc}") from exc
+        json_response(self, {"ok": True, "path": str(Path(selected).resolve()) if selected else ""})
+
     def handle_export_download(self, query: str) -> None:
         params = parse_qs(query)
-        name = Path(params.get("name", [""])[0]).name
-        if not name:
+        raw_path = params.get("path", [""])[0]
+        legacy_name = Path(params.get("name", [""])[0]).name
+        if raw_path:
+            path = Path(raw_path).resolve()
+        elif legacy_name:
+            path = (EXPORTS / legacy_name).resolve()
+        else:
             raise ValueError("缺少文件名。")
-        path = EXPORTS / name
         if not path.exists() or not path.is_file():
             raise ValueError("导出文件不存在。")
+        name = path.name
         ascii_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem, flags=re.ASCII).strip("_") or "export"
         ascii_suffix = re.sub(r"[^A-Za-z0-9.]+", "", path.suffix, flags=re.ASCII)
         ascii_name = f"{ascii_stem}{ascii_suffix}"

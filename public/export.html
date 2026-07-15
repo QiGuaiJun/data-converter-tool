@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>导出功能 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260711_layout_polish" />
+    <link rel="stylesheet" href="/styles.css?v=20260715_hide_task_list_editor" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -59,7 +59,7 @@
             <label class="button">选择文件<input id="sqlFileInput" type="file" accept=".sql,.txt" /></label>
           </div>
           <div class="export-sql-box">
-            <label class="export-query-name">SQL结果名称：<input id="queryName" value="query" placeholder="用于生成文件名或 Sheet 名" /></label>
+            <input id="queryName" type="hidden" value="query" />
             <textarea id="exportSql" class="export-sql" placeholder="SQL 查询语句；多个查询可用分号分隔">select 1 as value</textarea>
           </div>
         </div>
@@ -80,6 +80,13 @@
               <option value="xls" disabled>.xls 后续支持</option>
               <option value="dbf" disabled>.dbf 后续支持</option>
             </select>
+          </div>
+          <div class="export-group">
+            <span></span>
+            <label for="exportFileName">导出文件名称：</label>
+            <input id="exportFileName" placeholder="例如：云购商城销售表" />
+            <span></span>
+            <span class="field-hint">扩展名按上方格式自动添加</span>
           </div>
           <div class="export-group">
             <span></span>
@@ -204,6 +211,6 @@
       </div>
     </div>
 
-    <script src="/export.js?v=20260710_module_tasks"></script>
+    <script src="/export.js?v=20260715_hide_task_list_editor"></script>
   </body>
 </html>
