@@ -2867,6 +2867,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if self.path == "/api/task-source":
                 self.handle_task_source()
                 return
+            if self.path == "/api/import/choose-source":
+                self.handle_import_choose_source()
+                return
             if self.path == "/api/connections/test":
                 self.handle_connection_test()
                 return
@@ -3038,6 +3041,33 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 "message": f"已关联 {len(paths)} 个任务源文件。",
             },
         )
+
+    def handle_import_choose_source(self) -> None:
+        payload = read_json_body(self)
+        kind = str(payload.get("kind") or "file").strip().lower()
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            root.update()
+            if kind == "folder":
+                selected = filedialog.askdirectory(parent=root, title="选择定时导入源文件夹", mustexist=True)
+            else:
+                selected = filedialog.askopenfilename(
+                    parent=root,
+                    title="选择定时导入源文件",
+                    filetypes=[("数据文件", "*.csv *.txt *.xlsx *.xlsm *.xls *.json *.xml *.dbf"), ("所有文件", "*.*")],
+                )
+            root.destroy()
+        except Exception as exc:
+            raise ValueError(f"无法打开本机源文件选择窗口：{exc}") from exc
+        path = str(Path(selected).resolve()) if selected else ""
+        if path and not Path(path).exists():
+            raise ValueError("选择的源文件不存在。")
+        json_response(self, {"ok": True, "path": path})
 
     def handle_tables(self) -> None:
         with connect_db() as conn:
