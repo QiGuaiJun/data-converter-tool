@@ -1,5 +1,6 @@
 const fileInput = document.querySelector("#fileInput");
 const dirInput = document.querySelector("#dirInput");
+const linkSourceFile = document.querySelector("#linkSourceFile");
 const fileList = document.querySelector("#fileList");
 const tableName = document.querySelector("#tableName");
 const targetTableOptions = document.querySelector("#targetTableOptions");
@@ -133,6 +134,25 @@ async function uploadTaskSource(files) {
   const data = new FormData();
   for (const file of files) data.append("file", file, file.webkitRelativePath || file.name);
   return requestJson("/api/task-source", { method: "POST", body: data });
+}
+
+async function chooseOriginalSourceFile() {
+  const result = await requestJson("/api/import/choose-source", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind: "file" }),
+  });
+  if (!result.path) return;
+  selectedFiles = [];
+  selectedTaskSourcePath = result.path;
+  const taskPath = document.querySelector("#importTaskPath");
+  if (taskPath) {
+    taskPath.value = result.path;
+    taskPath.classList.remove("invalid-path");
+    taskPath.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+  restoreTaskSource(result.path);
+  setStatus("已关联本机原文件；定时任务会直接读取该文件的最新内容。", "success");
 }
 
 function buildFormData(includeAllFiles = true) {
@@ -948,6 +968,7 @@ document.querySelectorAll(".conn-tab").forEach((tab) => {
 
 fileInput.addEventListener("change", () => setFiles(fileInput.files).catch((error) => setStatus(`文件关联失败：${error.message}`, "error")));
 dirInput.addEventListener("change", () => setFiles(dirInput.files).catch((error) => setStatus(`文件关联失败：${error.message}`, "error")));
+linkSourceFile?.addEventListener("click", () => chooseOriginalSourceFile().catch((error) => setStatus(`关联原文件失败：${error.message}`, "error")));
 tableName.addEventListener("input", useManualTargetTable);
 tableName.addEventListener("change", useManualTargetTable);
 document.querySelector('input[name="targetMode"][value="manual"]').addEventListener("click", () => {
