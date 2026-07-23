@@ -1122,6 +1122,17 @@ def target_existing_columns(conn, table_name: str, fields: dict[str, str]) -> li
     return existing_columns(conn, table_name)
 
 
+def target_row_count(conn, table_name: str, fields: dict[str, str]) -> int:
+    table = db_quote(table_name, fields)
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(f"select count(*) from {table}")
+            row = cursor.fetchone()
+    else:
+        row = conn.execute(f"select count(*) from {table}").fetchone()
+    return int(row[0] if row else 0)
+
+
 def infer_column_types(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> dict[str, str]:
     db_type = target_db_type(fields)
     text_type = "text" if db_type == "sqlite" else "text"
@@ -2368,8 +2379,31 @@ def execute_query_step(config: dict[str, object]) -> dict[str, object]:
 def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
     source_path = str(config.get("path") or config.get("sourcePath") or "")
+    source = Path(source_path).resolve()
+    managed_sources = TASK_SOURCES.resolve()
+    if source == managed_sources or managed_sources in source.parents:
+        raise ValueError("定时导入不能读取软件副本。请在导入任务中点击“关联本机原文件”，选择电脑中的真实源文件后重新保存任务。")
     files = collect_local_files(source_path)
+    pending_before_sql = str(fields.get("beforeAllSql") or "").strip()
+    pending_after_sql = str(fields.get("afterAllSql") or "").strip()
+    sql_status = "无待执行 SQL"
+    if pending_before_sql:
+        conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(conn, pending_before_sql, "定时导入执行前 SQL", fields)
+            conn.commit()
+            sql_status = "执行前 SQL：已执行"
+        finally:
+            conn.close()
     results = [import_uploaded_file(uploaded, fields) for uploaded in files]
+    if pending_after_sql:
+        conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(conn, pending_after_sql, "定时导入执行后 SQL", fields)
+            conn.commit()
+            sql_status = f"{sql_status}；执行后 SQL：已执行"
+        finally:
+            conn.close()
     return {
         "files": len(results),
         "sourcePath": source_path,
@@ -2379,6 +2413,8 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
         "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
         "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
         "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
+        "verifiedRows": {str(item["tableName"]): int(item.get("verifiedRows", 0)) for item in results},
+        "sqlStatus": sql_status,
     }
 
 
@@ -2426,7 +2462,8 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 step_message = (
                     f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
                     f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
-                    f"写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行。"
+                    f"成功写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行；"
+                    f"数据库校验行数：{result['verifiedRows']}；{result['sqlStatus']}。"
                 )
             elif step_type == "export":
                 try:
@@ -2597,6 +2634,9 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         raise ValueError("导入模式只能是追加、更新、覆盖或重建。")
 
     conn = connect_target_db(fields)
+    written = 0
+    updated = 0
+    verified_rows = 0
     try:
         duplicate_mode = fields.get("duplicateTableMode", "same")
         if target_table_exists(conn, table_name, fields) and mode == "append" and duplicate_mode == "skip":
@@ -2626,6 +2666,7 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         existing = target_existing_columns(conn, table_name, fields)
         if any(column not in existing for column in columns):
             raise ValueError("目标表字段与当前导入字段不一致。")
+        rows_before = target_row_count(conn, table_name, fields)
 
         if mode == "overwrite" and resume_offset == 0:
             sql = f"delete from {db_quote(table_name, fields)}"
@@ -2662,13 +2703,51 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         target_execute_sql_batch(conn, fields.get("afterEachSql", ""), "每次导入成功后 SQL", fields)
         if target_db_type(fields) != "mysql" or fields.get("commitMode") != "auto":
             conn.commit()
+        verified_rows = target_row_count(conn, table_name, fields)
+        if mode == "overwrite" and resume_offset == 0:
+            expected_rows = written
+        elif mode == "rebuild" and resume_offset == 0:
+            expected_rows = written
+        elif mode == "append":
+            expected_rows = rows_before + written
+        else:
+            expected_rows = verified_rows
+        if verified_rows != expected_rows:
+            raise ValueError(
+                f"导入后数据库行数校验失败：目标表当前 {verified_rows} 行，预期 {expected_rows} 行。任务已标记为失败。"
+            )
         if not parse_bool(fields, "disableLog", False):
             with connect_db() as log_conn:
-                log_import(log_conn, uploaded.filename, table_name, mode, len(tabular.rows), written, updated, skipped, "成功", "导入完成")
+                log_import(
+                    log_conn,
+                    uploaded.filename,
+                    table_name,
+                    mode,
+                    len(tabular.rows),
+                    written,
+                    updated,
+                    skipped,
+                    "成功",
+                    f"导入完成；源文件 {len(tabular.rows)} 行，成功写入 {written} 行，数据库校验 {verified_rows} 行",
+                )
         if parse_bool(fields, "resumeImport", False):
             clear_checkpoint(cp_key)
-    except Exception:
+    except Exception as exc:
         conn.rollback()
+        if not parse_bool(fields, "disableLog", False):
+            with connect_db() as log_conn:
+                log_import(
+                    log_conn,
+                    uploaded.filename,
+                    table_name,
+                    mode,
+                    len(tabular.rows),
+                    written,
+                    updated,
+                    skipped,
+                    "失败",
+                    f"导入失败：{exc}",
+                )
         raise
     finally:
         conn.close()
@@ -2684,6 +2763,7 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         "rowsWritten": written,
         "rowsUpdated": updated,
         "rowsSkipped": skipped,
+        "verifiedRows": verified_rows,
         "message": "导入完成",
     }
 

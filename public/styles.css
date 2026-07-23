@@ -3705,6 +3705,57 @@ th {
   }
 }
 
+/* User-selected application wallpaper. Content panels remain translucent for readability. */
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(rgba(245, 249, 255, 0.04), rgba(245, 249, 255, 0.10)),
+    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
+}
+
+.desktop-shell {
+  background: transparent;
+}
+
+.app-ribbon {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.app-sidebar {
+  background: rgba(249, 252, 255, 0.60);
+  backdrop-filter: blur(4px);
+}
+
+.app-workspace {
+  background: rgba(244, 248, 255, 0.03);
+}
+
+.module-task-panel,
+.left-pane,
+.right-pane,
+.export-left,
+.export-right,
+.job-toolbar,
+.job-panel,
+.connection-list-panel,
+.connection-editor-panel,
+.module-header,
+.module-card,
+.query-toolbar,
+.query-saved-panel,
+.query-editor-panel,
+.query-result-panel,
+.table-toolbar,
+.table-list-panel,
+.table-detail-panel {
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.module-task-toolbar,
+.bottom-dock {
+  background: rgba(249, 252, 255, 0.58);
+}
+
 .dialog-card {
   width: min(1120px, calc(100vw - 48px));
 }
