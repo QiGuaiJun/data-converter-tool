@@ -3022,6 +3022,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_preview(self) -> None:
         fields, uploaded_files = parse_multipart(self)
+        if not uploaded_files and fields.get("sourcePath", "").strip():
+            uploaded_files = collect_local_files(fields["sourcePath"])
         if not uploaded_files:
             raise ValueError("请选择要预览的文件。")
         uploaded = uploaded_files[0]
@@ -3042,6 +3044,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_import(self) -> None:
         fields, uploaded_files = parse_multipart(self)
+        if not uploaded_files and fields.get("sourcePath", "").strip():
+            uploaded_files = collect_local_files(fields["sourcePath"])
         if not uploaded_files:
             raise ValueError("请选择要导入的文件。")
 

@@ -156,7 +156,8 @@ async function chooseOriginalSourceFile() {
 }
 
 function buildFormData(includeAllFiles = true) {
-  if (includeAllFiles && !selectedFiles.length) {
+  const savedSourcePath = selectedTaskSourcePath || document.querySelector("#importTaskPath")?.value?.trim() || "";
+  if (includeAllFiles && !selectedFiles.length && !savedSourcePath) {
     throw new Error("请先选择文件。");
   }
   const data = new FormData();
@@ -164,6 +165,9 @@ function buildFormData(includeAllFiles = true) {
     for (const file of includeAllFiles ? selectedFiles : [selectedFiles[0]]) {
       data.append("file", file);
     }
+  }
+  if (!selectedFiles.length && savedSourcePath) {
+    data.append("sourcePath", savedSourcePath);
   }
 
   data.append("tableName", radioValue("targetMode") === "manual" ? tableName.value : "");
