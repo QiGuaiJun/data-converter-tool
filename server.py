@@ -3127,31 +3127,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         )
 
     def handle_import_choose_source(self) -> None:
-        payload = read_json_body(self)
-        kind = str(payload.get("kind") or "file").strip().lower()
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
-            root.update()
-            if kind == "folder":
-                selected = filedialog.askdirectory(parent=root, title="选择定时导入源文件夹", mustexist=True)
-            else:
-                selected = filedialog.askopenfilename(
-                    parent=root,
-                    title="选择定时导入源文件",
-                    filetypes=[("数据文件", "*.csv *.txt *.xlsx *.xlsm *.xls *.json *.xml *.dbf"), ("所有文件", "*.*")],
-                )
-            root.destroy()
-        except Exception as exc:
-            raise ValueError(f"无法打开本机源文件选择窗口：{exc}") from exc
-        path = str(Path(selected).resolve()) if selected else ""
-        if path and not Path(path).exists():
-            raise ValueError("选择的源文件不存在。")
-        json_response(self, {"ok": True, "path": path})
+        raise ValueError("本机路径选择请通过页面按钮在浏览器中完成。")
 
     def handle_tables(self) -> None:
         with connect_db() as conn:
@@ -3492,32 +3468,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         )
 
     def handle_export_choose_target(self) -> None:
-        payload = read_json_body(self)
-        kind = str(payload.get("kind") or "folder").strip().lower()
-        extension = str(payload.get("extension") or "xlsx").strip().lstrip(".") or "xlsx"
-        suggested_name = str(payload.get("suggestedName") or f"export.{extension}").strip()
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-
-            root = tk.Tk()
-            root.withdraw()
-            root.attributes("-topmost", True)
-            root.update()
-            if kind == "file":
-                selected = filedialog.asksaveasfilename(
-                    parent=root,
-                    title="选择导出文件",
-                    initialfile=Path(suggested_name).name,
-                    defaultextension=f".{extension}",
-                    filetypes=[("导出文件", f"*.{extension}"), ("所有文件", "*.*")],
-                )
-            else:
-                selected = filedialog.askdirectory(parent=root, title="选择导出文件夹", mustexist=True)
-            root.destroy()
-        except Exception as exc:
-            raise ValueError(f"无法打开本机路径选择窗口：{exc}") from exc
-        json_response(self, {"ok": True, "path": str(Path(selected).resolve()) if selected else ""})
+        raise ValueError("本机路径选择请通过页面按钮在浏览器中完成（不支持浏览器选择时将改为下载文件）。")
 
     def handle_export_download(self, query: str) -> None:
         params = parse_qs(query)

@@ -21,6 +21,13 @@ let exportFileHandle = null;
 let exportTaskJobs = [];
 let selectedExportTaskId = "";
 let exportEditorVisible = false;
+// 浏览器不支持 File System Access API（showDirectoryPicker/showSaveFilePicker）时切换为“仅下载”模式
+let exportFallbackToDownload = false;
+// 用户用浏览器选择文件夹/文件后，输入框只显示 handle.name（沙箱不暴露绝对路径）。
+// 服务器端仍需要一个可写的相对/绝对路径，因此把选择前的服务器路径暂存到这里，collectPayload 用它，
+// 避免把“已选择文件夹：xxx”这类展示文本当作服务器目标路径发送。
+let exportFolderServerValue = "";
+let outputNameServerValue = "";
 
 function $(selector) {
   return document.querySelector(selector);
@@ -83,6 +90,9 @@ function resetExportEditor() {
   exportResults.textContent = "暂无导出文件";
   exportDirectoryHandle = null;
   exportFileHandle = null;
+  exportFallbackToDownload = false;
+  exportFolderServerValue = "";
+  outputNameServerValue = "";
 }
 
 function startNewExportTask() {
@@ -220,9 +230,9 @@ function collectPayload() {
     queryName: ($("#queryName")?.value || "query").trim() || "query",
     sourceMode,
     extension: $("#exportExtension").value,
-    exportFolder: $("#exportFolder").value,
+    exportFolder: $("#exportFolder").value.startsWith("已选择文件夹：") ? exportFolderServerValue : $("#exportFolder").value,
     exportFileName: $("#exportFileName").value.trim(),
-    outputName: $("#outputName").value,
+    outputName: $("#outputName").value.startsWith("已选择文件：") ? outputNameServerValue : $("#outputName").value,
     sheetName: $("#sheetName").value,
     headerMode: radioValue("headerMode"),
     exportMode: radioValue("exportMode"),
@@ -270,38 +280,94 @@ function renderTable(container, columns, rows) {
   container.innerHTML = `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
 }
 
-async function chooseFolder() {
-  const result = await requestJson("/api/export/choose-target", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "folder" }),
-  });
-  if (!result.path) return;
-  exportDirectoryHandle = null;
-  exportFileHandle = null;
-  document.querySelector('input[name="exportTargetMode"][value="folder"]').checked = true;
-  $("#exportFolder").value = result.path;
-  setStatus(`已选择导出文件夹：${result.path}`, "success");
+// 根据所选扩展名构造 showSaveFilePicker 的 accept 映射
+function exportFileTypesForExtension(extension) {
+  const acceptByExtension = {
+    xlsx: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] },
+    xlsm: { "application/vnd.ms-excel.sheet.macroEnabled.12": [".xlsm"] },
+    xls: { "application/vnd.ms-excel": [".xls"] },
+    csv: { "text/csv": [".csv"] },
+    txt: { "text/plain": [".txt"] },
+    json: { "application/json": [".json"] },
+    xml: { "application/xml": [".xml"] },
+    dbf: { "application/dbf": [".dbf"] },
+  };
+  return acceptByExtension[extension] || { "application/octet-stream": [`.${extension}`] };
 }
 
-async function chooseFile() {
-  const extension = $("#exportExtension").value || "xlsx";
-  const suggestedName = ($("#outputName").value || "export").replace(/\.[^.]+$/, "") + `.${extension}`;
-  const result = await requestJson("/api/export/choose-target", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "file", extension, suggestedName }),
-  });
-  if (!result.path) return;
-  exportDirectoryHandle = null;
+// 浏览器原生选择导出文件夹。文件夹选择只在浏览器本地生效（导出后由 copyExportedFiles 复制过去），
+// 不再调用后端 /api/export/choose-target（后端已改为不支持并返回错误提示）。
+async function chooseFolder() {
+  if (!window.showDirectoryPicker) {
+    exportFallbackToDownload = true;
+    $("#exportFolder").placeholder = "您的浏览器不支持文件夹直选，导出后将通过浏览器下载文件";
+    setStatus("您的浏览器不支持文件夹直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ id: "export-folder", mode: "readwrite" });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      setStatus("已取消选择。", "info");
+      return;
+    }
+    setStatus(`选择文件夹失败：${error.message}`, "error");
+    return;
+  }
+  exportDirectoryHandle = handle;
   exportFileHandle = null;
+  exportFallbackToDownload = false;
+  // 浏览器安全沙箱不暴露绝对路径，只显示 handle.name；服务器端路径暂存起来供 collectPayload 使用
+  if (!exportFolderServerValue) exportFolderServerValue = $("#exportFolder").value.trim() || "exports";
+  $("#exportFolder").value = `已选择文件夹：${handle.name}`;
+  $("#exportFolder").placeholder = "导出后复制到所选文件夹";
+  document.querySelector('input[name="exportTargetMode"][value="folder"]').checked = true;
+  setStatus(`已选择导出文件夹：${handle.name}（导出后复制到该文件夹）`, "success");
+}
+
+// 浏览器原生选择导出文件（保存对话框）。
+async function chooseFile() {
+  if (!window.showSaveFilePicker) {
+    exportFallbackToDownload = true;
+    $("#outputName").placeholder = "您的浏览器不支持文件直选，导出后将通过浏览器下载文件";
+    setStatus("您的浏览器不支持文件直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
+    return;
+  }
+  const extension = ($("#exportExtension").value || "xlsx").replace(/^\./, "");
+  let rawName = ($("#outputName").value || "export").replace(/[\\/]/g, "/").split("/").pop() || "export";
+  rawName = rawName.replace(/^已选择文件：/, "");
+  const suggestedName = rawName.replace(/\.[^.]+$/, "") + `.${extension}`;
+  let handle;
+  try {
+    handle = await window.showSaveFilePicker({
+      suggestedName,
+      types: [{ description: "导出文件", accept: exportFileTypesForExtension(extension) }],
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      setStatus("已取消选择。", "info");
+      return;
+    }
+    setStatus(`选择文件失败：${error.message}`, "error");
+    return;
+  }
+  exportFileHandle = handle;
+  exportDirectoryHandle = null;
+  exportFallbackToDownload = false;
+  if (!outputNameServerValue) outputNameServerValue = $("#outputName").value.trim() || "";
+  $("#outputName").value = `已选择文件：${handle.name}`;
+  $("#outputName").placeholder = "导出后写入该文件";
   document.querySelector('input[name="exportTargetMode"][value="file"]').checked = true;
-  $("#outputName").value = result.path;
-  setStatus(`已选择目标文件：${result.path}`, "success");
+  setStatus(`已选择目标文件：${handle.name}（导出后写入该文件）`, "success");
 }
 
 async function copyExportedFiles(result) {
   if (!result.files?.length) return { copied: [], errors: [] };
+  // 浏览器不支持 File System Access API 时，不尝试复制到本地目录，仅保留 downloadUrls 下载链接。
+  if (exportFallbackToDownload) {
+    return { copied: [], errors: [] };
+  }
   const copied = [];
   const errors = [];
   const targetMode = radioValue("exportTargetMode");

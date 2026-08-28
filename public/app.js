@@ -137,22 +137,56 @@ async function uploadTaskSource(files) {
 }
 
 async function chooseOriginalSourceFile() {
-  const result = await requestJson("/api/import/choose-source", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ kind: "file" }),
-  });
-  if (!result.path) return;
-  selectedFiles = [];
-  selectedTaskSourcePath = result.path;
-  const taskPath = document.querySelector("#importTaskPath");
-  if (taskPath) {
-    taskPath.value = result.path;
-    taskPath.classList.remove("invalid-path");
-    taskPath.dispatchEvent(new Event("change", { bubbles: true }));
+  // 浏览器原生选择源文件（不再调用后端 /api/import/choose-source，后端已改为不支持并返回错误提示）。
+  // 定时任务运行在服务器端，浏览器拿不到可供服务器读取的本机绝对路径，
+  // 因此选择后立即通过 /api/task-source 上传到服务器，定时任务读取服务器端保存的副本。
+  if (!window.showOpenFilePicker) {
+    setStatus("您的浏览器不支持文件直选，请使用上方“选择文件”按钮上传源文件，定时任务将读取服务器端保存的副本。", "info");
+    return;
   }
-  restoreTaskSource(result.path);
-  setStatus("已关联本机原文件；定时任务会直接读取该文件的最新内容。", "success");
+  let handle;
+  try {
+    [handle] = await window.showOpenFilePicker({
+      multiple: false,
+      types: [
+        {
+          description: "数据文件",
+          accept: {
+            "text/csv": [".csv", ".txt"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx", ".xlsm"],
+            "application/vnd.ms-excel": [".xls"],
+            "application/json": [".json"],
+            "application/xml": [".xml"],
+            "application/dbf": [".dbf"],
+          },
+        },
+      ],
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      setStatus("已取消选择源文件。", "info");
+      return;
+    }
+    setStatus(`选择源文件失败：${error.message}`, "error");
+    return;
+  }
+  const file = await handle.getFile();
+  setStatus("正在上传并关联任务源文件...");
+  try {
+    const source = await uploadTaskSource([file]);
+    selectedFiles = [];
+    selectedTaskSourcePath = source.sourcePath;
+    const taskPath = document.querySelector("#importTaskPath");
+    if (taskPath) {
+      taskPath.value = source.sourcePath;
+      taskPath.classList.remove("invalid-path");
+      taskPath.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    restoreTaskSource(source.sourcePath);
+    setStatus(`已关联本机原文件：${file.name}（已上传到服务器，定时任务将读取该文件的最新内容）`, "success");
+  } catch (error) {
+    setStatus(`上传源文件失败：${error.message}`, "error");
+  }
 }
 
 function buildFormData(includeAllFiles = true) {
