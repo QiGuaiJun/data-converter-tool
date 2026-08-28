@@ -317,9 +317,8 @@ async function saveImportTask() {
   const config = formDataToImportConfig(data);
   const selectedMode = radioValue("importMode") || existingConfig.importMode || "append";
   config.importMode = selectedMode;
-  const defaults = selectedImportTaskDefaults(existingJob, existingConfig);
-  const taskName = (document.querySelector("#importTaskName")?.value || defaults.name).trim();
-  const path = (document.querySelector("#importTaskPath")?.value || defaults.path).trim();
+  const taskName = (document.querySelector("#importTaskName")?.value || "").trim();
+  const path = (document.querySelector("#importTaskPath")?.value || "").trim();
   if (!taskName) throw new Error("请填写任务名称。");
   if (!path) throw new Error("请在任务路径中填写后台定时执行时可访问的本机文件或目录路径。");
   if (!isAbsoluteTaskPath(path)) {
@@ -397,7 +396,14 @@ function ensureImportTaskPanel() {
       <div id="importTaskList" class="module-task-list empty">暂无导入任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
     document.querySelector("#openImportTask").addEventListener("click", openSelectedImportTask);
-    document.querySelector("#newImportTask").addEventListener("click", startNewImportTask);
+    document.querySelector("#newImportTask").addEventListener("click", () => {
+      const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
+      if (hasSelection) {
+        saveImportTask().catch((error) => setStatus(error.message, "error"));
+      } else {
+        startNewImportTask();
+      }
+    });
     document.querySelector("#deleteImportTask").addEventListener("click", deleteSelectedImportTask);
   }
 
