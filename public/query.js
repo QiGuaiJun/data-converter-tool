@@ -102,11 +102,12 @@ async function saveQuery() {
 }
 
 async function deleteQuery() {
-  if (!selectedQueryId || !confirm("确定删除当前保存的查询吗？")) return;
-  await requestJson(`/api/queries?id=${encodeURIComponent(selectedQueryId)}`, { method: "DELETE" });
+  if (!selectedQueryId || !confirm("确定删除当前保存的查询吗？\n若该查询已被定时任务引用，关联作业会一并删除。")) return;
+  const result = await requestJson(`/api/queries?id=${encodeURIComponent(selectedQueryId)}`, { method: "DELETE" });
   selectedQueryId = "";
   await loadSavedQueries();
-  setStatus("查询已删除", "success");
+  const note = result?.removedJobs ? `（已联动删除 ${result.removedJobs} 个定时作业）` : "";
+  setStatus(`查询已删除${note}`, "success");
 }
 
 function newQuery() {

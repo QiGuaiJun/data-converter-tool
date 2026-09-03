@@ -2087,6 +2087,103 @@ def saved_query_public(row: sqlite3.Row) -> dict[str, object]:
     }
 
 
+QUERY_BACKING_JOB_PREFIX = "查询："
+"""Job name prefix for jobs that act as schedule-time proxies for a saved query.
+
+Stored in _jobs so that the schedule module can pick them up via the existing
+/api/jobs + jobPrimaryType === 'query' path. step.config.queryId is the
+authoritative link to _saved_queries; the SQL is loaded at execution time so
+that editing the saved query automatically reflects in any scheduled job.
+"""
+
+
+def _sync_query_to_job(conn: sqlite3.Connection, query_id: str, query_name: str, connection_id: str) -> None:
+    """Upsert a proxy job into _jobs so the saved query shows up in the schedule UI.
+
+    The job name is deterministic (``f"{QUERY_BACKING_JOB_PREFIX}{query_name}"``) so
+    re-saving the same query updates the same job instead of creating a duplicate.
+    The job's single query step carries config.queryId + config.connectionId; the
+    SQL itself is *not* duplicated into steps_json (executor pulls from
+    _saved_queries at run time, giving a single source of truth).
+
+    Resave semantics for an existing job with the same name:
+      * If a step with matching queryId exists → refresh its config in place.
+      * Otherwise (same name, new queryId, e.g. user saved a fresh query under a
+        name that already had a backing job) → treat as overwrite: drop the
+        stale query step and append the new one, so the job never accumulates
+        dead references.
+    """
+    job_name = f"{QUERY_BACKING_JOB_PREFIX}{query_name}"
+    step = {
+        "id": uuid.uuid4().hex,
+        "type": "query",
+        "name": "执行查询",
+        "enabled": True,
+        "continueOnError": False,
+        "config": {
+            "queryId": query_id,
+            "connectionId": connection_id,
+            "targetDbType": "mysql",
+        },
+    }
+    now = now_text()
+    existing = conn.execute("select id, steps_json, created_at from _jobs where name = ?", (job_name,)).fetchone()
+    if existing:
+        job_id = existing["id"]
+        try:
+            steps = json.loads(existing["steps_json"] or "[]")
+        except (TypeError, ValueError):
+            steps = []
+        target = next(
+            (item for item in steps if item.get("type") == "query" and (item.get("config") or {}).get("queryId") == query_id),
+            None,
+        )
+        if target is not None:
+            # Same queryId being re-saved: refresh config, keep the step id stable.
+            target["config"] = dict(step["config"])
+            target.setdefault("name", step["name"])
+            target.setdefault("enabled", True)
+            target.setdefault("continueOnError", False)
+        else:
+            # Name collides with an existing proxy job but no matching step:
+            # the previous query must have been deleted or this is a deliberate
+            # overwrite under the same name. Replace any existing query step to
+            # avoid leaving dangling references.
+            steps = [item for item in steps if not (item.get("type") == "query" and (item.get("config") or {}).get("queryId"))]
+            steps.append(step)
+        conn.execute(
+            "update _jobs set steps_json = ?, updated_at = ? where id = ?",
+            (json.dumps(steps, ensure_ascii=False), now, job_id),
+        )
+    else:
+        conn.execute(
+            "insert into _jobs (id, name, enabled, steps_json, created_at, updated_at) values (?, ?, 1, ?, ?, ?)",
+            (uuid.uuid4().hex, job_name, json.dumps([step], ensure_ascii=False), now, now),
+        )
+
+
+def _delete_jobs_for_query(conn: sqlite3.Connection, query_id: str) -> int:
+    """Remove proxy jobs whose only/binding reference is to this queryId.
+
+    Returns the number of jobs deleted. A job is considered to "belong" to a query
+    when one of its query-type steps has config.queryId == query_id.
+    """
+    deleted = 0
+    rows = conn.execute("select id, steps_json from _jobs").fetchall()
+    for row in rows:
+        try:
+            steps = json.loads(row["steps_json"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        if any(
+            step.get("type") == "query" and (step.get("config") or {}).get("queryId") == query_id
+            for step in steps
+        ):
+            conn.execute("delete from _jobs where id = ?", (row["id"],))
+            deleted += 1
+    return deleted
+
+
 def app_now() -> dt.datetime:
     timezone_name = os.environ.get("APP_TIMEZONE", "Asia/Shanghai")
     try:
@@ -2355,7 +2452,25 @@ def collect_local_files(path_text: str) -> list[UploadedFile]:
 
 def execute_query_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
+    query_id = str(config.get("queryId") or "").strip()
     sql = str(config.get("sql") or "").strip()
+    # When the step carries a queryId, treat _saved_queries as the single source
+    # of truth: pull the latest SQL at execution time so editing a saved query
+    # automatically flows into scheduled runs. Falls back to config.sql when no
+    # queryId is set (legacy jobs.html-created query steps with inline SQL).
+    if query_id:
+        with connect_db() as conn:
+            row = conn.execute(
+                "select sql_text, connection_id from _saved_queries where id = ?",
+                (query_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError(f"查询任务不存在或已被删除（queryId={query_id}）。请在「查询」页面重新保存，或在「作业」中重新配置查询步骤。")
+        sql = str(row["sql_text"] or "").strip()
+        if not sql:
+            raise ValueError("查询 SQL 不能为空。")
+        if not fields.get("connectionId") and row["connection_id"]:
+            fields["connectionId"] = str(row["connection_id"])
     if not sql:
         raise ValueError("查询 SQL 不能为空。")
     conn = connect_target_db(fields)
@@ -3422,6 +3537,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 "insert or replace into _saved_queries (id, name, connection_id, sql_text, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
                 (query_id, name, connection_id, sql, old["created_at"] if old else now, now),
             )
+            _sync_query_to_job(conn, query_id, name, connection_id)
             conn.commit()
             row = conn.execute("select * from _saved_queries where id = ?", (query_id,)).fetchone()
         json_response(self, {"ok": True, "query": saved_query_public(row)})
@@ -3432,8 +3548,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             raise ValueError("缺少查询 ID。")
         with connect_db() as conn:
             conn.execute("delete from _saved_queries where id = ?", (query_id,))
+            removed_jobs = _delete_jobs_for_query(conn, query_id)
             conn.commit()
-        json_response(self, {"ok": True})
+        json_response(self, {"ok": True, "removedJobs": removed_jobs})
 
     def handle_export_sources(self, query: str) -> None:
         params = parse_qs(query)
