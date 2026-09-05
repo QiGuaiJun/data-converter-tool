@@ -477,9 +477,12 @@ async function runExport() {
 async function saveExportTask() {
   const existingJob = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
   const existingStep = existingJob ? exportTaskStep(existingJob) : null;
+  const taskName = ($("#exportTaskName")?.value || "").trim();
+  if (!taskName) {
+    setStatus("请填写任务名称。", "error");
+    return null;
+  }
   const config = collectPayload();
-  const defaultName = existingJob?.name || $("#exportFileName").value || $("#outputName").value || "导出任务";
-  const taskName = defaultName.trim() || "导出任务";
   const payload = {
     id: existingJob?.id,
     name: taskName,
@@ -667,6 +670,8 @@ async function openSelectedExportTask() {
   const step = exportTaskStep(job);
   resetExportEditor();
   setExportEditorVisible(true);
+  const nameInput = document.querySelector("#exportTaskName");
+  if (nameInput) nameInput.value = job.name || "";
   await applyExportTaskConfig(step.config || {});
   setStatus(`已打开导出任务：${job.name}`, "success");
 }

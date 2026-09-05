@@ -67,6 +67,13 @@
 
         <section class="export-basic">
           <div class="export-group">
+            <strong>任务名称：</strong>
+            <label for="exportTaskName">保存导出任务时使用：</label>
+            <input id="exportTaskName" placeholder="例如：云购商城销售数据导出" />
+            <span></span>
+            <span class="field-hint">点击「保存」前请先填写；留空不能保存</span>
+          </div>
+          <div class="export-group">
             <strong>目标Excel：</strong>
             <label><input type="radio" name="exportTargetMode" value="folder" checked /> 导出到指定文件夹：</label>
             <input id="exportFolder" value="exports" />
@@ -211,6 +218,6 @@
       </div>
     </div>
 
-    <script src="/export.js?v=20260715_hide_task_list_editor"></script>
+    <script src="/export.js?v=20260905_export_task_name"></script>
   </body>
 </html>
