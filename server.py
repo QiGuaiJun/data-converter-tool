@@ -1133,6 +1133,53 @@ def target_row_count(conn, table_name: str, fields: dict[str, str]) -> int:
     return int(row[0] if row else 0)
 
 
+DATE_TEXT_PATTERN = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?")
+DATE_PARSE_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%d",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%Y/%m/%d",
+)
+
+
+def parse_date_text(value: str) -> dt.datetime | None:
+    text = value.strip()
+    if len(text) < 8 or not DATE_TEXT_PATTERN.fullmatch(text):
+        return None
+    normalized = text.replace("T", " ")
+    for fmt in DATE_PARSE_FORMATS:
+        try:
+            return dt.datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def convert_date_columns(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> list[list[object]]:
+    """目标为 MySQL 且开启类型自动识别时，把整列均为日期形态的文本还原为 date/datetime 对象，
+    使建表类型与入库值都是真正的日期类型，而不是 text 字符串。"""
+    if target_db_type(fields) == "sqlite" or not rows or not columns:
+        return rows
+    if fields.get("typeMode", "auto") == "text":
+        return rows
+    converted = [list(row) for row in rows]
+    for index in range(len(columns)):
+        col_values = [row[index] for row in converted if index < len(row) and row[index] not in (None, "")]
+        if not col_values:
+            continue
+        parsed = [parse_date_text(value) if isinstance(value, str) else None for value in col_values]
+        if any(item is None for item in parsed):
+            continue
+        has_time = any(item.hour or item.minute or item.second for item in parsed)
+        for row in converted:
+            if index < len(row) and row[index] not in (None, ""):
+                value = parse_date_text(row[index])
+                row[index] = value if has_time else value.date()
+    return converted
+
+
 def infer_column_types(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> dict[str, str]:
     db_type = target_db_type(fields)
     text_type = "text" if db_type == "sqlite" else "text"
@@ -1143,7 +1190,14 @@ def infer_column_types(columns: list[str], rows: list[list[object]], fields: dic
     types: dict[str, str] = {}
     for index, column in enumerate(columns):
         values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
-        if values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
+        if values and all(isinstance(value, dt.date) for value in values):
+            if db_type == "sqlite":
+                types[column] = text_type
+            elif any(isinstance(value, dt.datetime) for value in values):
+                types[column] = "datetime"
+            else:
+                types[column] = "date"
+        elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
             types[column] = int_type
         elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)", str(value)) for value in values):
             types[column] = real_type
@@ -2743,6 +2797,7 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
 
     tabular = read_tabular_file(uploaded.path, fields)
     columns, rows, match_keys, skipped = build_target_data(tabular, fields, uploaded.filename)
+    rows = convert_date_columns(columns, rows, fields)
     table_name = normalize_target_name(uploaded, tabular, fields)
     mode = fields.get("importMode", "append")
     if mode not in {"append", "update", "overwrite", "rebuild"}:
