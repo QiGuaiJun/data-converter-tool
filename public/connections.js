@@ -57,7 +57,7 @@ function resetForm() {
   form.reset();
   $("#connId").value = "";
   $("#connDbType").value = "mysql";
-  $("#connHost").value = "192.168.1.102";
+  $("#connHost").value = "";
   $("#connPort").value = "3306";
   $("#connUser").value = "root";
   $("#connPassword").value = "";

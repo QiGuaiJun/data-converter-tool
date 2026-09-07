@@ -39,7 +39,12 @@ def main() -> None:
     manifest = {
         "createdAt": dt.datetime.now().isoformat(timespec="seconds"),
         "includes": ["data/imports.db"],
-        "warning": "This package may contain database connection settings. Keep it private.",
+        "warning": (
+            "This package may contain database connection settings. Keep it private. "
+            "Connection passwords are encrypted with a master key (DC_MASTER_KEY env var or "
+            "the data/.secret_key file) that is intentionally NOT included in this backup. "
+            "Restoring requires the same key; otherwise saved MySQL passwords cannot be decrypted."
+        ),
     }
     if args.include_uploads:
         manifest["includes"].append("uploads")

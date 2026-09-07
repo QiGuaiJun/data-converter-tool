@@ -14,6 +14,14 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+function postJson(url, body) {
+  return requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function setStatus(message, type = "") {
   $("#tableStatus").textContent = message;
   $("#tableStatus").className = type;
@@ -51,7 +59,7 @@ async function loadTables() {
     return;
   }
   setStatus("正在读取数据库表...");
-  const payload = await requestJson(`/api/export/sources?${connectionParams()}`);
+  const payload = await postJson("/api/export/sources", Object.fromEntries(connectionParams()));
   tables = payload.sources || [];
   if (selectedTable && !tables.some((item) => item.name === selectedTable)) selectedTable = "";
   renderTables();

@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import msoffcrypto
 import pymysql
 import xlrd
+from cryptography.fernet import Fernet
 from dbfread import DBF
 from openpyxl import Workbook, load_workbook
 from openpyxl.cell import WriteOnlyCell
@@ -61,7 +62,18 @@ UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
 EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
 TASK_SOURCES = DATA / "task_sources"
 DB_PATH = DATA / "imports.db"
-PASSWORD_PREFIX = "b64:"
+# Stored connection passwords / snapshots are Fernet-encrypted and prefixed.
+# SECRET_KEY_FILE is generated on first run and stored inside DATA so it stays
+# with the database (incl. Railway volume) while remaining OUTSIDE the backup
+# zip produced by scripts/create_data_backup.py (that archive only packs
+# data/imports.db, never the whole data directory).
+FERNET_PREFIX = "fernet:"
+LEGACY_B64_PREFIX = "b64:"
+PASSWORD_PREFIX = FERNET_PREFIX
+SECRET_KEY_FILE = DATA / ".secret_key"
+
+# Directories whose files may be served by /api/export/download (P2-14).
+DOWNLOAD_ALLOWED_ROOTS = (EXPORTS, UPLOADS, TASK_SOURCES)
 
 MAX_PREVIEW_ROWS = 20
 EXPORT_FETCH_SIZE = 5000
@@ -225,24 +237,181 @@ def connect_db() -> sqlite3.Connection:
         existing = [row["name"] for row in conn.execute("pragma table_info(_import_logs)").fetchall()]
         if column not in existing:
             conn.execute(f"alter table _import_logs add column {column} {ddl}")
+    _migrate_legacy_secrets_once(conn)
     return conn
+
+
+# ---------------------------------------------------------------------------
+# Secret encryption (P1-4)
+# Stored secrets are Fernet-encrypted with a master key that comes from either
+# the DC_MASTER_KEY environment variable or an auto-generated local key file.
+# ---------------------------------------------------------------------------
+
+# RLock (reentrant): _get_fernet() acquires this lock and may call
+# _load_or_create_secret_key(), which acquires the same lock again when the key
+# file must be generated on first startup. A plain Lock() would deadlock there.
+_SECRET_KEY_LOCK = threading.RLock()
+_FERNET_INSTANCE: Fernet | None = None
+_MIGRATION_LOCK = threading.Lock()
+_MIGRATION_DONE = False
+
+
+def _load_or_create_secret_key() -> bytes:
+    """Return the Fernet master key (base64 text bytes).
+
+    Precedence: DC_MASTER_KEY env var > local key file (auto-generated).
+    Unattended startup is preserved: when no key file exists the server simply
+    generates one next to the database.
+    """
+    env_key = os.environ.get("DC_MASTER_KEY", "").strip()
+    if env_key:
+        return env_key.encode("ascii")
+
+    def _read_existing() -> bytes:
+        try:
+            data = SECRET_KEY_FILE.read_bytes().strip()
+            if data:
+                return data
+        except OSError:
+            pass
+        return b""
+
+    existing = _read_existing()
+    if existing:
+        return existing
+    with _SECRET_KEY_LOCK:
+        existing = _read_existing()
+        if existing:
+            return existing
+        DATA.mkdir(parents=True, exist_ok=True)
+        generated = Fernet.generate_key()
+        try:
+            SECRET_KEY_FILE.write_bytes(generated)
+        except OSError:
+            raise RuntimeError(f"无法创建密钥文件 {SECRET_KEY_FILE}，请设置 DC_MASTER_KEY 环境变量。")
+        try:
+            os.chmod(SECRET_KEY_FILE, 0o600)
+        except OSError:
+            pass  # Windows: chmod is best-effort.
+        return generated
+
+
+def _get_fernet() -> Fernet:
+    global _FERNET_INSTANCE
+    if _FERNET_INSTANCE is None:
+        with _SECRET_KEY_LOCK:
+            if _FERNET_INSTANCE is None:
+                _FERNET_INSTANCE = Fernet(_load_or_create_secret_key())
+    return _FERNET_INSTANCE
 
 
 def encode_secret(value: str) -> str:
     if not value:
         return ""
-    return PASSWORD_PREFIX + base64.b64encode(value.encode("utf-8")).decode("ascii")
+    token = _get_fernet().encrypt(value.encode("utf-8")).decode("ascii")
+    return FERNET_PREFIX + token
 
 
 def decode_secret(value: str) -> str:
     if not value:
         return ""
-    if not value.startswith(PASSWORD_PREFIX):
-        return value
+    if value.startswith(FERNET_PREFIX):
+        try:
+            return _get_fernet().decrypt(value[len(FERNET_PREFIX) :].encode("ascii")).decode("utf-8")
+        except Exception:
+            return ""
+    if value.startswith(LEGACY_B64_PREFIX):
+        # Legacy base64 secrets still decrypt fine (read compatibility). They are
+        # upgraded to fernet: by the startup/script migration.
+        try:
+            return base64.b64decode(value[len(LEGACY_B64_PREFIX) :]).decode("utf-8")
+        except Exception:
+            return ""
+    return value
+
+
+def _is_legacy_b64(value: object) -> bool:
+    return isinstance(value, str) and value.startswith(LEGACY_B64_PREFIX)
+
+
+def _decode_legacy_b64(value: str) -> str:
+    return base64.b64decode(value[len(LEGACY_B64_PREFIX) :]).decode("utf-8")
+
+
+def migrate_legacy_secrets(conn: sqlite3.Connection) -> dict[str, int]:
+    """Rewrite legacy 'b64:' secrets to Fernet. Idempotent - safe to re-run.
+
+    Covers the _db_connections.password column and the dbPasswordSecret
+    snapshots embedded in _jobs.steps_json. Returns {'connections', 'job_snapshots'}.
+    """
+    counts = {"connections": 0, "job_snapshots": 0, "errors": 0}
     try:
-        return base64.b64decode(value[len(PASSWORD_PREFIX) :]).decode("utf-8")
-    except Exception:
-        return ""
+        rows = conn.execute("select id, password from _db_connections").fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    for row in rows:
+        stored = row[1] or ""
+        if not _is_legacy_b64(stored):
+            continue
+        try:
+            conn.execute(
+                "update _db_connections set password = ? where id = ?",
+                (encode_secret(_decode_legacy_b64(stored)), row[0]),
+            )
+            counts["connections"] += 1
+        except Exception:
+            counts["errors"] += 1
+    try:
+        job_rows = conn.execute("select id, steps_json from _jobs").fetchall()
+    except sqlite3.OperationalError:
+        job_rows = []
+    for row in job_rows:
+        try:
+            steps = json.loads(row[1] or "[]")
+        except Exception:
+            continue
+        if not isinstance(steps, list):
+            continue
+        changed = False
+        for step in steps:
+            config = step.get("config") if isinstance(step, dict) else None
+            if not isinstance(config, dict):
+                continue
+            secret = config.get("dbPasswordSecret")
+            if not _is_legacy_b64(secret):
+                continue
+            try:
+                config["dbPasswordSecret"] = encode_secret(_decode_legacy_b64(secret))
+                changed = True
+            except Exception:
+                counts["errors"] += 1
+        if changed:
+            conn.execute(
+                "update _jobs set steps_json = ? where id = ?",
+                (json.dumps(steps, ensure_ascii=False), row[0]),
+            )
+            counts["job_snapshots"] += 1
+    conn.commit()
+    return counts
+
+
+def _migrate_legacy_secrets_once(conn: sqlite3.Connection) -> None:
+    """Runs the lightweight startup migration at most once per process.
+
+    Never raises so a migration failure cannot block serving requests.
+    """
+    global _MIGRATION_DONE
+    if _MIGRATION_DONE:
+        return
+    with _MIGRATION_LOCK:
+        if _MIGRATION_DONE:
+            return
+        try:
+            migrate_legacy_secrets(conn)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"WARNING: password-encryption migration skipped: {exc}", flush=True)
+            return
+        _MIGRATION_DONE = True
 
 
 def normalize_connection_payload(payload: dict[str, object]) -> dict[str, object]:
@@ -3023,12 +3192,44 @@ def bind_host() -> str:
     return os.environ.get("HOST", "127.0.0.1")
 
 
+# Connection credential query parameters that must never reach the logs (P1-3).
+SENSITIVE_QUERY_PARAMS = ("dbPassword", "dbPasswordSecret", "password")
+
+_SENSITIVE_QUERY_VALUE_RE = re.compile(
+    r"([?&](?:" + "|".join(re.escape(p) for p in SENSITIVE_QUERY_PARAMS) + r")=)[^&#\s\"']*",
+    re.IGNORECASE,
+)
+
+
+def redact_log_text(message: str) -> str:
+    """Replace sensitive query parameter values (dbPassword etc.) with '***'."""
+    return _SENSITIVE_QUERY_VALUE_RE.sub(r"\1***", message)
+
+
+def is_allowed_download_path(path: Path) -> bool:
+    """True only for regular files inside a download-whitelisted directory (P2-14)."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    if not resolved.is_file():
+        return False
+    for root in DOWNLOAD_ALLOWED_ROOTS:
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         try:
-            print(f"{self.address_string()} - {format % args}", flush=True)
+            message = format % args
         except Exception:
-            pass
+            message = " ".join(str(arg) for arg in args)
+        print(f"{self.address_string()} - {redact_log_text(message)}", flush=True)
 
     def require_auth(self) -> bool:
         if not public_auth_enabled():
@@ -3119,6 +3320,24 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if not self.require_auth():
             return
         try:
+            post_path = urlparse(self.path).path
+            # Read-only connection lookups accept POST + JSON body so connection
+            # credentials are no longer required to travel in a GET query string.
+            if post_path == "/api/tables":
+                self.handle_tables()
+                return
+            if post_path == "/api/target-tables":
+                self.handle_target_tables()
+                return
+            if post_path == "/api/target-table-details":
+                self.handle_target_table_details()
+                return
+            if post_path == "/api/table":
+                self.handle_table_preview()
+                return
+            if post_path == "/api/export/sources":
+                self.handle_export_sources()
+                return
             if self.path == "/api/preview":
                 self.handle_preview()
                 return
@@ -3310,9 +3529,33 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_import_choose_source(self) -> None:
         raise ValueError("本机路径选择请通过页面按钮在浏览器中完成。")
 
-    def handle_tables(self, query: str = "") -> None:
+    def _request_fields(self, query: str = "") -> dict[str, str]:
+        """Build a flat connection-field dict for the current request.
+
+        - POST + JSON body is the modern, credential-safe transport.
+        - Legacy GET query strings stay supported for backwards compatibility,
+          but dbPassword / dbPasswordSecret are dropped so secrets never travel
+          in a URL (P1-3). Saved connections still work over GET because
+          resolve_connection_fields() loads the password from storage when a
+          connectionId is present; direct-credential MySQL calls must use POST.
+        """
+        if self.command == "POST":
+            payload = read_json_body(self)
+            if not isinstance(payload, dict):
+                raise ValueError("请求内容格式不正确。")
+            return {
+                str(key): ("" if value is None else str(value))
+                for key, value in payload.items()
+                if not isinstance(value, (list, dict))
+            }
         raw = {key: values[-1] for key, values in parse_qs(query).items()}
         fields = {key: str(value) for key, value in raw.items()}
+        for sensitive_key in SENSITIVE_QUERY_PARAMS:
+            fields.pop(sensitive_key, None)
+        return fields
+
+    def handle_tables(self, query: str = "") -> None:
+        fields = self._request_fields(query)
         if target_db_type(fields) == "mysql":
             try:
                 tables = target_table_names(fields)
@@ -3330,22 +3573,18 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             ).fetchall()
         json_response(self, {"ok": True, "tables": [row["name"] for row in rows], "targetDbType": "sqlite"})
 
-    def handle_target_tables(self, query: str) -> None:
-        raw = {key: values[-1] for key, values in parse_qs(query).items()}
-        fields = {key: str(value) for key, value in raw.items()}
+    def handle_target_tables(self, query: str = "") -> None:
+        fields = self._request_fields(query)
         json_response(self, {"ok": True, "tables": target_table_names(fields)})
 
-    def handle_target_table_details(self, query: str) -> None:
-        raw = {key: values[-1] for key, values in parse_qs(query).items()}
-        fields = {key: str(value) for key, value in raw.items()}
+    def handle_target_table_details(self, query: str = "") -> None:
+        fields = self._request_fields(query)
         table_name = fields.pop("name", "")
         json_response(self, {"ok": True, "table": target_table_details(fields, table_name)})
 
-    def handle_table_preview(self, query: str) -> None:
-        params = parse_qs(query)
-        raw_fields = {key: values[-1] for key, values in params.items()}
-        fields = {key: str(value) for key, value in raw_fields.items()}
-        table_name = params.get("name", [""])[0].strip()
+    def handle_table_preview(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        table_name = fields.pop("name", "").strip()
         if target_db_type(fields) == "mysql":
             if not table_name:
                 raise ValueError("缺少表名。")
@@ -3662,13 +3901,13 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             conn.commit()
         json_response(self, {"ok": True, "removedJobs": removed_jobs})
 
-    def handle_export_sources(self, query: str) -> None:
-        params = parse_qs(query)
-        fields = {
-            "connectionId": params.get("connectionId", [""])[0],
-            "targetDbType": params.get("targetDbType", ["mysql"])[0],
+    def handle_export_sources(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        export_fields = {
+            "connectionId": fields.get("connectionId", ""),
+            "targetDbType": fields.get("targetDbType", "mysql"),
         }
-        json_response(self, {"ok": True, "sources": export_sources(fields)})
+        json_response(self, {"ok": True, "sources": export_sources(export_fields)})
 
     def handle_export_preview(self) -> None:
         payload = read_json_body(self)
@@ -3707,6 +3946,11 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             path = (EXPORTS / legacy_name).resolve()
         else:
             raise ValueError("缺少文件名。")
+        # P2-14: never serve files outside the export/upload product directories.
+        if not is_allowed_download_path(path):
+            if not path.exists():
+                raise ValueError("导出文件不存在。")
+            raise ValueError("该路径不在允许下载的目录内。")
         if not path.exists() or not path.is_file():
             raise ValueError("导出文件不存在。")
         name = path.name

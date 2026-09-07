@@ -133,6 +133,14 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+function postJson(url, body) {
+  return requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function connectionPayload() {
   if (exportConnection.value === "__sqlite") {
     return { targetDbType: "sqlite", connectionId: "" };
@@ -172,8 +180,7 @@ async function loadConnections() {
 
 async function loadSources() {
   setStatus("正在读取导出对象...");
-  const params = new URLSearchParams(connectionPayload());
-  const payload = await requestJson(`/api/export/sources?${params.toString()}`);
+  const payload = await postJson("/api/export/sources", connectionPayload());
   sources = payload.sources || [];
   renderSources();
   setStatus(`已读取 ${sources.length} 个对象。`, "success");

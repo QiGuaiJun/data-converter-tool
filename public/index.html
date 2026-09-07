@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>导入功能 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260907_p1_2_tables_v2" />
+    <link rel="stylesheet" href="/styles.css?v=20260907_p1_2_tables_v2_sec" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -91,11 +91,11 @@
             <a class="button" href="/connections.html">管理连接</a>
             <label><input type="radio" name="targetDbType" value="mysql" checked /> MySQL</label>
             <label><input type="radio" name="targetDbType" value="sqlite" /> 本地 SQLite</label>
-            <input id="dbHost" type="hidden" value="192.168.1.102" />
+            <input id="dbHost" type="hidden" value="" />
             <input id="dbPort" type="hidden" value="3306" />
             <input id="dbName" type="hidden" value="" />
             <input id="dbUser" type="hidden" value="root" />
-            <input id="dbPassword" type="hidden" value="123456" />
+            <input id="dbPassword" type="hidden" value="" />
             <input id="dbCharset" type="hidden" value="utf8mb4" />
           </div>
         </section>
@@ -330,6 +330,6 @@
       </div>
     </div>
 
-    <script src="/app.js?v=20260907_p1_2_tables_v2"></script>
+    <script src="/app.js?v=20260907_p1_2_tables_v2_sec"></script>
   </body>
 </html>

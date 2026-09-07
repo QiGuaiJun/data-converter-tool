@@ -604,6 +604,14 @@ async function requestJson(url, options = {}) {
   return payload;
 }
 
+function postJson(url, body) {
+  return requestJson(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 function setConnectionStatus(message, type = "") {
   connectionStatus.textContent = message;
   connectionStatus.className = `connection-status ${type}`.trim();
@@ -630,11 +638,11 @@ function connectionPayload() {
 function fillConnectionDialog(connection = {}) {
   $("#connId").value = connection.id || "";
   $("#connName").value = connection.name || "";
-  $("#connHost").value = connection.host || $("#dbHost").value || "192.168.1.102";
+  $("#connHost").value = connection.host || $("#dbHost").value || "";
   $("#connPort").value = connection.port || $("#dbPort").value || "3306";
   $("#connUser").value = connection.user || $("#dbUser").value || "root";
-  $("#connPassword").value = connection.id ? "" : connection.password || $("#dbPassword").value || "123456";
-  const database = connection.database || $("#dbName").value || "lcdp_SR";
+  $("#connPassword").value = connection.id ? "" : connection.password || $("#dbPassword").value || "";
+  const database = connection.database || $("#dbName").value || "";
   $("#connDatabase").innerHTML = `<option value="${escapeHtml(database)}">${escapeHtml(database)}</option>`;
   $("#connDatabase").value = database;
   $("#connCharset").value = connection.charset || $("#dbCharset").value || "utf8mb4";
@@ -708,8 +716,13 @@ function connectionParams() {
   params.set("targetDbType", radioValue("targetDbType"));
   const selectedConnectionId = connectionSelect?.value || "";
   params.set("connectionId", selectedConnectionId);
-  for (const id of ["dbHost", "dbPort", "dbName", "dbUser", "dbPassword", "dbCharset"]) {
-    params.set(id, $(`#${id}`).value);
+  // 密码不再放入连接参数：有 connectionId 时后端从已保存连接中补齐 host/密码等，
+  // 前端只需 connectionId + targetDbType；仅"使用默认连接参数"手填直连（无
+  // connectionId）时才携带非密码连接字段，随 POST body 传输。
+  if (!selectedConnectionId) {
+    for (const id of ["dbHost", "dbPort", "dbName", "dbUser", "dbCharset"]) {
+      params.set(id, $(`#${id}`).value);
+    }
   }
   if (!selectedConnectionId && activeImportTaskConfig?.dbPasswordSecret && !$("#dbPassword").value) {
     params.set("dbPasswordSecret", activeImportTaskConfig.dbPasswordSecret);
@@ -725,7 +738,7 @@ async function loadTargetTableOptions(preferredValue = tableName.value) {
   const keepValue = preferredValue || tableName.value || "";
   tableName.disabled = true;
   try {
-    const payload = await requestJson(`/api/target-tables?${connectionParams().toString()}`);
+    const payload = await postJson("/api/target-tables", Object.fromEntries(connectionParams()));
     const tableItems = payload.tables || [];
     if (targetTableOptions) targetTableOptions.innerHTML = "";
     for (const item of tableItems) {
@@ -773,8 +786,8 @@ async function testCurrentConnection() {
       .join("");
     if (selected && payload.databases.includes(selected)) {
       $("#connDatabase").value = selected;
-    } else if (payload.databases.includes("lcdp_SR")) {
-      $("#connDatabase").value = "lcdp_SR";
+    } else if (payload.databases.length) {
+      $("#connDatabase").value = payload.databases[0];
     }
     setConnectionStatus(`连接成功，MySQL ${payload.version}`, "success");
   } catch (error) {
@@ -953,7 +966,7 @@ function escapeHtml(value) {
 }
 
 async function loadTables() {
-  const payload = await requestJson(`/api/tables?${connectionParams().toString()}`);
+  const payload = await postJson("/api/tables", Object.fromEntries(connectionParams()));
   tableMeta.textContent = `${payload.tables.length} 张表`;
   tables.innerHTML = payload.tables.length ? "" : "暂无导入表";
   for (const name of payload.tables) {
@@ -967,9 +980,9 @@ async function loadTables() {
 
 async function loadTable(name) {
   try {
-    const params = connectionParams();
-    params.set("name", name);
-    const payload = await requestJson(`/api/table?${params.toString()}`);
+    const body = Object.fromEntries(connectionParams());
+    body.name = name;
+    const payload = await postJson("/api/table", body);
     selectedTableMeta.textContent = `${payload.tableName}，共 ${payload.totalRows} 行`;
     renderTable(tablePreview, payload.columns, payload.rows);
   } catch (error) {
