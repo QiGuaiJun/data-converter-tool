@@ -2881,6 +2881,50 @@ def prune_job_logs(retention_days: int) -> None:
             conn.execute(f"delete from _job_runs where id in ({placeholders})", old_ids)
 
 
+def recover_interrupted_runs() -> int:
+    """P2-9: 恢复上次进程崩溃残留的「运行中」任务。
+
+    进程在定时任务执行中被强制终止（断电 / OOM / kill -9）时，scheduler 已经把
+    _schedules.running 置为 1，却没机会在 run_schedule_once 末尾重置。下次启动后
+    dispatch 查询条件是 running = 0，会导致该计划被永久静默跳过。这里在启动时把
+    这些僵尸计划重置为可调度，并把挂起的「运行中」执行/步骤记录标记为中断，
+    保证历史记录不会永远停在「运行中」。幂等：正常启动时无残留，直接返回 0。
+    """
+    now = now_text()
+    with connect_db() as conn:
+        zombies = conn.execute("select id from _schedules where running = 1").fetchall()
+        for row in zombies:
+            conn.execute(
+                "update _schedules set running = 0, updated_at = ? where id = ?",
+                (now, row["id"]),
+            )
+        orphan_runs = conn.execute(
+            "select id from _job_runs where status = ?", ("运行中",)
+        ).fetchall()
+        for row in orphan_runs:
+            conn.execute(
+                "update _job_runs set ended_at = ?, status = ?, message = ? where id = ?",
+                (now, "失败", "进程异常中断，已自动恢复（上次执行未完成）。", row["id"]),
+            )
+        orphan_steps = conn.execute(
+            "select id from _job_run_steps where status = ?", ("运行中",)
+        ).fetchall()
+        for row in orphan_steps:
+            conn.execute(
+                "update _job_run_steps set ended_at = ?, status = ?, message = ? where id = ?",
+                (now, "失败", "进程异常中断，已自动恢复。", row["id"]),
+            )
+    n_z, n_r, n_s = len(zombies), len(orphan_runs), len(orphan_steps)
+    recovered = n_z + n_r + n_s
+    if recovered:
+        print(
+            f"[recover] 已恢复 {n_z} 个僵尸计划 / {n_r} 条运行记录 / {n_s} 条步骤记录"
+            f"（上次进程异常中断）。",
+            flush=True,
+        )
+    return recovered
+
+
 def dispatch_due_schedules() -> None:
     now = now_text()
     with connect_db() as conn:
@@ -3979,6 +4023,10 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     ensure_dirs()
+    try:
+        recover_interrupted_runs()
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"WARNING: interrupted-run recovery skipped: {exc}", flush=True)
     port = int(os.environ.get("PORT", "8765"))
     host = bind_host()
     server = ThreadingHTTPServer((host, port), ImportPrototypeHandler)
