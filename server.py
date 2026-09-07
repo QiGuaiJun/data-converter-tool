@@ -1713,11 +1713,21 @@ def add_export_time_to_batch(rows: list[list[object]], field_name: str, now: str
     return [row + [now] for row in rows]
 
 
-def apply_export_batch_limit(rows: list[list[object]], fields: dict[str, str]) -> list[list[object]]:
+def split_rows_by_batch(rows: list[list[object]], fields: dict[str, str]) -> list[tuple[str, list[list[object]]]]:
+    """按 batchRows 把行拆成多块，返回 [(文件名后缀, 行块)]。
+
+    开启 splitByBatch 且 batchRows>0 时：拆成 _001/_002/...（仅一块时不加后缀），
+    所有行都会导出，不再截断。未开启时返回单块、无后缀。
+    """
     batch_rows = int(fields.get("batchRows") or 0)
-    if batch_rows > 0 and parse_bool(fields, "splitByBatch", False):
-        return rows[:batch_rows]
-    return rows
+    if not parse_bool(fields, "splitByBatch", False) or batch_rows <= 0:
+        return [("", rows)]
+    chunks = [rows[start:start + batch_rows] for start in range(0, len(rows), batch_rows)]
+    if not chunks:
+        chunks = [[]]
+    if len(chunks) == 1:
+        return [("", chunks[0])]
+    return [(f"_{index + 1:03d}", chunk) for index, chunk in enumerate(chunks)]
 
 
 def rows_to_dicts(columns: list[str], rows: list[list[object]]) -> list[dict[str, object]]:
@@ -1977,7 +1987,8 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
     try:
         target_execute_sql_batch(conn, str(payload.get("beforeSql") or ""), "导出开始前 SQL", fields)
         split_field = str(fields.get("splitField") or "").strip()
-        can_stream = not split_field and str(fields.get("exportMode") or "workbook") == "workbook"
+        split_by_batch = parse_bool(fields, "splitByBatch", False) and int(fields.get("batchRows") or 0) > 0
+        can_stream = not split_field and not split_by_batch and str(fields.get("exportMode") or "workbook") == "workbook"
 
         if can_stream and extension == "xlsx" and len(items) > 1:
             workbook = Workbook(write_only=True)
@@ -2056,7 +2067,6 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                 else:
                     columns, rows = fetch_export_rows(conn, sql, fields)
                     columns, rows = add_export_time_column(columns, rows, str(fields.get("exportTimeField") or ""))
-                    rows = apply_export_batch_limit(rows, fields)
                     if parse_bool(fields, "skipEmptyTable", False) and not rows:
                         continue
                     groups = group_rows_by_field(columns, rows, split_field)
@@ -2064,10 +2074,11 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                         group_base_name = base_name
                         if group_name:
                             group_base_name = f"{group_base_name}_{group_name}"
-                        group_path = export_target_path(group_base_name, extension, fields)
-                        write_export_file(group_path, columns, group_rows, fields, sheet_name)
-                        written_files.append(str(group_path))
-                        total_rows += len(group_rows)
+                        for chunk_suffix, chunk_rows in split_rows_by_batch(group_rows, fields):
+                            chunk_path = export_target_path(f"{group_base_name}{chunk_suffix}", extension, fields)
+                            write_export_file(chunk_path, columns, chunk_rows, fields, sheet_name)
+                            written_files.append(str(chunk_path))
+                            total_rows += len(chunk_rows)
         target_execute_sql_batch(conn, str(payload.get("afterSql") or ""), "导出结束后 SQL", fields)
         conn.commit()
     finally:
@@ -3058,7 +3069,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/tables":
-                self.handle_tables()
+                self.handle_tables(parsed.query)
                 return
             if parsed.path == "/api/target-tables":
                 self.handle_target_tables(parsed.query)
@@ -3299,7 +3310,16 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def handle_import_choose_source(self) -> None:
         raise ValueError("本机路径选择请通过页面按钮在浏览器中完成。")
 
-    def handle_tables(self) -> None:
+    def handle_tables(self, query: str = "") -> None:
+        raw = {key: values[-1] for key, values in parse_qs(query).items()}
+        fields = {key: str(value) for key, value in raw.items()}
+        if target_db_type(fields) == "mysql":
+            try:
+                tables = target_table_names(fields)
+            except Exception as exc:
+                raise ValueError(f"无法读取目标数据库的表列表，请检查连接配置：{exc}")
+            json_response(self, {"ok": True, "tables": tables, "targetDbType": "mysql"})
+            return
         with connect_db() as conn:
             rows = conn.execute(
                 """
@@ -3308,7 +3328,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 order by name
                 """
             ).fetchall()
-        json_response(self, {"ok": True, "tables": [row["name"] for row in rows]})
+        json_response(self, {"ok": True, "tables": [row["name"] for row in rows], "targetDbType": "sqlite"})
 
     def handle_target_tables(self, query: str) -> None:
         raw = {key: values[-1] for key, values in parse_qs(query).items()}
@@ -3323,7 +3343,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_table_preview(self, query: str) -> None:
         params = parse_qs(query)
-        table_name = sanitize_identifier(params.get("name", [""])[0], "")
+        raw_fields = {key: values[-1] for key, values in params.items()}
+        fields = {key: str(value) for key, value in raw_fields.items()}
+        table_name = params.get("name", [""])[0].strip()
+        if target_db_type(fields) == "mysql":
+            if not table_name:
+                raise ValueError("缺少表名。")
+            self._preview_mysql_table(fields, table_name)
+            return
+        table_name = sanitize_identifier(table_name, "")
         if not table_name:
             raise ValueError("缺少表名。")
         with connect_db() as conn:
@@ -3339,6 +3367,33 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 "tableName": table_name,
                 "columns": columns,
                 "rows": [[cell_to_text(row[column]) for column in columns] for row in rows],
+                "totalRows": count,
+            },
+        )
+
+    def _preview_mysql_table(self, fields: dict[str, str], table_name: str) -> None:
+        try:
+            conn = connect_target_db(fields)
+        except Exception as exc:
+            raise ValueError(f"无法连接目标数据库，请检查连接配置：{exc}")
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f"select count(*) as total from {db_quote(table_name, fields)}")
+                count = int(list(cursor.fetchone())[0])
+                cursor.execute(f"select * from {db_quote(table_name, fields)} limit 50")
+                columns = [str(item[0]) for item in cursor.description or []]
+                rows = cursor.fetchall()
+        except Exception as exc:
+            raise ValueError(f"读取表数据失败，请确认表存在且账号有权限：{exc}")
+        finally:
+            conn.close()
+        json_response(
+            self,
+            {
+                "ok": True,
+                "tableName": table_name,
+                "columns": columns,
+                "rows": [[cell_to_text(cell) for cell in row] for row in rows],
                 "totalRows": count,
             },
         )

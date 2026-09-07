@@ -953,7 +953,7 @@ function escapeHtml(value) {
 }
 
 async function loadTables() {
-  const payload = await requestJson("/api/tables");
+  const payload = await requestJson(`/api/tables?${connectionParams().toString()}`);
   tableMeta.textContent = `${payload.tables.length} 张表`;
   tables.innerHTML = payload.tables.length ? "" : "暂无导入表";
   for (const name of payload.tables) {
@@ -967,7 +967,9 @@ async function loadTables() {
 
 async function loadTable(name) {
   try {
-    const payload = await requestJson(`/api/table?name=${encodeURIComponent(name)}`);
+    const params = connectionParams();
+    params.set("name", name);
+    const payload = await requestJson(`/api/table?${params.toString()}`);
     selectedTableMeta.textContent = `${payload.tableName}，共 ${payload.totalRows} 行`;
     renderTable(tablePreview, payload.columns, payload.rows);
   } catch (error) {
