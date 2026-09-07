@@ -743,6 +743,12 @@ def cell_to_text(value: object) -> str:
         return value.isoformat(sep=" ", timespec="seconds")
     if isinstance(value, dt.date):
         return value.isoformat()
+    if isinstance(value, float):
+        # 整数形态的 float 转 int：避免 str() 用科学计数法（如 1.2345e+17）导致
+        # 大整数被误判为 text 且呈现精度异常（P2-6）。仅在能安全装入 bigint 时转，
+        # 更大的数保留 float 走 double（配合 infer_column_types 的科学计数法正则）。
+        if value.is_integer() and abs(value) < 2**63:
+            return str(int(value))
     return str(value)
 
 
@@ -1368,7 +1374,7 @@ def infer_column_types(columns: list[str], rows: list[list[object]], fields: dic
                 types[column] = "date"
         elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
             types[column] = int_type
-        elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)", str(value)) for value in values):
+        elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", str(value)) for value in values):
             types[column] = real_type
         else:
             types[column] = text_type
