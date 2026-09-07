@@ -1045,9 +1045,13 @@ connectionSelect.addEventListener("change", () => {
   const current = savedConnections.find((item) => item.id === connectionSelect.value);
   if (current) applyConnection(current);
   loadTargetTableOptions();
+  loadTables().catch((error) => setStatus(`已导入表读取失败：${error.message}`, "error"));
 });
 document.querySelectorAll('input[name="targetDbType"]').forEach((item) => {
-  item.addEventListener("change", () => loadTargetTableOptions());
+  item.addEventListener("change", () => {
+    loadTargetTableOptions();
+    loadTables().catch((error) => setStatus(`已导入表读取失败：${error.message}`, "error"));
+  });
 });
 ["dbHost", "dbPort", "dbName", "dbUser", "dbPassword", "dbCharset"].forEach((id) => {
   $("#" + id).addEventListener("change", () => loadTargetTableOptions());
