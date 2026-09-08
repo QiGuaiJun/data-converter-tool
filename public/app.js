@@ -142,12 +142,19 @@ async function uploadTaskSource(files) {
   return requestJson("/api/task-source", { method: "POST", body: data });
 }
 
+async function uploadLinkedSource(file) {
+  // 方案 A：把选中的本机源文件复制到服务器固定输入目录 linked_sources（非 task_sources 副本），
+  // 定时任务可稳定读取该路径；本机文件更新后重新关联会覆盖同名旧文件。
+  const data = new FormData();
+  data.append("file", file, file.name);
+  return requestJson("/api/import/choose-source", { method: "POST", body: data });
+}
+
 async function chooseOriginalSourceFile() {
-  // 浏览器原生选择源文件（不再调用后端 /api/import/choose-source，后端已改为不支持并返回错误提示）。
-  // 定时任务运行在服务器端，浏览器拿不到可供服务器读取的本机绝对路径，
-  // 因此选择后立即通过 /api/task-source 上传到服务器，定时任务读取服务器端保存的副本。
+  // 浏览器原生选择源文件：把文件上传并复制到服务器固定输入目录 linked_sources，
+  // 任务路径指向该固定位置，定时任务可稳定读取（本机文件更新后请重新关联以覆盖旧副本）。
   if (!window.showOpenFilePicker) {
-    setStatus("您的浏览器不支持文件直选，请使用上方“选择文件”按钮上传源文件，定时任务将读取服务器端保存的副本。", "info");
+    setStatus("您的浏览器不支持文件直选，请在任务路径框中手动填写本机文件的完整路径（服务器能直接读取），再保存为任务。", "info");
     return;
   }
   let handle;
@@ -179,7 +186,7 @@ async function chooseOriginalSourceFile() {
   const file = await handle.getFile();
   setStatus("正在上传并关联任务源文件...");
   try {
-    const source = await uploadTaskSource([file]);
+    const source = await uploadLinkedSource(file);
     selectedFiles = [];
     selectedTaskSourcePath = source.sourcePath;
     const taskPath = document.querySelector("#importTaskPath");
@@ -189,7 +196,7 @@ async function chooseOriginalSourceFile() {
       taskPath.dispatchEvent(new Event("change", { bubbles: true }));
     }
     restoreTaskSource(source.sourcePath);
-    setStatus(`已关联本机原文件：${file.name}（已上传到服务器，定时任务将读取该文件的最新内容）`, "success");
+    setStatus(`已关联本机原文件：${file.name} → ${source.sourcePath}（已复制到服务器固定目录，定时任务可读取；本机更新后请重新关联以覆盖旧副本）`, "success");
   } catch (error) {
     setStatus(`上传源文件失败：${error.message}`, "error");
   }

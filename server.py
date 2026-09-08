@@ -61,6 +61,7 @@ DATA = env_path("DATA_DIR", ROOT / "data")
 UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
 EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
 TASK_SOURCES = DATA / "task_sources"
+LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
 # Stored connection passwords / snapshots are Fernet-encrypted and prefixed.
 # SECRET_KEY_FILE is generated on first run and stored inside DATA so it stays
@@ -99,6 +100,7 @@ def ensure_dirs() -> None:
     UPLOADS.mkdir(parents=True, exist_ok=True)
     EXPORTS.mkdir(parents=True, exist_ok=True)
     TASK_SOURCES.mkdir(parents=True, exist_ok=True)
+    LINKED_SOURCES.mkdir(parents=True, exist_ok=True)
 
 
 def connect_db() -> sqlite3.Connection:
@@ -3763,7 +3765,28 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         )
 
     def handle_import_choose_source(self) -> None:
-        raise ValueError("本机路径选择请通过页面按钮在浏览器中完成。")
+        # 方案 A：浏览器选中的本机源文件上传后，落到服务器固定输入目录 linked_sources
+        # （原名覆盖，非 task_sources 一次性副本）。该目录不在 execute_import_step 的
+        # 拒绝名单内，定时/作业任务可稳定读取，保证"关联本机原文件"后的任务真正能定时跑。
+        _, uploaded_files = parse_multipart(self)
+        if not uploaded_files:
+            raise ValueError("请选择要关联的源文件。")
+        LINKED_SOURCES.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for uploaded in uploaded_files:
+            target = LINKED_SOURCES / Path(uploaded.filename).name
+            uploaded.path.replace(target)
+            paths.append(str(target.resolve()))
+        source_path = paths[0] if len(paths) == 1 else str(LINKED_SOURCES.resolve())
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sourcePath": source_path,
+                "files": paths,
+                "message": f"已把源文件复制到服务器固定目录，定时任务可稳定读取；本机文件更新后请重新关联（会覆盖同名旧文件）。",
+            },
+        )
 
     def _request_fields(self, query: str = "") -> dict[str, str]:
         """Build a flat connection-field dict for the current request.
