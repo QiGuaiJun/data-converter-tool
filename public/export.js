@@ -517,7 +517,9 @@ async function saveExportTask() {
 }
 
 function isExportTaskJob(job) {
-  return (job.steps || [])[0]?.type === "export";
+  // 只认"单步导出任务"：导出任务 = 仅一个 export 步骤的资产。
+  // 多步作业即使首步是 export 也不应混入导出任务列表。
+  return (job.steps || []).length === 1 && (job.steps || [])[0]?.type === "export";
 }
 
 function exportTaskStep(job) {

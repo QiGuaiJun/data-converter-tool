@@ -483,7 +483,9 @@ function ensureImportTaskButton() {
 }
 
 function isImportTaskJob(job) {
-  return (job.steps || [])[0]?.type === "import";
+  // 只认"单步导入任务"：导入任务 = 仅一个 import 步骤的资产。
+  // 多步作业即使首步是 import（如全链路作业）也不应混入导入任务列表。
+  return (job.steps || []).length === 1 && (job.steps || [])[0]?.type === "import";
 }
 
 function importTaskStep(job) {

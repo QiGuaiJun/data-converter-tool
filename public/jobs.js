@@ -56,11 +56,21 @@ async function loadConnections() {
 
 async function loadJobs() {
   const payload = await requestJson("/api/jobs");
-  jobs = payload.jobs || [];
+  // 作业列表只呈现"作业"（多步编排 / 嵌套 / 查询型等）；
+  // 单步导入任务、单步导出任务属于导入页(IN)/导出页(OUT)管理的资产，不在本页展示，
+  // 避免"删除作业"误伤导入/导出任务（两者共享 _jobs 底层表）。
+  jobs = (payload.jobs || []).filter((job) => !isManagedTaskAsset(job));
   renderJobs();
   if (selectedJobId && !jobs.some((item) => item.id === selectedJobId)) selectedJobId = "";
   if (!selectedJobId && jobs[0]) selectedJobId = jobs[0].id;
   renderSelectedJob();
+}
+
+// 判定是否"单步导入/导出任务"（归 IN/OUT 页管理，不显示在作业列表）
+function isManagedTaskAsset(job) {
+  const steps = job.steps || [];
+  if (steps.length !== 1) return false; // 多步作业（即使首步 import/export）是真正的作业
+  return steps[0].type === "import" || steps[0].type === "export";
 }
 
 async function loadRuns() {
