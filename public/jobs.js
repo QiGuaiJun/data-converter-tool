@@ -112,22 +112,36 @@ function renderSelectedJob() {
 
 // ===== 作业编辑对话框：极简化 —— 添加步骤 = 从已保存任务中选择（复制其完整配置快照） =====
 
-let taskOptions = []; // [{id, name, type, config}] 来自单步导入/导出任务
+let taskOptions = []; // [{id, name, type, config}] 单步导入/导出任务 + 保存查询
 
 async function loadTaskOptions() {
-  const payload = await requestJson("/api/jobs");
-  const all = payload.jobs || [];
-  taskOptions = all
+  const jobPayload = await requestJson("/api/jobs");
+  const all = jobPayload.jobs || [];
+  const importExport = all
     .filter((job) => isTaskAsset(job) && !isScheduleBackingJob(job) && job.id !== editingJobId)
     .map((job) => ({ id: job.id, name: job.name, type: job.steps[0].type, config: JSON.parse(JSON.stringify(job.steps[0].config || {})) }));
+  // 查询类型：来自 _saved_queries 资产（执行时按 queryId 读取最新 SQL + 连接）
+  let queryItems = [];
+  try {
+    const qPayload = await requestJson("/api/queries");
+    queryItems = (qPayload.queries || []).map((q) => ({
+      id: q.id,
+      name: q.name,
+      type: "query",
+      config: { queryId: q.id, connectionId: q.connection_id || "" },
+    }));
+  } catch (error) {
+    console.warn("加载保存查询失败（查询类型不可用）:", error.message);
+  }
+  taskOptions = [...importExport, ...queryItems];
 }
 
 function taskTypeLabel(type) {
-  return type === "import" ? "导入" : type === "export" ? "导出" : type;
+  return type === "import" ? "导入" : type === "export" ? "导出" : type === "query" ? "查询" : type;
 }
 
 function renderTaskOptions() {
-  // 改为两个下拉：类型(导入/导出) + 任务（按类型筛选）
+  // 两个下拉：类型(导入/导出/查询) + 任务（按类型筛选）
   const type = $("#addStepType")?.value || "import";
   const filtered = taskOptions.filter((t) => t.type === type);
   const taskSelect = $("#addStepTask");
@@ -143,8 +157,9 @@ function draftStepFromSelection() {
   const sourceId = ($("#addStepTask")?.value || "").trim();
   const source = taskOptions.find((t) => t.id === sourceId);
   if (!source) throw new Error("请先在上方下拉中选择要执行的任务。");
-  // 复制任务完整配置作为快照（v2 决策：作业自包含、与任务互不关联；复制后手动微调不再影响原任务）
   const stepType = source.type;
+  // 导入/导出：复制任务完整配置作为快照（v2 决策：作业自包含、与任务互不关联）
+  // 查询：存 queryId 引用（保存查询为独立资产，执行时读取其最新 SQL + 连接）
   const config = JSON.parse(JSON.stringify(source.config));
   if (stepType === "import") {
     // 仅保留执行所需键；路径/目标库/表来自任务快照
