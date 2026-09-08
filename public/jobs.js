@@ -7,6 +7,7 @@ let selectedJobId = "";
 let editingJobId = "";
 let draftSteps = [];
 let selectedStepIndex = -1;
+let draftSourceJobId = "";
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -40,43 +41,30 @@ function renderRunLog(run) {
   </div>`;
 }
 
-function connectionFields() {
-  const id = $("#jobConnection").value;
-  if (!id || id === "__sqlite") return { targetDbType: "sqlite" };
-  return { connectionId: id, targetDbType: "mysql" };
-}
-
 async function loadConnections() {
   const payload = await requestJson("/api/connections");
   connections = payload.connections || [];
-  $("#jobConnection").innerHTML =
-    '<option value="__sqlite">本地 SQLite</option>' +
-    connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("");
 }
 
-async function loadJobs() {
-  const payload = await requestJson("/api/jobs");
-  // 作业列表只呈现"作业"：
-  //  - 过滤掉单步导入/导出任务（归 IN/OUT 页管理）
-  //  - 过滤掉定时任务自动生成的"- 自动作业"载体（只被调度内部使用）
-  // 避免"删除作业"误伤导入/导出任务或定时任务载体（它们共享 _jobs 底层表）。
-  jobs = (payload.jobs || []).filter((job) => !isManagedTaskAsset(job) && !isScheduleBackingJob(job));
-  renderJobs();
-  if (selectedJobId && !jobs.some((item) => item.id === selectedJobId)) selectedJobId = "";
-  if (!selectedJobId && jobs[0]) selectedJobId = jobs[0].id;
-  renderSelectedJob();
-}
-
-// 判定是否"单步导入/导出任务"（归 IN/OUT 页管理，不显示在作业列表）
-function isManagedTaskAsset(job) {
+// 判定是否"单步导入/导出任务"（作业可复用的资产，也是任务面板显示的实体）
+function isTaskAsset(job) {
   const steps = job.steps || [];
-  if (steps.length !== 1) return false; // 多步作业（即使首步 import/export）是真正的作业
-  return steps[0].type === "import" || steps[0].type === "export";
+  return steps.length === 1 && (steps[0].type === "import" || steps[0].type === "export");
 }
 
 // 判定是否定时任务自动生成的载体作业（名字以 " - 自动作业" 结尾，仅在调度内部使用）
 function isScheduleBackingJob(job) {
   return String(job?.name || "").endsWith(" - 自动作业");
+}
+
+// 作业列表 = 全部 jobs 中剔除任务资产与自动作业载体，只留真正的作业
+async function loadJobs() {
+  const payload = await requestJson("/api/jobs");
+  jobs = (payload.jobs || []).filter((job) => !isTaskAsset(job) && !isScheduleBackingJob(job));
+  renderJobs();
+  if (selectedJobId && !jobs.some((item) => item.id === selectedJobId)) selectedJobId = "";
+  if (!selectedJobId && jobs[0]) selectedJobId = jobs[0].id;
+  renderSelectedJob();
 }
 
 async function loadRuns() {
@@ -122,55 +110,79 @@ function renderSelectedJob() {
   loadRuns().catch((error) => setStatus(error.message, "error"));
 }
 
-function renderStepConfig() {
-  const type = document.querySelector('input[name="stepType"]:checked').value;
-  const connectionHint = `<p class="hint">连接会随子任务一起保存。</p>`;
-  if (type === "import") {
-    const refOptions = jobs
-      .filter((job) => job.id !== editingJobId && (job.steps || [])[0]?.type === "import")
-      .map((job) => `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name)}</option>`)
-      .join("");
-    $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="导入数据" /></label><label>引用导入任务：<select id="importJobRef"><option value="">（不引用，使用下方简化配置）</option>${refOptions}</select></label><p class="hint">选择引用后将以该任务的完整配置（字段映射/类型识别/清洗等）执行，结果与手动导入逐格一致；下方路径/表/模式可留空。</p><label>文件或目录路径：<input id="importPath" placeholder="不引用时可填，例如 C:\\data\\inbox" /></label><label>目标表：<input id="importTable" placeholder="可为空，按文件名生成" /></label><label>导入模式：<select id="importMode"><option value="append">追加</option><option value="update">更新</option><option value="overwrite">覆盖</option><option value="rebuild">重建</option></select></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "export") {
-    $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="导出数据" /></label><label>导出 SQL：<textarea id="exportSql" placeholder="select * from table_name"></textarea></label><label>结果名称：<input id="exportName" value="job_export" /></label><label>文件格式：<select id="exportExt"><option value="xlsx">xlsx</option><option value="csv">csv</option><option value="json">json</option><option value="xml">xml</option><option value="txt">txt</option></select></label><label>Sheet 名称：<input id="sheetName" value="Sheet1" /></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "query") {
-    $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="执行查询" /></label><label>SQL：<textarea id="querySql" placeholder="select 1"></textarea></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  } else if (type === "job") {
-    const options = jobs.filter((job) => job.id !== editingJobId).map((job) => `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name)}</option>`).join("");
-    $("#stepConfig").innerHTML = `<label>步骤名称：<input id="stepName" value="执行子作业" /></label><label>选择作业：<select id="nestedJob">${options}</select></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
-  }
+// ===== 作业编辑对话框：极简化 —— 添加步骤 = 从已保存任务中选择（复制其完整配置快照） =====
+
+let taskOptions = []; // [{id, name, type, config}] 来自单步导入/导出任务
+
+async function loadTaskOptions() {
+  const payload = await requestJson("/api/jobs");
+  const all = payload.jobs || [];
+  taskOptions = all
+    .filter((job) => isTaskAsset(job) && !isScheduleBackingJob(job) && job.id !== editingJobId)
+    .map((job) => ({ id: job.id, name: job.name, type: job.steps[0].type, config: JSON.parse(JSON.stringify(job.steps[0].config || {})) }));
 }
 
-function draftStepFromForm() {
-  const type = document.querySelector('input[name="stepType"]:checked').value;
-  if (type === "sync") throw new Error("同步模块开发后开放。");
-  const base = { id: crypto.randomUUID(), type, name: $("#stepName").value || "未命名步骤", enabled: true, continueOnError: $("#stepContinue")?.checked || false, config: {} };
-  if (type === "import") {
-    const refJobId = ($("#importJobRef")?.value || "").trim();
-    base.config = refJobId
-      ? { importJobId: refJobId }
-      : { ...connectionFields(), path: $("#importPath").value, tableName: $("#importTable").value, importMode: $("#importMode").value, fieldCase: "lower", tableCase: "lower" };
+function taskTypeLabel(type) {
+  return type === "import" ? "导入" : type === "export" ? "导出" : type;
+}
+
+function renderTaskOptions() {
+  const imports = taskOptions.filter((t) => t.type === "import");
+  const exports = taskOptions.filter((t) => t.type === "export");
+  const none = '<div class="empty-list">暂无可用任务</div>';
+  const block = (title, list) => (list.length
+    ? `<div class="task-group-title">${title}</div>` + list.map((t) => `<button type="button" class="selected-step ${t.id === draftSourceJobId ? "active" : ""}" data-id="${escapeHtml(t.id)}"><strong>${escapeHtml(t.name)}</strong><span>${taskTypeLabel(t.type)}任务</span></button>`).join("")
+    : "");
+  const content = block("导入任务", imports) + block("导出任务", exports);
+  $("#taskOptions").innerHTML = content || none;
+  $$("#taskOptions .selected-step").forEach((button) =>
+    button.addEventListener("click", () => {
+      draftSourceJobId = button.dataset.id;
+      renderTaskOptions();
+    }),
+  );
+}
+
+function draftStepFromSelection() {
+  const source = taskOptions.find((t) => t.id === draftSourceJobId);
+  if (!source) throw new Error("请先在左侧选择一个要执行的任务。");
+  // 复制任务完整配置作为快照（v2 决策：作业自包含、与任务互不关联；复制后手动微调不再影响原任务）
+  const stepType = source.type;
+  const config = JSON.parse(JSON.stringify(source.config));
+  if (stepType === "import") {
+    // 仅保留执行所需键；路径/目标库/表来自任务快照
+    config.importMode = config.importMode || "append";
   }
-  if (type === "export") base.config = { ...connectionFields(), items: [{ type: "query", name: $("#exportName").value || "job_export", sql: $("#exportSql").value }], extension: $("#exportExt").value, outputName: $("#exportName").value || "job_export", sheetName: $("#sheetName").value, headerMode: "field", exportMode: "workbook" };
-  if (type === "query") base.config = { ...connectionFields(), sql: $("#querySql").value };
-  if (type === "job") base.config = { jobId: $("#nestedJob").value };
-  return base;
+  return {
+    id: crypto.randomUUID(),
+    name: source.name,
+    type: stepType,
+    enabled: true,
+    continueOnError: false,
+    config,
+  };
 }
 
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${escapeHtml(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
 }
 
-function openJobDialog(job = null) {
+async function openJobDialog(job = null) {
   editingJobId = job?.id || "";
+  draftSourceJobId = "";
   $("#jobDialogTitle").textContent = job ? "编辑作业" : "新增作业";
   $("#jobName").value = job?.name || "";
   draftSteps = job ? JSON.parse(JSON.stringify(job.steps)) : [];
   selectedStepIndex = draftSteps.length ? 0 : -1;
-  renderStepConfig();
+  try {
+    await loadTaskOptions();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+  renderTaskOptions();
   renderDraftSteps();
   $("#jobDialog").showModal();
 }
@@ -183,6 +195,17 @@ async function saveJob() {
   setStatus("作业已保存。", "success");
 }
 
+async function duplicateSelectedJob() {
+  const job = jobs.find((item) => item.id === selectedJobId);
+  if (!job) throw new Error("请先选择一个要复制的作业。");
+  const stepsCopy = JSON.parse(JSON.stringify(job.steps));
+  const payload = { id: "", name: `${job.name}（副本）`, enabled: true, steps: stepsCopy };
+  const saved = await requestJson("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+  selectedJobId = saved.job.id;
+  await loadJobs();
+  setStatus(`已复制为「${saved.job.name}」，可选中后编辑修改。`, "success");
+}
+
 async function runSelectedJob() {
   if (!selectedJobId) throw new Error("请先选择作业。");
   setStatus("正在执行作业...");
@@ -193,16 +216,16 @@ async function runSelectedJob() {
 
 $("#newJob").addEventListener("click", () => openJobDialog());
 $("#editJob").addEventListener("click", () => { const job = jobs.find((item) => item.id === selectedJobId); if (job) openJobDialog(job); });
+$("#duplicateJob").addEventListener("click", () => duplicateSelectedJob().catch((error) => setStatus(error.message, "error")));
 $("#deleteJob").addEventListener("click", async () => { if (!selectedJobId || !confirm("确认删除当前作业？")) return; await requestJson(`/api/jobs?id=${encodeURIComponent(selectedJobId)}`, { method: "DELETE" }); selectedJobId = ""; await loadJobs(); });
 $("#runJob").addEventListener("click", () => runSelectedJob().catch((error) => setStatus(error.message, "error")));
 $("#refreshJobs").addEventListener("click", () => Promise.all([loadJobs(), loadRuns()]));
 $("#closeJobDialog").addEventListener("click", () => $("#jobDialog").close());
 $("#cancelJob").addEventListener("click", () => $("#jobDialog").close());
 $("#saveJob").addEventListener("click", () => saveJob().catch((error) => setStatus(error.message, "error")));
-$("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromForm()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
+$("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromSelection()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
 $("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
 $("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
 $("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
-$$('input[name="stepType"]').forEach((item) => item.addEventListener("change", renderStepConfig));
 
 Promise.all([loadConnections(), loadJobs()]).catch((error) => setStatus(error.message, "error"));

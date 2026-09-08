@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>作业 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260714_sidebar_palette" />
+    <link rel="stylesheet" href="/styles.css?v=20260908_job_picker_simple" />
   </head>
   <body data-page="jobs">
     <div class="desktop-shell">
@@ -38,6 +38,7 @@
             <section class="job-toolbar">
               <button id="newJob" type="button">新增作业</button>
               <button id="editJob" type="button">编辑作业</button>
+              <button id="duplicateJob" type="button">复制作业</button>
               <button id="deleteJob" type="button">删除作业</button>
               <button id="runJob" type="button">立即执行</button>
               <button id="refreshJobs" type="button">刷新</button>
@@ -66,19 +67,11 @@
       <form method="dialog" class="job-dialog-card">
         <header><strong id="jobDialogTitle">新增作业</strong><button id="closeJobDialog" type="button">×</button></header>
         <label>作业名称：<input id="jobName" /></label>
-        <fieldset>
-          <legend>选择要添加的子任务类型</legend>
-          <label><input type="radio" name="stepType" value="import" checked /> 导入</label>
-          <label><input type="radio" name="stepType" value="export" /> 导出</label>
-          <label><input type="radio" name="stepType" value="sync" disabled /> 同步</label>
-          <label><input type="radio" name="stepType" value="query" /> 查询</label>
-          <label><input type="radio" name="stepType" value="job" /> 作业</label>
-        </fieldset>
-        <label>选择连接：<select id="jobConnection"></select></label>
+        <p class="hint">作业按顺序执行下面这些任务。添加步骤 = 从已保存的导入/导出任务中选择，配置自动带入；作业与任务互相独立，互不影响。</p>
         <section class="job-step-picker">
           <div>
-            <strong>可选配置</strong>
-            <div id="stepConfig" class="step-config"></div>
+            <strong>选择要执行的任务</strong>
+            <div id="taskOptions" class="selected-steps"></div>
           </div>
           <div class="step-move">
             <button id="addStep" type="button">&gt;&gt;</button>
@@ -97,6 +90,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/jobs.js?v=20260908_hide_backing_jobs"></script>
+    <script src="/jobs.js?v=20260908_job_picker_simple"></script>
   </body>
 </html>

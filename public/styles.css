@@ -676,6 +676,13 @@ body {
   background: #eaf4ff;
 }
 
+.task-group-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  padding: 2px 2px 4px;
+}
+
 .job-item span,
 .selected-step span,
 .step-row span {
