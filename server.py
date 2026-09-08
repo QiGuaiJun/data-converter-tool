@@ -2877,6 +2877,35 @@ def execute_query_step(config: dict[str, object]) -> dict[str, object]:
         conn.close()
 
 
+def resolve_import_step_config(config: dict[str, object], visited: set[str] | None = None) -> dict[str, object]:
+    """产品建议 B：作业导入步骤若引用已保存的导入任务（config.importJobId），
+    加载该任务首个 import 步骤的完整配置执行，保证定时产出与手动导入逐格一致。
+
+    支持多层引用但用 visited 防循环；引用目标不存在或没有可用导入步骤时明确报错。
+    """
+    job_id = str(config.get("importJobId") or "").strip()
+    if not job_id:
+        return config
+    visited = visited or set()
+    if job_id in visited:
+        raise ValueError(f"导入任务引用存在循环，已停止：{job_id}")
+    visited = visited | {job_id}
+    with connect_db() as conn:
+        row = conn.execute("select * from _jobs where id = ?", (job_id,)).fetchone()
+    if not row:
+        raise ValueError("引用的导入任务不存在或已删除，请重新编辑作业。")
+    for step in json.loads(row["steps_json"] or "[]"):
+        if step.get("type") != "import":
+            continue
+        cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
+        resolved = dict(cfg)
+        if str(cfg.get("importJobId") or "").strip():
+            resolved = resolve_import_step_config(cfg, visited)
+        resolved.pop("importJobId", None)
+        return resolved
+    raise ValueError(f"导入任务“{row['name']}”中没有可用的导入步骤。")
+
+
 def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
     source_path = str(config.get("path") or config.get("sourcePath") or "")
@@ -2959,6 +2988,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             step_type = str(step.get("type") or "")
             config = step.get("config") if isinstance(step.get("config"), dict) else {}
             if step_type == "import":
+                config = resolve_import_step_config(config)
                 result = execute_import_step(config)
                 step_message = (
                     f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"

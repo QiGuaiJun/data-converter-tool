@@ -110,7 +110,11 @@ function renderStepConfig() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
   const connectionHint = `<p class="hint">连接会随子任务一起保存。</p>`;
   if (type === "import") {
-    $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="导入数据" /></label><label>文件或目录路径：<input id="importPath" placeholder="例如 C:\\data\\inbox" /></label><label>目标表：<input id="importTable" placeholder="可为空，按文件名生成" /></label><label>导入模式：<select id="importMode"><option value="append">追加</option><option value="update">更新</option><option value="overwrite">覆盖</option><option value="rebuild">重建</option></select></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
+    const refOptions = jobs
+      .filter((job) => job.id !== editingJobId && (job.steps || [])[0]?.type === "import")
+      .map((job) => `<option value="${escapeHtml(job.id)}">${escapeHtml(job.name)}</option>`)
+      .join("");
+    $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="导入数据" /></label><label>引用导入任务：<select id="importJobRef"><option value="">（不引用，使用下方简化配置）</option>${refOptions}</select></label><p class="hint">选择引用后将以该任务的完整配置（字段映射/类型识别/清洗等）执行，结果与手动导入逐格一致；下方路径/表/模式可留空。</p><label>文件或目录路径：<input id="importPath" placeholder="不引用时可填，例如 C:\\data\\inbox" /></label><label>目标表：<input id="importTable" placeholder="可为空，按文件名生成" /></label><label>导入模式：<select id="importMode"><option value="append">追加</option><option value="update">更新</option><option value="overwrite">覆盖</option><option value="rebuild">重建</option></select></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
   } else if (type === "export") {
     $("#stepConfig").innerHTML = `${connectionHint}<label>步骤名称：<input id="stepName" value="导出数据" /></label><label>导出 SQL：<textarea id="exportSql" placeholder="select * from table_name"></textarea></label><label>结果名称：<input id="exportName" value="job_export" /></label><label>文件格式：<select id="exportExt"><option value="xlsx">xlsx</option><option value="csv">csv</option><option value="json">json</option><option value="xml">xml</option><option value="txt">txt</option></select></label><label>Sheet 名称：<input id="sheetName" value="Sheet1" /></label><label><input id="stepContinue" type="checkbox" /> 失败后继续</label>`;
   } else if (type === "query") {
@@ -125,7 +129,12 @@ function draftStepFromForm() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
   if (type === "sync") throw new Error("同步模块开发后开放。");
   const base = { id: crypto.randomUUID(), type, name: $("#stepName").value || "未命名步骤", enabled: true, continueOnError: $("#stepContinue")?.checked || false, config: {} };
-  if (type === "import") base.config = { ...connectionFields(), path: $("#importPath").value, tableName: $("#importTable").value, importMode: $("#importMode").value, fieldCase: "lower", tableCase: "lower" };
+  if (type === "import") {
+    const refJobId = ($("#importJobRef")?.value || "").trim();
+    base.config = refJobId
+      ? { importJobId: refJobId }
+      : { ...connectionFields(), path: $("#importPath").value, tableName: $("#importTable").value, importMode: $("#importMode").value, fieldCase: "lower", tableCase: "lower" };
+  }
   if (type === "export") base.config = { ...connectionFields(), items: [{ type: "query", name: $("#exportName").value || "job_export", sql: $("#exportSql").value }], extension: $("#exportExt").value, outputName: $("#exportName").value || "job_export", sheetName: $("#sheetName").value, headerMode: "field", exportMode: "workbook" };
   if (type === "query") base.config = { ...connectionFields(), sql: $("#querySql").value };
   if (type === "job") base.config = { jobId: $("#nestedJob").value };
