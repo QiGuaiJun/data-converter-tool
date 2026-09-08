@@ -774,7 +774,13 @@ def read_csv_rows(path: Path, encoding_option: str, delimiter: str, line_delimit
                 else:
                     try:
                         dialect = csv.Sniffer().sniff(sample)
-                    except csv.Error:
+                        # Sniffer 在单列/无分隔符数据下会把换行符(\r/\n)或普通字母数字
+                        # 误判为分隔符，导致 csv.reader 报 bad delimiter value 或错误拆列。
+                        # 这类分隔符不可靠，降级为默认逗号（单列数据按整行一列读取）。
+                        sep = getattr(dialect, "delimiter", "")
+                        if not sep or sep in ("\r", "\n") or sep.isalnum():
+                            dialect = csv.excel
+                    except (csv.Error, ValueError):
                         dialect = csv.excel
                 return [[cell_to_text(cell) for cell in row] for row in csv.reader(source_lines, dialect)]
         except UnicodeDecodeError as exc:
@@ -1442,14 +1448,17 @@ def parse_column_type_overrides(fields: dict[str, str]) -> dict[str, str]:
         return {}
     if not isinstance(payload, dict):
         return {}
-    result: dict[str, str] = {}
+    entries: list[tuple[str, str]] = []
     for key, value in payload.items():
         if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
             continue
         column = transform_field_name(key, fields, key)
         if column:
-            result[column] = value.strip().lower()
-    return result
+            entries.append((column, value.strip().lower()))
+    # 与 build_target_data 的 unique_names 去重对齐：多个源列变换后同名时，
+    # 覆盖键也按相同顺序去重为 xxx / xxx_2，避免第二个同名列的类型覆盖丢失。
+    final_names = unique_names([name for name, _ in entries])
+    return {name: type_name for (_, type_name), name in zip(entries, final_names)}
 
 
 def primary_key_column(fields: dict[str, str]) -> str:
