@@ -1201,12 +1201,24 @@ def build_target_data(tabular: TabularData, fields: dict[str, str], file_name: s
     final_columns = list(transformed_columns)
     final_rows: list[list[object]] = [list(row) for row in cleaned_rows]
 
+    pk_column = ""
+    pk_auto = False
     auto_pk_field = fields.get("autoPkField", "").strip()
     if auto_pk_field:
         column = transform_field_name(auto_pk_field, fields, "id")
-        final_columns.insert(0, column)
-        for index, row in enumerate(final_rows, start=1):
-            row.insert(0, index)
+        if column in transformed_columns:
+            # 自动主键复用了源文件里已存在的列：不新增同名列，只把它标记为主键列。
+            pk_column = column
+        else:
+            # 源文件里没有该列：新增自增主键列（值 = 行号 1,2,3...）。
+            final_columns.insert(0, column)
+            for index, row in enumerate(final_rows, start=1):
+                row.insert(0, index)
+            pk_column = column
+            pk_auto = True
+    # 通过内部键把主键信息传递到建表 / 写入流程（不影响对外的 fields 语义）。
+    fields["_primaryKeyColumn"] = pk_column
+    fields["_primaryKeyAuto"] = "true" if pk_auto else "false"
 
     extras: list[tuple[str, object]] = []
     if fields.get("importTimeField", "").strip():
@@ -1334,24 +1346,38 @@ def parse_date_text(value: str) -> dt.datetime | None:
 
 def convert_date_columns(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> list[list[object]]:
     """目标为 MySQL 且开启类型自动识别时，把整列均为日期形态的文本还原为 date/datetime 对象，
-    使建表类型与入库值都是真正的日期类型，而不是 text 字符串。"""
+    使建表类型与入库值都是真正的日期类型，而不是 text 字符串。
+    用户通过 columnTypeOverrides 覆盖为 date/datetime 的列也会被尽力转换为日期对象。"""
     if target_db_type(fields) == "sqlite" or not rows or not columns:
         return rows
-    if fields.get("typeMode", "auto") == "text":
-        return rows
     converted = [list(row) for row in rows]
-    for index in range(len(columns)):
-        col_values = [row[index] for row in converted if index < len(row) and row[index] not in (None, "")]
-        if not col_values:
+    if fields.get("typeMode", "auto") != "text":
+        for index in range(len(columns)):
+            col_values = [row[index] for row in converted if index < len(row) and row[index] not in (None, "")]
+            if not col_values:
+                continue
+            parsed = [parse_date_text(value) if isinstance(value, str) else None for value in col_values]
+            if any(item is None for item in parsed):
+                continue
+            has_time = any(item.hour or item.minute or item.second for item in parsed)
+            for row in converted:
+                if index < len(row) and row[index] not in (None, ""):
+                    value = parse_date_text(row[index])
+                    row[index] = value if has_time else value.date()
+    # 用户覆盖为 date/datetime 的列：把文本解析为日期对象，解析失败保持原值（交由数据库校验）。
+    overrides = parse_column_type_overrides(fields)
+    for column, override_type in overrides.items():
+        if override_type not in {"date", "datetime"} or column not in columns:
             continue
-        parsed = [parse_date_text(value) if isinstance(value, str) else None for value in col_values]
-        if any(item is None for item in parsed):
-            continue
-        has_time = any(item.hour or item.minute or item.second for item in parsed)
+        index = columns.index(column)
         for row in converted:
-            if index < len(row) and row[index] not in (None, ""):
-                value = parse_date_text(row[index])
-                row[index] = value if has_time else value.date()
+            if index >= len(row) or row[index] in (None, ""):
+                continue
+            value = row[index]
+            if isinstance(value, str):
+                parsed = parse_date_text(value)
+                if parsed is not None:
+                    row[index] = parsed if override_type == "datetime" else parsed.date()
     return converted
 
 
@@ -1361,33 +1387,125 @@ def infer_column_types(columns: list[str], rows: list[list[object]], fields: dic
     int_type = "integer" if db_type == "sqlite" else "bigint"
     real_type = "real" if db_type == "sqlite" else "double"
     if fields.get("typeMode", "auto") == "text":
-        return {column: text_type for column in columns}
-    types: dict[str, str] = {}
-    for index, column in enumerate(columns):
-        values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
-        if values and all(isinstance(value, dt.date) for value in values):
-            if db_type == "sqlite":
-                types[column] = text_type
-            elif any(isinstance(value, dt.datetime) for value in values):
-                types[column] = "datetime"
+        types = {column: text_type for column in columns}
+    else:
+        types: dict[str, str] = {}
+        for index, column in enumerate(columns):
+            values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
+            if values and all(isinstance(value, dt.date) for value in values):
+                if db_type == "sqlite":
+                    types[column] = text_type
+                elif any(isinstance(value, dt.datetime) for value in values):
+                    types[column] = "datetime"
+                else:
+                    types[column] = "date"
+            elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
+                types[column] = int_type
+            elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", str(value)) for value in values):
+                types[column] = real_type
             else:
-                types[column] = "date"
-        elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
-            types[column] = int_type
-        elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", str(value)) for value in values):
-            types[column] = real_type
-        else:
-            types[column] = text_type
+                types[column] = text_type
+    # 用户手动指定的类型优先于自动识别结果（含 typeMode=text 的整表文本兜底）。
+    overrides = parse_column_type_overrides(fields)
+    for column, type_name in overrides.items():
+        if column in types:
+            normalized = normalize_type_override(type_name, db_type)
+            if normalized:
+                types[column] = normalized
     return types
+
+
+VALID_TYPE_OVERRIDES = {"text", "integer", "bigint", "real", "double", "date", "datetime"}
+
+
+def normalize_type_override(type_name: str, db_type: str) -> str:
+    """把用户指定的类型名归一化为当前目标库可用的列类型；非法类型返回空字符串。"""
+    value = (type_name or "").strip().lower()
+    if value not in VALID_TYPE_OVERRIDES:
+        return ""
+    if db_type == "sqlite":
+        return {"bigint": "integer", "double": "real", "date": "text", "datetime": "text"}.get(value, value)
+    return {"integer": "bigint", "real": "double"}.get(value, value)
+
+
+def parse_column_type_overrides(fields: dict[str, str]) -> dict[str, str]:
+    """解析 columnTypeOverrides（JSON 字符串形如 {"编号":"bigint"}），非法值忽略。
+
+    前端按“目标字段名”传键，这里用与 build_target_data 相同的 transform_field_name
+    把键归一化为最终列名，保证大小写/符号替换/拼音转换后仍能匹配到目标列。"""
+    raw_value = (fields.get("columnTypeOverrides") or "").strip()
+    if not raw_value:
+        return {}
+    try:
+        payload = json.loads(raw_value)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    result: dict[str, str] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
+            continue
+        column = transform_field_name(key, fields, key)
+        if column:
+            result[column] = value.strip().lower()
+    return result
+
+
+def primary_key_column(fields: dict[str, str]) -> str:
+    """返回导入配置声明的主键列名；未配置自动主键时返回空字符串。"""
+    return (fields.get("_primaryKeyColumn") or "").strip()
+
+
+def auto_pk_column(fields: dict[str, str]) -> str:
+    """返回自动生成的自增主键列名；仅当该主键为新增合成列时返回，否则返回空字符串。"""
+    if parse_bool(fields, "_primaryKeyAuto", False):
+        return (fields.get("_primaryKeyColumn") or "").strip()
+    return ""
+
+
+def detect_type_warnings(columns: list[str], rows: list[list[object]], column_types: dict[str, str]) -> list[dict[str, str]]:
+    """对推断为 text、但列内同时混有可解析数字/日期与不可解析文本的列给出预警。"""
+    warnings: list[dict[str, str]] = []
+    for index, column in enumerate(columns):
+        if column_types.get(column) != "text":
+            continue
+        values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
+        if not values:
+            continue
+        numeric_like = 0
+        date_like = 0
+        unparseable = 0
+        for value in values:
+            text = str(value).strip()
+            if re.fullmatch(r"[-+]?\d+", text) or re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", text):
+                numeric_like += 1
+            elif parse_date_text(text):
+                date_like += 1
+            else:
+                unparseable += 1
+        if unparseable > 0 and (numeric_like > 0 or date_like > 0):
+            warnings.append({"column": column, "reason": "该列含混合类型值，已按文本处理"})
+    return warnings
 
 
 def target_create_or_expand_table(conn, table_name: str, columns: list[str], rows: list[list[object]], rebuild: bool, allow_expand: bool, fields: dict[str, str]) -> None:
     table = db_quote(table_name, fields)
     column_types = infer_column_types(columns, rows, fields)
+    pk_column = primary_key_column(fields)
+    pk_auto = bool(auto_pk_column(fields))
     if rebuild:
         with conn.cursor() if target_db_type(fields) == "mysql" else nullcontext(conn) as cursor:
             cursor.execute(f"drop table if exists {table}")
-    definitions = ", ".join(f"{db_quote(column, fields)} {column_types[column]}" for column in columns)
+    definitions_list: list[str] = []
+    for column in columns:
+        definition = f"{db_quote(column, fields)} {column_types[column]}"
+        if column == pk_column:
+            definition += " PRIMARY KEY"
+            if target_db_type(fields) == "mysql" and pk_auto and column_types[column] in {"bigint", "integer"}:
+                definition += " AUTO_INCREMENT"
+        definitions_list.append(definition)
+    definitions = ", ".join(definitions_list)
     sql = f"create table if not exists {table} ({definitions})"
     if target_db_type(fields) == "mysql":
         with conn.cursor() as cursor:
@@ -1411,8 +1529,17 @@ def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[lis
     if not rows:
         return 0
     table = db_quote(table_name, fields)
-    quoted_columns = ", ".join(db_quote(column, fields) for column in columns)
-    placeholders = ", ".join(db_placeholder(fields) for _ in columns)
+    # 合成自增主键由数据库自动生成，写入时排除该列，避免更新/追加时行号与已有主键冲突。
+    auto_pk = auto_pk_column(fields)
+    insert_columns = [column for column in columns if column != auto_pk]
+    pk_index = columns.index(auto_pk) if auto_pk in columns else -1
+
+    def project(row: list[object]) -> list[object]:
+        values = [value for index, value in enumerate(row) if index != pk_index] if pk_index >= 0 else list(row)
+        return values[: len(insert_columns)]
+
+    quoted_columns = ", ".join(db_quote(column, fields) for column in insert_columns)
+    placeholders = ", ".join(db_placeholder(fields) for _ in insert_columns)
     sql = f"insert into {table} ({quoted_columns}) values ({placeholders})"
     batch_size = max(parse_int(fields, "batchRows", 0), 0)
     batches = [rows] if batch_size <= 0 else [rows[index : index + batch_size] for index in range(0, len(rows), batch_size)]
@@ -1420,7 +1547,7 @@ def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[lis
     if target_db_type(fields) == "mysql":
         with conn.cursor() as cursor:
             for batch in batches:
-                cursor.executemany(sql, [row[: len(columns)] for row in batch])
+                cursor.executemany(sql, [project(row) for row in batch])
                 total += len(batch)
                 if progress:
                     progress(total)
@@ -1428,7 +1555,7 @@ def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[lis
                     conn.commit()
     else:
         for batch in batches:
-            conn.executemany(sql, [row[: len(columns)] for row in batch])
+            conn.executemany(sql, [project(row) for row in batch])
             total += len(batch)
             if progress:
                 progress(total)
@@ -1466,6 +1593,10 @@ def target_insert_rows_parallel(table_name: str, columns: list[str], rows: list[
 def mysql_load_rows(conn, table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str], progress=None) -> int:
     if target_db_type(fields) != "mysql" or not rows:
         return 0
+    # 合成自增主键由数据库自动生成，LOAD DATA 时同样排除该列。
+    auto_pk = auto_pk_column(fields)
+    load_columns = [column for column in columns if column != auto_pk]
+    pk_index = columns.index(auto_pk) if auto_pk in columns else -1
     fd, temp_name = tempfile.mkstemp(prefix="codex_load_", suffix=".tsv")
     os.close(fd)
     temp_path = Path(temp_name)
@@ -1473,12 +1604,13 @@ def mysql_load_rows(conn, table_name: str, columns: list[str], rows: list[list[o
         with temp_path.open("w", encoding="utf-8", newline="") as file:
             writer = csv.writer(file, delimiter="\t", lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
             for row in rows:
-                writer.writerow(["\\N" if value is None else value for value in row[: len(columns)]])
+                values = [value for index, value in enumerate(row) if index != pk_index] if pk_index >= 0 else list(row)
+                writer.writerow(["\\N" if value is None else value for value in values[: len(load_columns)]])
         sql = (
             f"load data local infile {db_placeholder(fields)} into table {db_quote(table_name, fields)} "
             "character set utf8mb4 fields terminated by '\\t' optionally enclosed by '\"' "
             "lines terminated by '\\n' "
-            f"({', '.join(db_quote(column, fields) for column in columns)})"
+            f"({', '.join(db_quote(column, fields) for column in load_columns)})"
         )
         with conn.cursor() as cursor:
             cursor.execute(sql, (str(temp_path).replace("\\", "/"),))
@@ -1495,7 +1627,8 @@ def target_update_rows(conn, table_name: str, columns: list[str], rows: list[lis
     key_indexes = [columns.index(key) for key in match_keys if key in columns]
     if not key_indexes:
         raise ValueError("匹配键不在导入字段中。")
-    update_columns = [column for column in columns if column not in match_keys]
+    auto_pk = auto_pk_column(fields)
+    update_columns = [column for column in columns if column not in match_keys and column != auto_pk]
     inserted = 0
     updated = 0
     table = db_quote(table_name, fields)
@@ -1929,8 +2062,12 @@ def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -
             folder = Path(folder_value).expanduser()
             if not folder.is_absolute():
                 raise ValueError(f"目标文件夹必须是完整路径，当前保存的是：{folder_value}")
-            if not folder.exists() or not folder.is_dir():
-                raise ValueError(f"目标文件夹不存在：{folder}")
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise ValueError(f"无法创建目标文件夹：{folder}（{exc}）") from exc
+            if not folder.is_dir():
+                raise ValueError(f"目标文件夹不是目录：{folder}")
             return folder / f"{name}.{extension}"
     elif target_mode == "file":
         file_value = str(fields.get("outputName") or "").strip()
@@ -3478,17 +3615,27 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             raise ValueError("请选择要预览的文件。")
         uploaded = uploaded_files[0]
         tabular = read_tabular_file(uploaded.path, fields)
+        columns = tabular.columns
+        rows = tabular.rows
+        # 预览阶段的类型推断只依赖 targetDbType，避免解析/加载数据库连接（连接失效不应阻断预览）。
+        type_fields = dict(fields)
+        type_fields["connectionId"] = ""
+        type_rows = convert_date_columns(columns, rows, type_fields) if target_db_type(type_fields) == "mysql" else rows
+        column_types = infer_column_types(columns, type_rows, type_fields)
+        type_warnings = detect_type_warnings(columns, rows, column_types)
         json_response(
             self,
             {
                 "ok": True,
                 "fileName": uploaded.filename,
                 "suggestedTable": sanitize_identifier(Path(uploaded.filename).stem, "import_table"),
-                "columns": tabular.columns,
-                "preview": tabular.rows[:MAX_PREVIEW_ROWS],
-                "totalRows": len(tabular.rows),
+                "columns": columns,
+                "preview": rows[:MAX_PREVIEW_ROWS],
+                "totalRows": len(rows),
                 "sheets": tabular.sheets,
                 "selectedSheet": tabular.selected_sheet,
+                "columnTypes": column_types,
+                "typeWarnings": type_warnings,
             },
         )
 

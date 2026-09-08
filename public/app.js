@@ -39,6 +39,8 @@ let openedImportTaskId = "";
 let importEditorVisible = false;
 let selectedTaskSourcePath = "";
 let activeImportTaskConfig = {};
+let previewColumnTypes = {};
+let previewTypeWarnings = [];
 
 function $(selector) {
   return document.querySelector(selector);
@@ -81,6 +83,8 @@ function clearImportEditor() {
   selectedTaskSourcePath = "";
   currentColumns = [];
   activeImportTaskConfig = {};
+  previewColumnTypes = {};
+  previewTypeWarnings = [];
   importForm.reset();
   renderMapping([]);
   if (connectionSelect && savedConnections.length) connectionSelect.value = savedConnections[0].id;
@@ -99,6 +103,8 @@ function clearImportEditor() {
 async function setFiles(files) {
   selectedFiles = [...files].filter((file) => /\.(csv|txt|xlsx|xlsm|xls|json|xml|dbf)$/i.test(file.name));
   currentColumns = [];
+  previewColumnTypes = {};
+  previewTypeWarnings = [];
   renderMapping([]);
   previewMeta.textContent = "暂无预览";
   previewTable.className = "table-wrap empty";
@@ -293,6 +299,7 @@ function buildFormData(includeAllFiles = true) {
   data.append("writeMode", radioValue("writeMode"));
   data.append("commitMode", radioValue("commitMode"));
   data.append("mapping", JSON.stringify(readMapping()));
+  data.append("columnTypeOverrides", JSON.stringify(readColumnTypeOverrides()));
   return data;
 }
 
@@ -553,6 +560,18 @@ function applyImportTaskConfig(config) {
         row.querySelector(".map-target").value = item.target || item.source || "";
         row.querySelector(".map-default").value = item.defaultValue || "";
       });
+      if (config?.columnTypeOverrides) {
+        try {
+          const overrides = JSON.parse(config.columnTypeOverrides);
+          [...mappingTable.querySelectorAll("tbody tr")].forEach((row) => {
+            const select = row.querySelector(".map-type");
+            const targetName = row.querySelector(".map-target")?.value || "";
+            if (select && overrides[targetName]) select.value = overrides[targetName];
+          });
+        } catch (_) {
+          // 忽略损坏的覆盖配置，保持“自动”推断。
+        }
+      }
     } catch (_) {
       renderMapping([]);
     }
@@ -838,6 +857,8 @@ async function previewFile() {
       tableName.value = payload.suggestedTable;
     }
     currentColumns = payload.columns;
+    previewColumnTypes = payload.columnTypes || {};
+    previewTypeWarnings = payload.typeWarnings || [];
     renderMapping(payload.columns);
     renderTable(previewTable, payload.columns, payload.preview);
     const sheet = payload.selectedSheet ? ` · Sheet: ${payload.selectedSheet}` : "";
@@ -903,23 +924,45 @@ function renderMapping(columns) {
     return;
   }
   mappingTable.className = "mapping-table";
+  const warningByColumn = {};
+  for (const warning of previewTypeWarnings || []) {
+    if (warning && warning.column) warningByColumn[warning.column] = warning.reason || "";
+  }
   const rows = columns
-    .map(
-      (column, index) => `
-        <tr data-index="${index}">
+    .map((column, index) => {
+      const inferred = previewColumnTypes[column] || "text";
+      const warningReason = warningByColumn[column] || "";
+      const warningIcon = warningReason
+        ? `<span class="type-warning" title="${escapeHtml(warningReason)}">⚠️</span>`
+        : "";
+      return `
+        <tr data-index="${index}"${warningReason ? ' class="type-warning-row"' : ""}>
           <td><input class="map-enabled" type="checkbox" checked /></td>
           <td><input class="map-key" type="checkbox" ${index === 0 ? "checked" : ""} /></td>
           <td>${escapeHtml(column)}</td>
           <td><input class="map-target" value="${escapeHtml(column)}" /></td>
+          <td>${warningIcon}<select class="map-type">${typeSelectOptions(inferred)}</select></td>
           <td><input class="map-default" /></td>
-        </tr>`,
-    )
+        </tr>`;
+    })
     .join("");
   mappingTable.innerHTML = `
     <table>
-      <thead><tr><th>启用</th><th>匹配键</th><th>源字段</th><th>目标字段</th><th>默认值</th></tr></thead>
+      <thead><tr><th>启用</th><th>匹配键</th><th>源字段</th><th>目标字段</th><th>目标类型</th><th>默认值</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+}
+
+function typeSelectOptions(inferred) {
+  const options = [
+    ["", `自动（${escapeHtml(inferred)}）`],
+    ["bigint", "bigint"],
+    ["double", "double"],
+    ["date", "date"],
+    ["datetime", "datetime"],
+    ["text", "text"],
+  ];
+  return options.map(([value, label]) => `<option value="${escapeHtml(value)}">${label}</option>`).join("");
 }
 
 function readMapping() {
@@ -942,6 +985,21 @@ function readMapping() {
     defaultValue: row.querySelector(".map-default").value,
     matchKey: row.querySelector(".map-key").checked,
   }));
+}
+
+function readColumnTypeOverrides() {
+  const overrides = {};
+  const rows = mappingTable.querySelectorAll("tbody tr");
+  for (const row of rows) {
+    const select = row.querySelector(".map-type");
+    const type = select ? select.value : "";
+    if (!type) continue;
+    const targetInput = row.querySelector(".map-target");
+    const targetName = targetInput ? targetInput.value.trim() : "";
+    if (!targetName) continue;
+    overrides[targetName] = type;
+  }
+  return overrides;
 }
 
 function renderTable(container, columns, rows) {

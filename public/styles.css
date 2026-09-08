@@ -1520,6 +1520,20 @@ textarea {
   margin-bottom: 10px;
 }
 
+.mapping-table select.map-type {
+  min-width: 132px;
+  margin-left: 4px;
+}
+
+.mapping-table .type-warning {
+  margin-right: 2px;
+  cursor: help;
+}
+
+.mapping-table tr.type-warning-row td {
+  background: #fff8e1;
+}
+
 table {
   border-collapse: collapse;
   width: 100%;
