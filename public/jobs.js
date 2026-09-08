@@ -56,10 +56,11 @@ async function loadConnections() {
 
 async function loadJobs() {
   const payload = await requestJson("/api/jobs");
-  // 作业列表只呈现"作业"（多步编排 / 嵌套 / 查询型等）；
-  // 单步导入任务、单步导出任务属于导入页(IN)/导出页(OUT)管理的资产，不在本页展示，
-  // 避免"删除作业"误伤导入/导出任务（两者共享 _jobs 底层表）。
-  jobs = (payload.jobs || []).filter((job) => !isManagedTaskAsset(job));
+  // 作业列表只呈现"作业"：
+  //  - 过滤掉单步导入/导出任务（归 IN/OUT 页管理）
+  //  - 过滤掉定时任务自动生成的"- 自动作业"载体（只被调度内部使用）
+  // 避免"删除作业"误伤导入/导出任务或定时任务载体（它们共享 _jobs 底层表）。
+  jobs = (payload.jobs || []).filter((job) => !isManagedTaskAsset(job) && !isScheduleBackingJob(job));
   renderJobs();
   if (selectedJobId && !jobs.some((item) => item.id === selectedJobId)) selectedJobId = "";
   if (!selectedJobId && jobs[0]) selectedJobId = jobs[0].id;
@@ -71,6 +72,11 @@ function isManagedTaskAsset(job) {
   const steps = job.steps || [];
   if (steps.length !== 1) return false; // 多步作业（即使首步 import/export）是真正的作业
   return steps[0].type === "import" || steps[0].type === "export";
+}
+
+// 判定是否定时任务自动生成的载体作业（名字以 " - 自动作业" 结尾，仅在调度内部使用）
+function isScheduleBackingJob(job) {
+  return String(job?.name || "").endsWith(" - 自动作业");
 }
 
 async function loadRuns() {

@@ -4088,7 +4088,18 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if not schedule_id:
             raise ValueError("缺少定时任务编号。")
         with connect_db() as conn:
+            row = conn.execute("select job_id from _schedules where id = ?", (schedule_id,)).fetchone()
             conn.execute("delete from _schedules where id = ?", (schedule_id,))
+            # 若该定时任务指向的是"自动作业"载体，且不再被任何调度引用，则一并清理，避免孤儿残留
+            if row:
+                job_id = row["job_id"]
+                job = conn.execute("select name from _jobs where id = ?", (job_id,)).fetchone()
+                if job and str(job["name"] or "").endswith(" - 自动作业"):
+                    still_used = conn.execute(
+                        "select 1 from _schedules where job_id = ? limit 1", (job_id,)
+                    ).fetchone()
+                    if not still_used:
+                        conn.execute("delete from _jobs where id = ?", (job_id,))
         json_response(self, {"ok": True})
 
     def handle_job_runs(self, query: str) -> None:
