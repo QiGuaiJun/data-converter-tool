@@ -143,12 +143,77 @@ async function uploadTaskSource(files) {
 }
 
 async function uploadLinkedSource(file) {
-  // 方案 A：把选中的本机源文件复制到服务器固定输入目录 linked_sources（非 task_sources 副本），
-  // 定时任务可稳定读取该路径；本机文件更新后重新关联会覆盖同名旧文件。
+  // 方案②：把选中的本机源文件复制到服务器固定输入目录 linked_sources（同名覆盖）。
   const data = new FormData();
   data.append("file", file, file.name);
   return requestJson("/api/import/choose-source", { method: "POST", body: data });
 }
+
+const LINK_SOURCE_DB = "dataToolLinkedSources";
+const LINK_SOURCE_STORE = "files";
+function linkDbOpen() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(LINK_SOURCE_DB, 1);
+    request.onupgradeneeded = () => request.result.createObjectStore(LINK_SOURCE_STORE, { keyPath: "name" });
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+async function linkDbPut(record) {
+  const db = await linkDbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LINK_SOURCE_STORE, "readwrite");
+    tx.objectStore(LINK_SOURCE_STORE).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function linkDbAll() {
+  const db = await linkDbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(LINK_SOURCE_STORE, "readonly");
+    const all = tx.objectStore(LINK_SOURCE_STORE).getAll();
+    all.onsuccess = () => resolve(all.result || []);
+    all.onerror = () => reject(all.error);
+  });
+}
+async function rememberLinkedHandle(file, handle) {
+  try {
+    if (handle && typeof handle.requestPermission === "function") {
+      try { await handle.requestPermission({ mode: "read" }); } catch {}
+    }
+    await linkDbPut({ name: file.name, handle, lastModified: file.lastModified });
+  } catch (error) {
+    console.warn("记住源文件授权失败（不影响本次关联）:", error);
+  }
+}
+async function syncLinkedSources() {
+  let records = [];
+  try { records = await linkDbAll(); } catch { return; }
+  for (const record of records) {
+    const { name, handle } = record;
+    if (!handle || typeof handle.getFile !== "function") continue;
+    try {
+      let permission = "granted";
+      if (typeof handle.queryPermission === "function") permission = await handle.queryPermission({ mode: "read" });
+      if (permission === "prompt" && typeof handle.requestPermission === "function") {
+        try { permission = await handle.requestPermission({ mode: "read" }); } catch {}
+      }
+      if (permission !== "granted") continue;
+      const file = await handle.getFile();
+      if (file.lastModified === record.lastModified) continue;
+      const source = await uploadLinkedSource(file);
+      await linkDbPut({ name: file.name, handle, lastModified: file.lastModified });
+      console.log(`[源文件自动同步] ${file.name} 已更新 -> ${source.sourcePath}`);
+    } catch (error) {
+      console.warn(`[源文件同步失败] ${name}:`, error && error.message ? error.message : error);
+    }
+  }
+}
+// 方案②：页面常驻时自动保持本机源文件为最新。首次关联后，本机文件在原路径/同名更新，
+// 打开本页面即自动同步到服务器 linked_sources，定时任务读到的就是最新版（无需再手动指定）。
+setTimeout(syncLinkedSources, 3000);
+setInterval(syncLinkedSources, 60000);
 
 async function chooseOriginalSourceFile() {
   // 浏览器原生选择源文件：把文件上传并复制到服务器固定输入目录 linked_sources，
@@ -184,6 +249,7 @@ async function chooseOriginalSourceFile() {
     return;
   }
   const file = await handle.getFile();
+  await rememberLinkedHandle(file, handle);
   setStatus("正在上传并关联任务源文件...");
   try {
     const source = await uploadLinkedSource(file);
@@ -196,7 +262,7 @@ async function chooseOriginalSourceFile() {
       taskPath.dispatchEvent(new Event("change", { bubbles: true }));
     }
     restoreTaskSource(source.sourcePath);
-    setStatus(`已关联本机原文件：${file.name} → ${source.sourcePath}（已复制到服务器固定目录，定时任务可读取；本机更新后请重新关联以覆盖旧副本）`, "success");
+    setStatus(`已关联本机原文件：${file.name}（已记住此文件；只要路径和文件名不变，本机更新后本页面会自动同步最新内容到服务器，请保持本页面打开）`, "success");
   } catch (error) {
     setStatus(`上传源文件失败：${error.message}`, "error");
   }
