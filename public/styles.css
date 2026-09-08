@@ -676,6 +676,12 @@ body {
   background: #eaf4ff;
 }
 
+/* 已选子任务列表项：居中对齐 */
+#selectedSteps .selected-step {
+  justify-items: center;
+  text-align: center;
+}
+
 .task-group-title {
   font-size: 12px;
   font-weight: 500;
