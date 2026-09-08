@@ -683,6 +683,29 @@ body {
   padding: 2px 2px 4px;
 }
 
+.add-task-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: end;
+  padding: 6px 2px;
+}
+.add-task-form label {
+  display: grid;
+  grid-template-columns: 56px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #555;
+}
+.add-task-form select {
+  width: 100%;
+}
+.add-task-form button {
+  justify-self: start;
+  min-width: 96px;
+}
+
 .job-item span,
 .selected-step span,
 .step-row span {

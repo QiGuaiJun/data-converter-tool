@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>作业 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260908_job_picker_simple" />
+    <link rel="stylesheet" href="/styles.css?v=20260908_picker_dropdown" />
   </head>
   <body data-page="jobs">
     <div class="desktop-shell">
@@ -71,7 +71,12 @@
         <section class="job-step-picker">
           <div>
             <strong>选择要执行的任务</strong>
-            <div id="taskOptions" class="selected-steps"></div>
+            <div class="add-task-form">
+              <label>类型：<select id="addStepType"><option value="import">导入任务</option><option value="export">导出任务</option></select></label>
+              <label>任务：<select id="addStepTask"></select></label>
+              <button id="addStep" type="button">添加到已选</button>
+            </div>
+            <p class="hint">选择类型 → 任务会自动筛选，配置按任务快照带入；作业与任务互相独立。</p>
           </div>
           <div class="step-move">
             <button id="addStep" type="button">&gt;&gt;</button>
@@ -90,6 +95,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/jobs.js?v=20260908_job_picker_simple"></script>
+    <script src="/jobs.js?v=20260908_picker_dropdown"></script>
   </body>
 </html>

@@ -127,25 +127,22 @@ function taskTypeLabel(type) {
 }
 
 function renderTaskOptions() {
-  const imports = taskOptions.filter((t) => t.type === "import");
-  const exports = taskOptions.filter((t) => t.type === "export");
-  const none = '<div class="empty-list">暂无可用任务</div>';
-  const block = (title, list) => (list.length
-    ? `<div class="task-group-title">${title}</div>` + list.map((t) => `<button type="button" class="selected-step ${t.id === draftSourceJobId ? "active" : ""}" data-id="${escapeHtml(t.id)}"><strong>${escapeHtml(t.name)}</strong><span>${taskTypeLabel(t.type)}任务</span></button>`).join("")
-    : "");
-  const content = block("导入任务", imports) + block("导出任务", exports);
-  $("#taskOptions").innerHTML = content || none;
-  $$("#taskOptions .selected-step").forEach((button) =>
-    button.addEventListener("click", () => {
-      draftSourceJobId = button.dataset.id;
-      renderTaskOptions();
-    }),
-  );
+  // 改为两个下拉：类型(导入/导出) + 任务（按类型筛选）
+  const type = $("#addStepType")?.value || "import";
+  const filtered = taskOptions.filter((t) => t.type === type);
+  const taskSelect = $("#addStepTask");
+  if (taskSelect) {
+    taskSelect.innerHTML = filtered.length
+      ? filtered.map((t) => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)}</option>`).join("")
+      : '<option value="">(暂无可用任务)</option>';
+    taskSelect.disabled = filtered.length === 0;
+  }
 }
 
 function draftStepFromSelection() {
-  const source = taskOptions.find((t) => t.id === draftSourceJobId);
-  if (!source) throw new Error("请先在左侧选择一个要执行的任务。");
+  const sourceId = ($("#addStepTask")?.value || "").trim();
+  const source = taskOptions.find((t) => t.id === sourceId);
+  if (!source) throw new Error("请先在上方下拉中选择要执行的任务。");
   // 复制任务完整配置作为快照（v2 决策：作业自包含、与任务互不关联；复制后手动微调不再影响原任务）
   const stepType = source.type;
   const config = JSON.parse(JSON.stringify(source.config));
@@ -172,7 +169,7 @@ function renderDraftSteps() {
 
 async function openJobDialog(job = null) {
   editingJobId = job?.id || "";
-  draftSourceJobId = "";
+  $("#addStepType").value = "import";
   $("#jobDialogTitle").textContent = job ? "编辑作业" : "新增作业";
   $("#jobName").value = job?.name || "";
   draftSteps = job ? JSON.parse(JSON.stringify(job.steps)) : [];
@@ -224,6 +221,7 @@ $("#closeJobDialog").addEventListener("click", () => $("#jobDialog").close());
 $("#cancelJob").addEventListener("click", () => $("#jobDialog").close());
 $("#saveJob").addEventListener("click", () => saveJob().catch((error) => setStatus(error.message, "error")));
 $("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromSelection()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
+$("#addStepType").addEventListener("change", renderTaskOptions);
 $("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
 $("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
 $("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
