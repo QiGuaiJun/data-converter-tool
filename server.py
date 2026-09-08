@@ -103,6 +103,12 @@ def ensure_dirs() -> None:
     LINKED_SOURCES.mkdir(parents=True, exist_ok=True)
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    existing = [row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()]
+    if column not in existing:
+        conn.execute(f"alter table {table} add column {column} {ddl}")
+
+
 def connect_db() -> sqlite3.Connection:
     ensure_dirs()
     conn = sqlite3.connect(DB_PATH, timeout=30)
@@ -162,11 +168,13 @@ def connect_db() -> sqlite3.Connection:
             name text not null,
             enabled integer not null default 1,
             steps_json text not null default '[]',
+            guard_json text not null default '{}',
             created_at text not null,
             updated_at text not null
         )
         """
     )
+    _ensure_column(conn, "_jobs", "guard_json", "text not null default '{}'")
     conn.execute(
         """
         create table if not exists _schedules (
@@ -2617,6 +2625,7 @@ def row_to_job(row: sqlite3.Row) -> dict[str, object]:
         "name": row["name"],
         "enabled": bool(row["enabled"]),
         "steps": json.loads(row["steps_json"] or "[]"),
+        "guard": json.loads(row["guard_json"] or "{}"),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
@@ -2676,16 +2685,18 @@ def save_job(payload: dict[str, object]) -> dict[str, object]:
         raise ValueError("同步模块尚未开放，暂不能保存同步子任务。")
     job_id = str(payload.get("id") or uuid.uuid4().hex)
     now = now_text()
+    guard = payload.get("guard") if isinstance(payload.get("guard"), dict) else {}
     with connect_db() as conn:
         old = conn.execute("select created_at from _jobs where id = ?", (job_id,)).fetchone()
         conn.execute(
             """
-            insert into _jobs (id, name, enabled, steps_json, created_at, updated_at)
-            values (?, ?, ?, ?, ?, ?)
+            insert into _jobs (id, name, enabled, steps_json, guard_json, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?)
             on conflict(id) do update set
                 name = excluded.name,
                 enabled = excluded.enabled,
                 steps_json = excluded.steps_json,
+                guard_json = excluded.guard_json,
                 updated_at = excluded.updated_at
             """,
             (
@@ -2693,6 +2704,7 @@ def save_job(payload: dict[str, object]) -> dict[str, object]:
                 name,
                 1 if payload.get("enabled", True) not in (False, "false", "0", 0, "off") else 0,
                 json.dumps(steps, ensure_ascii=False),
+                json.dumps(guard, ensure_ascii=False),
                 old["created_at"] if old else now,
                 now,
             ),
@@ -2990,6 +3002,59 @@ def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
     return guards
 
 
+def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -> tuple[bool, str]:
+    """作业级执行条件（B/C 类守卫）判定。
+
+    guard 结构（存 _jobs.guard_json）：
+      {"type": "query_has_rows", "connectionId": "...", "targetDbType": "...", "sql": "select ..."}
+        —— 查询返回 >=1 行才执行；否则跳过
+      {"type": "date_match", "mode": "weekday", "values": [1,3,5]}   —— 仅周几(1=周一..7=周日)执行
+      {"type": "date_match", "mode": "monthday", "values": [1,15]}   —— 仅每月几号执行
+    返回 (ok, reason)：ok=False 表示本次不满足、应跳过整个作业。
+    """
+    guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    gtype = str(guard.get("type") or "").strip().lower()
+    if not gtype or gtype in {"", "none", "off"}:
+        return True, ""
+    if gtype == "query_has_rows":
+        sql = str(guard.get("sql") or "").strip()
+        if not sql:
+            raise ValueError("作业执行条件：查询 SQL 不能为空。")
+        fields = {
+            "connectionId": str(guard.get("connectionId") or "").strip(),
+            "targetDbType": str(guard.get("targetDbType") or "").strip() or "mysql",
+        }
+        count = execute_query_step({**fields, "sql": sql})
+        rows = int(count.get("rows") or 0)
+        if rows <= 0:
+            return False, f"执行条件查询结果为空（{rows} 行），作业已跳过"
+        return True, f"执行条件满足（查询 {rows} 行）"
+    if gtype == "date_match":
+        now = now or dt.datetime.now()
+        mode = str(guard.get("mode") or "weekday").strip().lower()
+        values = guard.get("values") if isinstance(guard.get("values"), list) else []
+        try:
+            nums = sorted({int(v) for v in values if str(v).strip().isdigit()})
+        except (TypeError, ValueError):
+            nums = []
+        if not nums:
+            return True, ""
+        if mode == "weekday":
+            today = now.isoweekday()  # 1=周一 .. 7=周日
+            if today not in nums:
+                names = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+                label = "、".join(f"周{names.get(n, n)}" for n in nums)
+                return False, f"作业仅在 {label} 执行，今天不是执行日，作业已跳过"
+            return True, "今天为作业执行日"
+        if mode == "monthday":
+            today = now.day
+            if today not in nums:
+                return False, f"作业仅在每月 {nums} 号执行，今天 {today} 号不是执行日，作业已跳过"
+            return True, "今天为作业执行日"
+        return True, ""
+    raise ValueError(f"不支持的作业执行条件类型：{gtype}")
+
+
 def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None = None) -> dict[str, object]:
     visited = visited or set()
     if job_id in visited:
@@ -3001,15 +3066,28 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         raise ValueError("作业不存在。")
     job = row_to_job(row)
 
+    # ---- 作业级执行条件（B/C 类守卫）：query_has_rows / date_match
+    #      不满足 → 整个作业标记"跳过"，不执行任何步骤 ----
+    guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    guard_reason = ""
+    guard_skip = False
+    if guard and str(guard.get("type") or "").strip().lower() not in {"", "none", "off"}:
+        try:
+            ok, reason = evaluate_job_guard(job)
+            if not ok:
+                guard_skip = True
+                guard_reason = reason
+        except Exception as exc:
+            # 条件评估异常（如查询连接失败）不静默——让作业失败以暴露配置问题
+            raise ValueError(f"作业执行条件评估失败：{exc}") from exc
+
     # ---- 文件守卫：作业中任一启用了 skipIfFileUnchanged 的导入步骤，
     #      若其源文件与上次成功执行时相比无变化 → 整个作业标记"跳过"，不执行任何步骤 ----
     guards = _guard_summary(job)
-    guard_reason = ""
-    guard_skip = False
-    if guards:
+    if not guard_skip:
         try:
-            for step_index, guard in guards.items():
-                current = _file_fingerprint(guard["source"])
+            for step_index, guard_item in guards.items():
+                current = _file_fingerprint(guard_item["source"])
                 with connect_db() as conn:
                     prev = conn.execute(
                         "select fingerprint from _job_file_guards where job_id = ? and step_index = ?",
@@ -3017,9 +3095,9 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     ).fetchone()
                 if prev and prev["fingerprint"] == current:
                     guard_skip = True
-                    guard_reason = f"源文件无更新（{guard['source']}），作业已跳过"
+                    guard_reason = f"源文件无更新（{guard_item['source']}），作业已跳过"
                     break
-                guard["fingerprint"] = current
+                guard_item["fingerprint"] = current
         except Exception as exc:
             # 指纹计算失败（如路径暂不可达）不阻塞作业，仅提示
             guard_reason = ""
@@ -3116,13 +3194,13 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
         # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）
         if guards:
-            for step_index, guard in guards.items():
-                fp = guard.get("fingerprint")
+            for step_index, guard_item in guards.items():
+                fp = guard_item.get("fingerprint")
                 if fp:
                     with connect_db() as conn:
                         conn.execute(
                             "insert or replace into _job_file_guards (job_id, step_index, fingerprint, source_text, updated_at) values (?, ?, ?, ?, ?)",
-                            (job_id, step_index, fp, guard.get("source", ""), now_text()),
+                            (job_id, step_index, fp, guard_item.get("source", ""), now_text()),
                         )
     else:
         message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"

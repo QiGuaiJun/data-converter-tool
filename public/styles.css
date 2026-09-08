@@ -858,6 +858,43 @@ body {
   margin-top: 2px;
 }
 
+.job-guard-box {
+  margin: 6px 0;
+  padding: 8px;
+  border: 1px solid #e2d9c3;
+  border-radius: 8px;
+  background: #fdfaf3;
+  font-size: 13px;
+}
+.job-guard-box summary {
+  cursor: pointer;
+  color: #633806;
+  font-weight: 500;
+}
+.job-guard-box label {
+  display: block;
+  margin-top: 6px;
+}
+.job-guard-box textarea {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 4px;
+}
+.guard-subconfig {
+  margin-top: 6px;
+}
+#guardWeekdayRow label {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 8px;
+  margin-top: 6px;
+  gap: 2px;
+}
+.step-row.guard-summary {
+  background: #fdf6e6;
+  border-bottom: 1px dashed #e6c887;
+}
+
 @media (max-width: 900px) {
   .run-meta-grid,
   .run-meta-grid.step-meta {

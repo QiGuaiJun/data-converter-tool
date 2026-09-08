@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>作业 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260908_job_guard" />
+    <link rel="stylesheet" href="/styles.css?v=20260908_job_guard_bc" />
   </head>
   <body data-page="jobs">
     <div class="desktop-shell">
@@ -67,6 +67,34 @@
       <form method="dialog" class="job-dialog-card">
         <header><strong id="jobDialogTitle">新增作业</strong><button id="closeJobDialog" type="button">×</button></header>
         <label>作业名称：<input id="jobName" /></label>
+        <details class="job-guard-box" id="jobGuardBox">
+          <summary>执行条件（可选）：先判断满足条件才执行本作业，不满足则跳过</summary>
+          <label>条件类型：
+            <select id="guardType">
+              <option value="">不启用（每次都执行）</option>
+              <option value="query_has_rows">查询有结果才执行</option>
+              <option value="date_match">仅在指定日期执行</option>
+            </select>
+          </label>
+          <div id="guardQueryConfig" class="guard-subconfig">
+            <label>连接：<select id="guardConnection"></select></label>
+            <label>检查 SQL（有 ≥1 行结果才执行）：<textarea id="guardSql" placeholder="select count(*) from 会员小票表 where 提单时间 >= '2026-09-01'"></textarea></label>
+          </div>
+          <div id="guardDateConfig" class="guard-subconfig">
+            <label>按：<select id="guardDateMode"><option value="weekday">星期</option><option value="monthday">每月几号</option></select></label>
+            <div id="guardWeekdayRow">
+              在以下星期执行：
+              <label><input type="checkbox" class="guard-weekday" value="1" />周一</label>
+              <label><input type="checkbox" class="guard-weekday" value="2" />周二</label>
+              <label><input type="checkbox" class="guard-weekday" value="3" />周三</label>
+              <label><input type="checkbox" class="guard-weekday" value="4" />周四</label>
+              <label><input type="checkbox" class="guard-weekday" value="5" />周五</label>
+              <label><input type="checkbox" class="guard-weekday" value="6" />周六</label>
+              <label><input type="checkbox" class="guard-weekday" value="7" />周日</label>
+            </div>
+            <label id="guardMonthdayRow">每月几号执行：<input id="guardMonthday" type="number" min="1" max="31" placeholder="如 1" /></label>
+          </div>
+        </details>
         <p class="hint">作业按顺序执行下面这些任务。添加步骤 = 从已保存的导入/导出任务中选择，配置自动带入；作业与任务互相独立，互不影响。</p>
         <section class="job-step-picker">
           <div>
@@ -95,6 +123,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/jobs.js?v=20260908_job_guard"></script>
+    <script src="/jobs.js?v=20260908_job_guard_bc"></script>
   </body>
 </html>

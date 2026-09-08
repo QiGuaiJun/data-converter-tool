@@ -50,6 +50,12 @@ function renderRunLog(run) {
 async function loadConnections() {
   const payload = await requestJson("/api/connections");
   connections = payload.connections || [];
+  const guardConn = $("#guardConnection");
+  if (guardConn) {
+    guardConn.innerHTML =
+      '<option value="">本地 SQLite</option>' +
+      connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("");
+  }
 }
 
 // 判定是否"单步导入/导出任务"（作业可复用的资产，也是任务面板显示的实体）
@@ -108,11 +114,27 @@ function updateJobSelection() {
   });
 }
 
+function guardSummary(job) {
+  const g = (job && job.guard) || {};
+  if (!g || !g.type) return "";
+  if (g.type === "query_has_rows") return `执行条件：查询有结果才执行（${g.connectionId ? "已选连接" : "本地 SQLite"}）`;
+  if (g.type === "date_match" && Array.isArray(g.values)) {
+    if (g.mode === "weekday") {
+      const names = { 1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日" };
+      return `执行条件：仅 ${g.values.map((v) => names[v] || v).join("、")} 执行`;
+    }
+    return `执行条件：仅每月 ${g.values.join("、")} 号执行`;
+  }
+  return "";
+}
+
 function renderSelectedJob() {
   const job = jobs.find((item) => item.id === selectedJobId);
-  $("#stepPreview").innerHTML = job
-    ? job.steps.map((step, index) => `<div class="step-row"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${escapeHtml(step.type)} · ${step.enabled ? "启用" : "禁用"} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></div>`).join("")
-    : "请选择作业";
+  const gText = job ? guardSummary(job) : "";
+  $("#stepPreview").innerHTML = (job
+    ? (gText ? `<div class="step-row guard-summary"><strong>${escapeHtml(gText)}</strong></div>` : "") +
+      job.steps.map((step, index) => `<div class="step-row"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${escapeHtml(step.type)} · ${step.enabled ? "启用" : "禁用"} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></div>`).join("")
+    : "请选择作业");
   loadRuns().catch((error) => setStatus(error.message, "error"));
 }
 
@@ -211,6 +233,54 @@ function renderDraftSteps() {
   renderGuardToggle();
 }
 
+// ===== 作业级执行条件（B/C 守卫）=====
+function renderGuardConfig() {
+  const type = $("#guardType")?.value || "";
+  const q = $("#guardQueryConfig");
+  const d = $("#guardDateConfig");
+  if (q) q.style.display = type === "query_has_rows" ? "" : "none";
+  if (d) d.style.display = type === "date_match" ? "" : "none";
+  const mode = $("#guardDateMode")?.value || "weekday";
+  const wd = $("#guardWeekdayRow");
+  const md = $("#guardMonthdayRow");
+  if (wd) wd.style.display = mode === "weekday" ? "" : "none";
+  if (md) md.parentElement && (md.parentElement.style.display = mode === "monthday" ? "" : "none");
+}
+
+function loadGuardFromJob(job) {
+  const guard = (job && job.guard) || {};
+  $("#guardType").value = guard.type || "";
+  $("#guardSql").value = guard.sql || "";
+  $("#guardConnection").value = guard.connectionId || "";
+  const mode = guard.mode || "weekday";
+  $("#guardDateMode").value = mode;
+  const values = Array.isArray(guard.values) ? guard.values.map((v) => String(v)) : [];
+  $$(".guard-weekday").forEach((box) => { box.checked = values.includes(box.value); });
+  const monthday = values.length === 1 && !isNaN(Number(values[0])) ? Number(values[0]) : "";
+  $("#guardMonthday").value = monthday;
+  renderGuardConfig();
+}
+
+function collectGuard() {
+  const type = $("#guardType")?.value || "";
+  if (!type) return {};
+  if (type === "query_has_rows") {
+    return { type, connectionId: $("#guardConnection").value, targetDbType: $("#guardConnection").value ? "mysql" : "sqlite", sql: $("#guardSql").value.trim() };
+  }
+  if (type === "date_match") {
+    const mode = $("#guardDateMode").value;
+    let values = [];
+    if (mode === "weekday") values = $$(".guard-weekday:checked").map((box) => Number(box.value));
+    else {
+      const day = Number($("#guardMonthday").value);
+      if (day >= 1 && day <= 31) values = [day];
+    }
+    if (!values.length) throw new Error("请选择至少一个执行日期。");
+    return { type, mode, values };
+  }
+  return {};
+}
+
 async function openJobDialog(job = null) {
   editingJobId = job?.id || "";
   $("#addStepType").value = "import";
@@ -218,6 +288,7 @@ async function openJobDialog(job = null) {
   $("#jobName").value = job?.name || "";
   draftSteps = job ? JSON.parse(JSON.stringify(job.steps)) : [];
   selectedStepIndex = draftSteps.length ? 0 : -1;
+  loadGuardFromJob(job);
   try {
     await loadTaskOptions();
   } catch (error) {
@@ -229,7 +300,8 @@ async function openJobDialog(job = null) {
 }
 
 async function saveJob() {
-  const payload = { id: editingJobId, name: $("#jobName").value, enabled: true, steps: draftSteps };
+  const guard = collectGuard();
+  const payload = { id: editingJobId, name: $("#jobName").value, enabled: true, steps: draftSteps, guard };
   await requestJson("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
   $("#jobDialog").close();
   await loadJobs();
@@ -266,6 +338,8 @@ $("#cancelJob").addEventListener("click", () => $("#jobDialog").close());
 $("#saveJob").addEventListener("click", () => saveJob().catch((error) => setStatus(error.message, "error")));
 $("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromSelection()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
 $("#addStepType").addEventListener("change", renderTaskOptions);
+$("#guardType").addEventListener("change", renderGuardConfig);
+$("#guardDateMode").addEventListener("change", renderGuardConfig);
 $("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
 $("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
 $("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
