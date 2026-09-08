@@ -239,6 +239,18 @@ def connect_db() -> sqlite3.Connection:
         existing = [row["name"] for row in conn.execute("pragma table_info(_import_logs)").fetchall()]
         if column not in existing:
             conn.execute(f"alter table _import_logs add column {column} {ddl}")
+    conn.execute(
+        """
+        create table if not exists _job_file_guards (
+            job_id text not null,
+            step_index integer not null,
+            fingerprint text not null,
+            source_text text not null,
+            updated_at text not null,
+            primary key (job_id, step_index)
+        )
+        """
+    )
     _migrate_legacy_secrets_once(conn)
     return conn
 
@@ -2950,6 +2962,34 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _file_fingerprint(path_text: str) -> str:
+    """计算源文件/目录的指纹：文件数量 + 每个文件 (名称, 大小, mtime) 拼接哈希。
+
+    用于"文件无更新则跳过作业"守卫。不含内容级 hash（大文件性能考虑），
+    以 大小+mtime 变化作为"文件有更新"的可靠近似。
+    """
+    import hashlib
+    files = collect_local_files(path_text)
+    parts = [f"{len(files)}"]
+    for f in files:
+        st = f.path.stat()
+        parts.append(f"{f.filename}|{st.st_size}|{int(st.st_mtime)}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
+    """收集作业中启用了文件守卫的 import 步骤（步骤 config.skipIfFileUnchanged 为真）。"""
+    guards: dict[int, dict[str, str]] = {}
+    for index, step in enumerate(job["steps"]):
+        cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
+        flag = str(cfg.get("skipIfFileUnchanged") or "").strip().lower()
+        if step.get("type") == "import" and step.get("enabled", True) and flag in {"true", "1", "yes", "on"}:
+            path_text = str(cfg.get("path") or cfg.get("sourcePath") or "").strip()
+            if path_text:
+                guards[index] = {"source": path_text}
+    return guards
+
+
 def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None = None) -> dict[str, object]:
     visited = visited or set()
     if job_id in visited:
@@ -2960,6 +3000,30 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     if not row:
         raise ValueError("作业不存在。")
     job = row_to_job(row)
+
+    # ---- 文件守卫：作业中任一启用了 skipIfFileUnchanged 的导入步骤，
+    #      若其源文件与上次成功执行时相比无变化 → 整个作业标记"跳过"，不执行任何步骤 ----
+    guards = _guard_summary(job)
+    guard_reason = ""
+    guard_skip = False
+    if guards:
+        try:
+            for step_index, guard in guards.items():
+                current = _file_fingerprint(guard["source"])
+                with connect_db() as conn:
+                    prev = conn.execute(
+                        "select fingerprint from _job_file_guards where job_id = ? and step_index = ?",
+                        (job_id, step_index),
+                    ).fetchone()
+                if prev and prev["fingerprint"] == current:
+                    guard_skip = True
+                    guard_reason = f"源文件无更新（{guard['source']}），作业已跳过"
+                    break
+                guard["fingerprint"] = current
+        except Exception as exc:
+            # 指纹计算失败（如路径暂不可达）不阻塞作业，仅提示
+            guard_reason = ""
+
     run_id = uuid.uuid4().hex
     started = dt.datetime.now()
     with connect_db() as conn:
@@ -2967,6 +3031,17 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, status) values (?, ?, ?, ?, ?, ?)",
             (run_id, job_id, schedule_id, str(job["name"]), started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
         )
+
+    if guard_skip:
+        ended = dt.datetime.now()
+        message = f"作业跳过：{guard_reason}。"
+        with connect_db() as conn:
+            conn.execute(
+                "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+                (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - started).total_seconds() * 1000), "跳过", message, run_id),
+            )
+        return {"id": run_id, "jobId": job_id, "status": "跳过", "message": message}
+
     status = "成功"
     message = ""
     completed_steps = 0
@@ -3039,6 +3114,16 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     ended = dt.datetime.now()
     if status == "成功":
         message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
+        # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）
+        if guards:
+            for step_index, guard in guards.items():
+                fp = guard.get("fingerprint")
+                if fp:
+                    with connect_db() as conn:
+                        conn.execute(
+                            "insert or replace into _job_file_guards (job_id, step_index, fingerprint, source_text, updated_at) values (?, ?, ?, ?, ?)",
+                            (job_id, step_index, fp, guard.get("source", ""), now_text()),
+                        )
     else:
         message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
     with connect_db() as conn:

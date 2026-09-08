@@ -25,15 +25,21 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
+function runStateClass(status) {
+  if (status === "成功") return "success";
+  if (status === "跳过") return "skipped";
+  return "failed";
+}
+
 function renderRunLog(run) {
   const steps = run.steps || [];
   const successCount = steps.filter((step) => step.status === "成功").length;
   const failedCount = steps.filter((step) => step.status === "失败").length;
-  return `<div class="log-item ${run.status === "成功" ? "success" : "failed"}">
+  return `<div class="log-item ${runStateClass(run.status)}">
     <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
     <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms)} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
     <div class="run-message">${escapeHtml(run.message)}</div>
-    ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
+    ${steps.map((step) => `<div class="run-step ${runStateClass(step.status)}">
       <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
       <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
       <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
@@ -175,11 +181,34 @@ function draftStepFromSelection() {
   };
 }
 
+function renderGuardToggle() {
+  // 仅当选中了一个 import 步骤时显示"文件守卫"开关：源文件无更新则跳过整个作业
+  const guardArea = $("#stepGuardArea");
+  if (!guardArea) return;
+  const step = draftSteps[selectedStepIndex];
+  if (!step || step.type !== "import") {
+    guardArea.innerHTML = "";
+    return;
+  }
+  const cfg = step.config || (step.config = {});
+  const on = String(cfg.skipIfFileUnchanged || "").toLowerCase() === "true";
+  guardArea.innerHTML = `<label class="guard-check"><input type="checkbox" id="stepGuard" ${on ? "checked" : ""} /> 源文件无更新时跳过整个作业（首次执行会记录文件指纹，之后文件没变就不重复跑）</label>`;
+  const box = $("#stepGuard");
+  if (box) {
+    box.addEventListener("change", () => {
+      if (box.checked) cfg.skipIfFileUnchanged = "true";
+      else delete cfg.skipIfFileUnchanged;
+      renderDraftSteps();
+    });
+  }
+}
+
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)}${step.type === "import" && String((step.config || {}).skipIfFileUnchanged || "").toLowerCase() === "true" ? " · 文件守卫" : ""} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
+  renderGuardToggle();
 }
 
 async function openJobDialog(job = null) {
@@ -222,7 +251,7 @@ async function runSelectedJob() {
   if (!selectedJobId) throw new Error("请先选择作业。");
   setStatus("正在执行作业...");
   const payload = await requestJson("/api/jobs/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selectedJobId }) });
-  setStatus(`${payload.run.status}：${payload.run.message}`, payload.run.status === "成功" ? "success" : "error");
+  setStatus(`${payload.run.status}：${payload.run.message}`, payload.run.status === "成功" ? "success" : payload.run.status === "跳过" ? "skipped" : "error");
   await loadRuns();
 }
 

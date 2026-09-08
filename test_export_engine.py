@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from io import BytesIO
 
 from openpyxl import load_workbook
+
+# 隔离测试环境：数据/上传/导出落临时目录，不触碰真实 data/ uploads/ exports/
+_tmp = tempfile.mkdtemp(prefix="dc_test_")
+os.environ["DATA_DIR"] = str(Path(_tmp) / "data")
+os.environ["UPLOADS_DIR"] = str(Path(_tmp) / "uploads")
+os.environ["EXPORTS_DIR"] = str(Path(_tmp) / "exports")
 
 import server
 
@@ -107,7 +115,8 @@ def test_mysql_export_if_available() -> None:
         "fieldCase": "lower",
         "commitMode": "once",
     }
-    upload = Path("uploads/codex_export_people.csv")
+    upload = Path(_tmp) / "uploads" / "codex_export_people.csv"
+    upload.parent.mkdir(parents=True, exist_ok=True)
     upload.write_text("Name,Amount\nA,1\nB,2\n", encoding="utf-8-sig")
     server.import_uploaded_file(server.UploadedFile("codex_export_people.csv", upload), fields)
 

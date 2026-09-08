@@ -619,6 +619,10 @@ body {
   color: #b3261e;
 }
 
+.job-toolbar span.skipped {
+  color: #9a6700;
+}
+
 .job-grid {
   min-height: 0;
   display: grid;
@@ -799,6 +803,11 @@ body {
   border-left-color: #d92d20;
 }
 
+.schedule-run-list .log-item.skipped,
+.job-runs .log-item.skipped {
+  border-left-color: #e6a23c;
+}
+
 .schedule-run-list .log-item > strong > span,
 .job-runs .log-item > strong > span,
 .run-step > strong > span {
@@ -821,6 +830,32 @@ body {
 .run-step.failed > strong > span {
   background: #fff0ee;
   color: #b3261e;
+}
+
+.schedule-run-list .log-item.skipped > strong > span,
+.job-runs .log-item.skipped > strong > span,
+.run-step.skipped > strong > span {
+  background: #fdf6e6;
+  color: #9a6700;
+}
+
+.step-guard-area {
+  padding-top: 6px;
+}
+.step-guard-area .guard-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px dashed #d0d0d0;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #555;
+  background: #fafaf8;
+  line-height: 1.5;
+}
+.step-guard-area .guard-check input {
+  margin-top: 2px;
 }
 
 @media (max-width: 900px) {

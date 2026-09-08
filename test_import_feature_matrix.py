@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 from openpyxl import Workbook
+
+# 隔离测试环境：数据/上传/导出落临时目录，不触碰真实 data/ uploads/ exports/
+_tmp = tempfile.mkdtemp(prefix="dc_test_")
+os.environ["DATA_DIR"] = str(Path(_tmp) / "data")
+os.environ["UPLOADS_DIR"] = str(Path(_tmp) / "uploads")
+os.environ["EXPORTS_DIR"] = str(Path(_tmp) / "exports")
 
 import server
 
@@ -36,7 +44,7 @@ def rows(table: str) -> list[tuple]:
 
 def main() -> None:
     reset()
-    upload_dir = Path("uploads")
+    upload_dir = Path(_tmp) / "uploads"
     upload_dir.mkdir(exist_ok=True)
 
     csv_path = upload_dir / "mx.csv"
