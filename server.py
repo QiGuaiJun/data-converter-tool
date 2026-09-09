@@ -2990,12 +2990,20 @@ def _file_fingerprint(path_text: str) -> str:
 
 
 def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
-    """收集作业中启用了文件守卫的 import 步骤（步骤 config.skipIfFileUnchanged 为真）。"""
+    """收集作业中启用了文件守卫的 import 步骤。
+
+    - 步骤 config.skipIfFileUnchanged 为真 → 该步骤启用文件守卫
+    - 作业 guard.type == "file_has_new" → 全部启用的 import 步骤都启用文件守卫
+    """
+    job_guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    force_all = str(job_guard.get("type") or "").strip().lower() == "file_has_new"
     guards: dict[int, dict[str, str]] = {}
     for index, step in enumerate(job["steps"]):
         cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
         flag = str(cfg.get("skipIfFileUnchanged") or "").strip().lower()
-        if step.get("type") == "import" and step.get("enabled", True) and flag in {"true", "1", "yes", "on"}:
+        enabled_step = step.get("type") == "import" and step.get("enabled", True)
+        guarded = force_all or flag in {"true", "1", "yes", "on"}
+        if enabled_step and guarded:
             path_text = str(cfg.get("path") or cfg.get("sourcePath") or "").strip()
             if path_text:
                 guards[index] = {"source": path_text}
@@ -3003,35 +3011,41 @@ def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
 
 
 def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -> tuple[bool, str]:
-    """作业级执行条件（B/C 类守卫）判定。
+    """作业级执行条件（日期类守卫）判定。
 
     guard 结构（存 _jobs.guard_json）：
-      {"type": "query_has_rows", "connectionId": "...", "targetDbType": "...", "sql": "select ..."}
-        —— 查询返回 >=1 行才执行；否则跳过
-      {"type": "date_match", "mode": "weekday", "values": [1,3,5]}   —— 仅周几(1=周一..7=周日)执行
-      {"type": "date_match", "mode": "monthday", "values": [1,15]}   —— 仅每月几号执行
+      {"type": "file_has_new"}                                    —— 自动文件守卫（由 run_saved_job 指纹机制处理）
+      {"type": "date_match", "mode": "range", "start": "..", "end": ".."}   —— 该日期范围内每天执行
+      {"type": "date_match", "mode": "dates", "values": ["2026-09-01"]}     —— 仅指定日期执行
+      {"type": "date_match", "mode": "weekday", "values": [1,3,5]}          —— 仅周几(1=周一..7=周日)执行
+      {"type": "date_match", "mode": "monthday", "values": [1,15]}          —— 仅每月几号执行
     返回 (ok, reason)：ok=False 表示本次不满足、应跳过整个作业。
     """
     guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
     gtype = str(guard.get("type") or "").strip().lower()
     if not gtype or gtype in {"", "none", "off"}:
         return True, ""
-    if gtype == "query_has_rows":
-        sql = str(guard.get("sql") or "").strip()
-        if not sql:
-            raise ValueError("作业执行条件：查询 SQL 不能为空。")
-        fields = {
-            "connectionId": str(guard.get("connectionId") or "").strip(),
-            "targetDbType": str(guard.get("targetDbType") or "").strip() or "mysql",
-        }
-        count = execute_query_step({**fields, "sql": sql})
-        rows = int(count.get("rows") or 0)
-        if rows <= 0:
-            return False, f"执行条件查询结果为空（{rows} 行），作业已跳过"
-        return True, f"执行条件满足（查询 {rows} 行）"
+    if gtype == "file_has_new":
+        return True, ""
     if gtype == "date_match":
         now = now or dt.datetime.now()
         mode = str(guard.get("mode") or "weekday").strip().lower()
+        today = now.strftime("%Y-%m-%d")
+        if mode == "range":
+            start = str(guard.get("start") or "").strip()[:10]
+            end = str(guard.get("end") or "").strip()[:10]
+            if not start or not end:
+                raise ValueError("作业执行条件：日期范围需填写开始与结束日期。")
+            if start > today or end < today:
+                return False, f"作业仅在 {start} ~ {end} 期间执行，今天 {today} 不在范围内，作业已跳过"
+            return True, "今天在作业执行日期范围内"
+        if mode == "dates":
+            values = [str(v).strip()[:10] for v in guard.get("values", []) if str(v or "").strip()]
+            if not values:
+                raise ValueError("作业执行条件：请至少选择一个执行日期。")
+            if today not in values:
+                return False, f"作业仅在 {values[0]} 等指定日期执行，今天 {today} 不在其中，作业已跳过"
+            return True, "今天为作业指定执行日期"
         values = guard.get("values") if isinstance(guard.get("values"), list) else []
         try:
             nums = sorted({int(v) for v in values if str(v).strip().isdigit()})
@@ -3040,16 +3054,16 @@ def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -
         if not nums:
             return True, ""
         if mode == "weekday":
-            today = now.isoweekday()  # 1=周一 .. 7=周日
-            if today not in nums:
+            today_wd = now.isoweekday()  # 1=周一 .. 7=周日
+            if today_wd not in nums:
                 names = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
                 label = "、".join(f"周{names.get(n, n)}" for n in nums)
                 return False, f"作业仅在 {label} 执行，今天不是执行日，作业已跳过"
             return True, "今天为作业执行日"
         if mode == "monthday":
-            today = now.day
-            if today not in nums:
-                return False, f"作业仅在每月 {nums} 号执行，今天 {today} 号不是执行日，作业已跳过"
+            today_md = now.day
+            if today_md not in nums:
+                return False, f"作业仅在每月 {nums} 号执行，今天 {today_md} 号不是执行日，作业已跳过"
             return True, "今天为作业执行日"
         return True, ""
     raise ValueError(f"不支持的作业执行条件类型：{gtype}")

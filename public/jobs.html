@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>作业 - 数据导表工具</title>
-    <link rel="stylesheet" href="/styles.css?v=20260908_job_guard_bc" />
+    <link rel="stylesheet" href="/styles.css?v=20260908_job_guard_v3" />
   </head>
   <body data-page="jobs">
     <div class="desktop-shell">
@@ -72,16 +72,31 @@
           <label>条件类型：
             <select id="guardType">
               <option value="">不启用（每次都执行）</option>
-              <option value="query_has_rows">查询有结果才执行</option>
+              <option value="file_has_new">文件有新增才执行</option>
               <option value="date_match">仅在指定日期执行</option>
             </select>
           </label>
-          <div id="guardQueryConfig" class="guard-subconfig">
-            <label>连接：<select id="guardConnection"></select></label>
-            <label>检查 SQL（有 ≥1 行结果才执行）：<textarea id="guardSql" placeholder="select count(*) from 会员小票表 where 提单时间 >= '2026-09-01'"></textarea></label>
+          <div id="guardFileConfig" class="guard-subconfig">
+            <p class="hint">自动检查作业中导入任务的源文件：若相比上次执行没有新增行（文件未更新），则整个作业跳过。无需填写任何 SQL。</p>
           </div>
           <div id="guardDateConfig" class="guard-subconfig">
-            <label>按：<select id="guardDateMode"><option value="weekday">星期</option><option value="monthday">每月几号</option></select></label>
+            <label>日期方式：
+              <select id="guardDateMode">
+                <option value="range">日期范围（该期间每天执行）</option>
+                <option value="dates">指定日期</option>
+                <option value="weekday">指定星期</option>
+                <option value="monthday">指定每月几号</option>
+              </select>
+            </label>
+            <div id="guardRangeRow">
+              <label>从：<input id="guardRangeStart" type="date" /></label>
+              <label>到：<input id="guardRangeEnd" type="date" /></label>
+            </div>
+            <div id="guardDatesRow">
+              <label>添加日期：<input id="guardDatePicker" type="date" /></label>
+              <button id="guardAddDate" type="button">添加</button>
+              <div id="guardDatesList"></div>
+            </div>
             <div id="guardWeekdayRow">
               在以下星期执行：
               <label><input type="checkbox" class="guard-weekday" value="1" />周一</label>
@@ -92,7 +107,9 @@
               <label><input type="checkbox" class="guard-weekday" value="6" />周六</label>
               <label><input type="checkbox" class="guard-weekday" value="7" />周日</label>
             </div>
-            <label id="guardMonthdayRow">每月几号执行：<input id="guardMonthday" type="number" min="1" max="31" placeholder="如 1" /></label>
+            <div id="guardMonthdayRow">
+              每月几号执行：<input id="guardMonthday" type="number" min="1" max="31" placeholder="如 1" />
+            </div>
           </div>
         </details>
         <p class="hint">作业按顺序执行下面这些任务。添加步骤 = 从已保存的导入/导出任务中选择，配置自动带入；作业与任务互相独立，互不影响。</p>
@@ -114,7 +131,6 @@
           <div>
             <strong>已选子任务</strong>
             <div id="selectedSteps" class="selected-steps"></div>
-            <div id="stepGuardArea" class="step-guard-area"></div>
           </div>
         </section>
         <footer>
@@ -123,6 +139,6 @@
         </footer>
       </form>
     </dialog>
-    <script src="/jobs.js?v=20260908_job_guard_bc"></script>
+    <script src="/jobs.js?v=20260908_job_guard_v3"></script>
   </body>
 </html>

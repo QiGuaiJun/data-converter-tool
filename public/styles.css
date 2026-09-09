@@ -895,6 +895,37 @@ body {
   border-bottom: 1px dashed #e6c887;
 }
 
+.date-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 2px 4px 2px 0;
+  padding: 2px 6px;
+  border: 1px solid #d0c9a8;
+  border-radius: 999px;
+  background: #fbf7ea;
+  font-size: 12px;
+  color: #633806;
+}
+.date-chip button {
+  border: 0;
+  background: transparent;
+  color: #a8945a;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 2px;
+}
+#guardDatesRow {
+  margin-top: 6px;
+}
+#guardRangeRow label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 8px;
+}
+
 @media (max-width: 900px) {
   .run-meta-grid,
   .run-meta-grid.step-meta {

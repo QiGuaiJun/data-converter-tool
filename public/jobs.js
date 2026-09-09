@@ -50,12 +50,6 @@ function renderRunLog(run) {
 async function loadConnections() {
   const payload = await requestJson("/api/connections");
   connections = payload.connections || [];
-  const guardConn = $("#guardConnection");
-  if (guardConn) {
-    guardConn.innerHTML =
-      '<option value="">本地 SQLite</option>' +
-      connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("");
-  }
 }
 
 // 判定是否"单步导入/导出任务"（作业可复用的资产，也是任务面板显示的实体）
@@ -117,13 +111,17 @@ function updateJobSelection() {
 function guardSummary(job) {
   const g = (job && job.guard) || {};
   if (!g || !g.type) return "";
-  if (g.type === "query_has_rows") return `执行条件：查询有结果才执行（${g.connectionId ? "已选连接" : "本地 SQLite"}）`;
-  if (g.type === "date_match" && Array.isArray(g.values)) {
-    if (g.mode === "weekday") {
+  if (g.type === "file_has_new") return "执行条件：源文件有更新才执行（自动检查，无需填写）";
+  if (g.type === "date_match") {
+    const mode = g.mode || "";
+    if (mode === "range") return `执行条件：仅 ${g.start || "?"} ~ ${g.end || "?"} 期间执行`;
+    if (mode === "dates") return `执行条件：仅指定日期执行（${(g.values || []).length} 天）`;
+    if (mode === "weekday") {
       const names = { 1: "周一", 2: "周二", 3: "周三", 4: "周四", 5: "周五", 6: "周六", 7: "周日" };
-      return `执行条件：仅 ${g.values.map((v) => names[v] || v).join("、")} 执行`;
+      return `执行条件：仅 ${(g.values || []).map((v) => names[v] || v).join("、")} 执行`;
     }
-    return `执行条件：仅每月 ${g.values.join("、")} 号执行`;
+    if (mode === "monthday") return `执行条件：仅每月 ${(g.values || []).join("、")} 号执行`;
+    return "执行条件：仅指定日期执行";
   }
   return "";
 }
@@ -203,80 +201,97 @@ function draftStepFromSelection() {
   };
 }
 
-function renderGuardToggle() {
-  // 仅当选中了一个 import 步骤时显示"文件守卫"开关：源文件无更新则跳过整个作业
-  const guardArea = $("#stepGuardArea");
-  if (!guardArea) return;
-  const step = draftSteps[selectedStepIndex];
-  if (!step || step.type !== "import") {
-    guardArea.innerHTML = "";
-    return;
-  }
-  const cfg = step.config || (step.config = {});
-  const on = String(cfg.skipIfFileUnchanged || "").toLowerCase() === "true";
-  guardArea.innerHTML = `<label class="guard-check"><input type="checkbox" id="stepGuard" ${on ? "checked" : ""} /> 源文件无更新时跳过整个作业（首次执行会记录文件指纹，之后文件没变就不重复跑）</label>`;
-  const box = $("#stepGuard");
-  if (box) {
-    box.addEventListener("change", () => {
-      if (box.checked) cfg.skipIfFileUnchanged = "true";
-      else delete cfg.skipIfFileUnchanged;
-      renderDraftSteps();
-    });
-  }
-}
-
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)}${step.type === "import" && String((step.config || {}).skipIfFileUnchanged || "").toLowerCase() === "true" ? " · 文件守卫" : ""} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
-  renderGuardToggle();
 }
 
-// ===== 作业级执行条件（B/C 守卫）=====
+// ===== 作业级执行条件（文件有新增 / 日期守卫）=====
+let guardDateValues = [];
+
 function renderGuardConfig() {
   const type = $("#guardType")?.value || "";
-  const q = $("#guardQueryConfig");
+  const f = $("#guardFileConfig");
   const d = $("#guardDateConfig");
-  if (q) q.style.display = type === "query_has_rows" ? "" : "none";
+  if (f) f.style.display = type === "file_has_new" ? "" : "none";
   if (d) d.style.display = type === "date_match" ? "" : "none";
-  const mode = $("#guardDateMode")?.value || "weekday";
-  const wd = $("#guardWeekdayRow");
-  const md = $("#guardMonthdayRow");
-  if (wd) wd.style.display = mode === "weekday" ? "" : "none";
-  if (md) md.parentElement && (md.parentElement.style.display = mode === "monthday" ? "" : "none");
+  const mode = $("#guardDateMode")?.value || "range";
+  const rows = {
+    range: $("#guardRangeRow"),
+    dates: $("#guardDatesRow"),
+    weekday: $("#guardWeekdayRow"),
+    monthday: $("#guardMonthdayRow"),
+  };
+  Object.entries(rows).forEach(([key, el]) => {
+    if (el) el.style.display = mode === key ? "" : "none";
+  });
+}
+
+function renderGuardDateList() {
+  const list = $("#guardDatesList");
+  if (!list) return;
+  list.innerHTML = guardDateValues.length
+    ? guardDateValues.map((date) => `<span class="date-chip">${escapeHtml(date)}<button type="button" data-date="${escapeHtml(date)}">×</button></span>`).join("")
+    : '<span class="hint">尚未添加日期</span>';
+  $$("#guardDatesList .date-chip button").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      guardDateValues = guardDateValues.filter((d) => d !== btn.dataset.date);
+      renderGuardDateList();
+    }),
+  );
 }
 
 function loadGuardFromJob(job) {
   const guard = (job && job.guard) || {};
-  $("#guardType").value = guard.type || "";
-  $("#guardSql").value = guard.sql || "";
-  $("#guardConnection").value = guard.connectionId || "";
-  const mode = guard.mode || "weekday";
-  $("#guardDateMode").value = mode;
-  const values = Array.isArray(guard.values) ? guard.values.map((v) => String(v)) : [];
-  $$(".guard-weekday").forEach((box) => { box.checked = values.includes(box.value); });
-  const monthday = values.length === 1 && !isNaN(Number(values[0])) ? Number(values[0]) : "";
-  $("#guardMonthday").value = monthday;
+  guardDateValues = [];
+  const gtype = guard.type || "";
+  $("#guardType").value = gtype;
+  if (gtype === "date_match") {
+    const mode = guard.mode || "range";
+    $("#guardDateMode").value = mode;
+    if (mode === "range") {
+      $("#guardRangeStart").value = guard.start || "";
+      $("#guardRangeEnd").value = guard.end || "";
+    } else if (mode === "dates") {
+      guardDateValues = Array.isArray(guard.values) ? guard.values.map((v) => String(v)) : [];
+    } else if (mode === "weekday") {
+      const values = Array.isArray(guard.values) ? guard.values.map((v) => String(v)) : [];
+      $$(".guard-weekday").forEach((box) => { box.checked = values.includes(box.value); });
+    } else if (mode === "monthday") {
+      $("#guardMonthday").value = Array.isArray(guard.values) && guard.values.length ? guard.values[0] : "";
+    }
+  }
+  renderGuardDateList();
   renderGuardConfig();
 }
 
 function collectGuard() {
   const type = $("#guardType")?.value || "";
   if (!type) return {};
-  if (type === "query_has_rows") {
-    return { type, connectionId: $("#guardConnection").value, targetDbType: $("#guardConnection").value ? "mysql" : "sqlite", sql: $("#guardSql").value.trim() };
-  }
+  if (type === "file_has_new") return { type };
   if (type === "date_match") {
     const mode = $("#guardDateMode").value;
-    let values = [];
-    if (mode === "weekday") values = $$(".guard-weekday:checked").map((box) => Number(box.value));
-    else {
-      const day = Number($("#guardMonthday").value);
-      if (day >= 1 && day <= 31) values = [day];
+    if (mode === "range") {
+      const start = ($("#guardRangeStart").value || "").trim();
+      const end = ($("#guardRangeEnd").value || "").trim();
+      if (!start || !end) throw new Error("请填写日期范围（开始与结束日期）。");
+      if (start > end) throw new Error("开始日期不能晚于结束日期。");
+      return { type, mode, start, end };
     }
-    if (!values.length) throw new Error("请选择至少一个执行日期。");
-    return { type, mode, values };
+    if (mode === "dates") {
+      if (!guardDateValues.length) throw new Error("请至少添加一个执行日期。");
+      return { type, mode, values: [...guardDateValues].sort() };
+    }
+    if (mode === "weekday") {
+      const values = $$(".guard-weekday:checked").map((box) => Number(box.value));
+      if (!values.length) throw new Error("请选择至少一个星期。");
+      return { type, mode, values };
+    }
+    const day = Number($("#guardMonthday").value);
+    if (!(day >= 1 && day <= 31)) throw new Error("请填写有效的每月几号（1-31）。");
+    return { type, mode, values: [day] };
   }
   return {};
 }
@@ -340,6 +355,13 @@ $("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepF
 $("#addStepType").addEventListener("change", renderTaskOptions);
 $("#guardType").addEventListener("change", renderGuardConfig);
 $("#guardDateMode").addEventListener("change", renderGuardConfig);
+$("#guardAddDate").addEventListener("click", () => {
+  const picker = $("#guardDatePicker");
+  const value = (picker && picker.value) || "";
+  if (!value) { setStatus("请先选择要添加的日期。", "error"); return; }
+  if (!guardDateValues.includes(value)) guardDateValues.push(value);
+  renderGuardDateList();
+});
 $("#removeStep").addEventListener("click", () => { if (selectedStepIndex >= 0) draftSteps.splice(selectedStepIndex, 1); selectedStepIndex = Math.min(selectedStepIndex, draftSteps.length - 1); renderDraftSteps(); });
 $("#moveStepUp").addEventListener("click", () => { if (selectedStepIndex > 0) { [draftSteps[selectedStepIndex - 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex - 1]]; selectedStepIndex -= 1; renderDraftSteps(); } });
 $("#moveStepDown").addEventListener("click", () => { if (selectedStepIndex >= 0 && selectedStepIndex < draftSteps.length - 1) { [draftSteps[selectedStepIndex + 1], draftSteps[selectedStepIndex]] = [draftSteps[selectedStepIndex], draftSteps[selectedStepIndex + 1]]; selectedStepIndex += 1; renderDraftSteps(); } });
