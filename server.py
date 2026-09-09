@@ -259,6 +259,16 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    conn.execute(
+        """
+        create table if not exists _import_file_fingerprints (
+            file_key text primary key,
+            fingerprint text not null,
+            table_name text not null default '',
+            updated_at text not null
+        )
+        """
+    )
     _migrate_legacy_secrets_once(conn)
     return conn
 
@@ -1830,6 +1840,7 @@ def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
     conn = connect_target_db(fields)
     try:
         if target_db_type(fields) == "mysql":
+            result: list[dict[str, object]] = []
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
@@ -1839,16 +1850,34 @@ def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
                     order by table_name
                     """
                 )
-                rows = cursor.fetchall()
-            return [
-                {
-                    "name": row[0],
-                    "type": row[1],
-                    "comment": row[2] or "",
-                    "rows": row[3] or 0,
-                }
-                for row in rows
-            ]
+                for row in cursor.fetchall():
+                    name = str(row[0])
+                    table_type = str(row[1] or "")
+                    comment = str(row[2] or "")
+                    estimated = int(row[3] or 0)
+                    count = estimated
+                    approximate = False
+                    # P2-7：information_schema 的行数是 InnoDB 估算值（如 2 万行显示
+                    # 20,137）。估算 ≤ 10 万的表用 count(*) 取精确值；更大的表保留
+                    # 估算值并标注 rowsApproximate，由前端显示"约 N 行"。
+                    if table_type.upper() != "BASE TABLE":
+                        result.append(
+                            {"name": name, "type": table_type, "comment": comment, "rows": count, "rowsApproximate": False}
+                        )
+                        continue
+                    if estimated <= 100_000:
+                        try:
+                            cursor.execute(f"select count(*) from {db_quote(name, fields)}")
+                            count = int(list(cursor.fetchone())[0])
+                        except Exception:
+                            count = estimated
+                            approximate = True
+                    else:
+                        approximate = True
+                    result.append(
+                        {"name": name, "type": table_type, "comment": comment, "rows": count, "rowsApproximate": approximate}
+                    )
+            return result
         rows = conn.execute(
             """
             select name, type
@@ -1864,7 +1893,7 @@ def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
                 count = conn.execute(f"select count(*) from {db_quote(row['name'], fields)}").fetchone()[0]
             except Exception:
                 count = 0
-            result.append({"name": row["name"], "type": row["type"], "comment": "", "rows": count})
+            result.append({"name": row["name"], "type": row["type"], "comment": "", "rows": count, "rowsApproximate": False})
         return result
     finally:
         conn.close()
@@ -2327,6 +2356,35 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
     started = time.time()
     written_files: list[str] = []
     total_rows = 0
+
+    # P2-13：勾选"表注释作为文件名"且未手动指定文件名时，读取各表注释，
+    # 导出文件名优先使用表注释（经 safe_file_stem 清洗非法字符，前后缀仍生效）。
+    comment_names: dict[str, str] = {}
+    if (
+        parse_bool(fields, "commentAsFileName", False)
+        and target_db_type(fields) == "mysql"
+        and not str(fields.get("exportFileName") or "").strip()
+        and not str(fields.get("outputName") or "").strip()
+    ):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "select table_name, table_comment from information_schema.tables where table_schema = database()"
+                )
+                comment_names = {str(row[0]): str(row[1] or "").strip() for row in cursor.fetchall()}
+        except Exception:
+            comment_names = {}
+
+    def resolve_base_name(item: dict[str, object], source_name: str) -> str:
+        explicit = str(fields.get("exportFileName") or fields.get("outputName") or "").strip()
+        if explicit:
+            return explicit
+        if str(item.get("type") or "") == "table":
+            comment_base = comment_names.get(str(item.get("table") or item.get("name") or ""))
+            if comment_base:
+                return comment_base
+        return source_name
+
     try:
         target_execute_sql_batch(conn, str(payload.get("beforeSql") or ""), "导出开始前 SQL", fields)
         split_field = str(fields.get("splitField") or "").strip()
@@ -2370,7 +2428,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                     continue
                 sql, source_name = export_query_from_item(item, fields)
                 sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
-                base_name = str(fields.get("exportFileName") or fields.get("outputName") or source_name)
+                base_name = resolve_base_name(item, source_name)
                 path = export_target_path(base_name, extension, fields)
 
                 if can_stream:
@@ -2951,7 +3009,7 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
             sql_status = "执行前 SQL：已执行"
         finally:
             conn.close()
-    results = [import_uploaded_file(uploaded, fields) for uploaded in files]
+    results, _, skipped_files = run_import_batch(files, fields, fail_fast=True)
     if pending_after_sql:
         conn = connect_target_db(fields)
         try:
@@ -2964,12 +3022,13 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
         "files": len(results),
         "sourcePath": source_path,
         "fileNames": [str(item["fileName"]) for item in results],
-        "tableNames": sorted({str(item["tableName"]) for item in results}),
+        "tableNames": sorted({str(item["tableName"]) for item in results if item.get("tableName")}),
         "rowsRead": sum(int(item["rowsRead"]) for item in results),
         "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
         "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
         "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
-        "verifiedRows": {str(item["tableName"]): int(item.get("verifiedRows", 0)) for item in results},
+        "verifiedRows": {str(item["tableName"]): int(item.get("verifiedRows", 0)) for item in results if item.get("tableName")},
+        "skippedFiles": skipped_files,
         "sqlStatus": sql_status,
     }
 
@@ -3352,6 +3411,133 @@ def log_import(
         """,
         (str(uuid.uuid4()), file_name, table_name, mode, rows_read, rows_written, rows_updated, rows_skipped, status, message),
     )
+
+
+def import_file_fingerprint(path: Path) -> str:
+    """P2-12：源文件内容指纹（大小 + 内容 sha256 前 32 位）。
+
+    浏览器上传产生的副本 mtime 每次都是新的，不能作为"文件是否更新"的依据；
+    内容哈希是唯一可靠信号。按 1MB 分块读取，两万行 xlsx 约毫秒级。
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"{size}:{digest.hexdigest()[:32]}"
+
+
+def import_file_key(file_name: str, fields: dict[str, str]) -> str:
+    """P2-12：文件导入身份键 = 目标库 + 目标表配置 + 文件名。
+
+    同一文件导入到不同目标（换连接或换表）不算"上次导入过"，
+    避免同一模板文件导入第二张表时被误跳过。
+    """
+    dest = str(fields.get("connectionId") or "").strip()
+    if not dest:
+        dest = "|".join(
+            [
+                str(fields.get("dbHost") or ""),
+                str(fields.get("dbPort") or ""),
+                str(fields.get("dbName") or ""),
+            ]
+        )
+    target = str(fields.get("targetDbType") or "mysql").strip().lower()
+    return f"{target}|{dest}|{str(fields.get('tableName') or '').strip()}|{file_name}"
+
+
+def import_file_fingerprint_seen(file_key: str, fingerprint: str) -> bool:
+    with connect_db() as conn:
+        row = conn.execute(
+            "select fingerprint from _import_file_fingerprints where file_key = ?",
+            (file_key,),
+        ).fetchone()
+    return bool(row and str(row["fingerprint"]) == fingerprint)
+
+
+def record_import_file_fingerprint(file_key: str, fingerprint: str, table_name: str) -> None:
+    with connect_db() as conn:
+        conn.execute(
+            """
+            insert or replace into _import_file_fingerprints (file_key, fingerprint, table_name, updated_at)
+            values (?, ?, ?, datetime('now', 'localtime'))
+            """,
+            (file_key, fingerprint, table_name),
+        )
+
+
+def run_import_batch(
+    uploaded_files: list[UploadedFile],
+    fields: dict[str, str],
+    fail_fast: bool = False,
+) -> tuple[list[dict[str, object]], list[dict[str, str]], int]:
+    """按顺序导入一批文件（P2-12：skipSeenFile 命中时整文件跳过）。
+
+    返回 (results, failures, skipped_files)：
+    - 每次导入成功都记录内容指纹（无论是否勾选跳过），保证"上次导入"语义准确：
+      先正常导入、后开启跳过选项也能正确命中；
+    - 勾选"跳过自上次导入后未曾更新过的文件"时，按 内容指纹+目标身份 判断，
+      命中则该文件不解析不写入，写一条"已跳过"日志，计入 skipped_files；
+      仅导入成功后才记录指纹，失败的文件下次仍会重试。
+    - fail_fast=True 时首个失败即抛出（作业/定时路径保持原有失败中止语义）。
+    """
+    skip_seen = parse_bool(fields, "skipSeenFile", False)
+    results: list[dict[str, object]] = []
+    failures: list[dict[str, str]] = []
+    skipped_files = 0
+    for uploaded in uploaded_files:
+        try:
+            fingerprint = import_file_fingerprint(uploaded.path)
+        except OSError:
+            fingerprint = ""
+        if skip_seen and fingerprint:
+            file_key = import_file_key(uploaded.filename, fields)
+            if import_file_fingerprint_seen(file_key, fingerprint):
+                results.append(
+                    {
+                        "fileName": uploaded.filename,
+                        "tableName": "",
+                        "columns": [],
+                        "rowsRead": 0,
+                        "rowsWritten": 0,
+                        "rowsUpdated": 0,
+                        "rowsSkipped": 0,
+                        "message": "文件自上次导入后未变更，已跳过",
+                    }
+                )
+                skipped_files += 1
+                if not parse_bool(fields, "disableLog", False):
+                    with connect_db() as log_conn:
+                        log_import(
+                            log_conn,
+                            uploaded.filename,
+                            "",
+                            fields.get("importMode", "append"),
+                            0,
+                            0,
+                            0,
+                            0,
+                            "成功",
+                            "文件自上次导入后未变更，已跳过",
+                        )
+                continue
+        try:
+            result = import_uploaded_file(uploaded, fields)
+        except Exception as exc:
+            if fail_fast:
+                raise
+            failures.append({"fileName": uploaded.filename, "error": str(exc)})
+            continue
+        results.append(result)
+        if fingerprint:
+            record_import_file_fingerprint(
+                import_file_key(uploaded.filename, fields),
+                fingerprint,
+                str(result.get("tableName") or ""),
+            )
+    return results, failures, skipped_files
 
 
 def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict[str, object]:
@@ -3864,9 +4050,6 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if not uploaded_files:
             raise ValueError("请选择要导入的文件。")
 
-        results = []
-        failures = []
-        export_path = ""
         with connect_db() as log_conn:
             if parse_bool(fields, "clearLogBeforeImport", False):
                 log_conn.execute("delete from _import_logs")
@@ -3879,11 +4062,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         finally:
             target_conn.close()
 
-        for uploaded in uploaded_files:
-            try:
-                results.append(import_uploaded_file(uploaded, fields))
-            except Exception as exc:
-                failures.append({"fileName": uploaded.filename, "error": str(exc)})
+        results, failures, skipped_files = run_import_batch(uploaded_files, fields)
 
         target_conn = connect_target_db(fields)
         try:
@@ -3907,6 +4086,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                     "totalFiles": len(uploaded_files),
                     "successFiles": len(results),
                     "failedFiles": len(failures),
+                    "skippedFiles": skipped_files,
                     "rowsRead": sum(int(item["rowsRead"]) for item in results),
                     "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
                     "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
@@ -3915,7 +4095,10 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 "results": results,
                 "failures": failures,
                 "exportPath": export_path,
-                "message": f"成功导入 {len(results)} 个文件，失败 {len(failures)} 个文件。",
+                "message": (
+                    f"成功导入 {len(results)} 个文件，失败 {len(failures)} 个文件"
+                    + (f"，跳过未变更文件 {skipped_files} 个。" if skipped_files else "。")
+                ),
             },
         )
 

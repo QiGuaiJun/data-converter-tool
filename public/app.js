@@ -70,6 +70,37 @@ function setStatus(message, type = "") {
   statusBox.className = type;
 }
 
+// P2-15：自定义确认对话框（替代阻塞式 window.confirm，桌面壳/自动化环境下
+// 原生 confirm 会导致按钮永久禁用；Promise 化后确认与取消路径都必然恢复状态）。
+let confirmDialogResolve = null;
+
+function showConfirmDialog(message, okText = "确认继续") {
+  const dialog = document.querySelector("#confirmDialog");
+  if (!dialog) return Promise.resolve(window.confirm(message));
+  return new Promise((resolve) => {
+    confirmDialogResolve = resolve;
+    document.querySelector("#confirmDialogMessage").textContent = message;
+    document.querySelector("#confirmDialogOk").textContent = okText;
+    dialog.classList.remove("hidden");
+    document.querySelector("#confirmDialogOk").focus();
+  });
+}
+
+function closeConfirmDialog(result) {
+  const dialog = document.querySelector("#confirmDialog");
+  if (!dialog || dialog.classList.contains("hidden")) return;
+  dialog.classList.add("hidden");
+  if (confirmDialogResolve) {
+    confirmDialogResolve(result);
+    confirmDialogResolve = null;
+  }
+}
+
+function confirmDialogVisible() {
+  const dialog = document.querySelector("#confirmDialog");
+  return Boolean(dialog && !dialog.classList.contains("hidden"));
+}
+
 function setImportEditorVisible(visible) {
   importEditorVisible = Boolean(visible);
   const shell = document.querySelector(".import-shell");
@@ -468,6 +499,7 @@ async function saveImportTask() {
     throw new Error(`保存校验失败：当前选择为${importModeLabel(selectedMode)}，但任务保存为${importModeLabel(savedMode)}。`);
   }
   openSelectedImportTask();
+  clearImportDraft();
   setStatus(`${existingJob ? "已更新" : "已保存"}导入任务：${result.job.name}，导入模式：${importModeLabel(savedMode)}。`, "success");
   return result.job;
 }
@@ -537,6 +569,7 @@ function startNewImportTask() {
   openedImportTaskId = "";
   updateImportTaskSelection();
   clearImportEditor();
+  clearImportDraft();
   setImportEditorVisible(true);
 }
 
@@ -947,7 +980,7 @@ async function previewFile() {
   }
 }
 
-function confirmDangerousActions() {
+async function confirmDangerousActions() {
   const mode = radioValue("importMode");
   const hasSql = ["beforeAllSql", "afterEachSql", "afterAllSql", "afterQuerySql", "customSql"].some((id) => $(`#${id}`).value.trim());
   const actions = [];
@@ -956,18 +989,22 @@ function confirmDangerousActions() {
   if ($("#deleteAfterSuccess").checked) actions.push("导入成功后会删除上传的源文件副本");
   if (hasSql) actions.push("将执行你填写的 SQL");
   if (!actions.length) return true;
-  return window.confirm(`${actions.join("；")}。确认继续？`);
+  return showConfirmDialog(`${actions.join("；")}。确认继续？`);
 }
+
+let importInFlight = false;
 
 async function importFiles(event) {
   event.preventDefault();
+  if (importInFlight || confirmDialogVisible()) return;
+  if (!(await confirmDangerousActions())) {
+    setStatus("已取消导入。", "warn");
+    return;
+  }
+  importInFlight = true;
   importButton.disabled = true;
   previewButton.disabled = true;
   try {
-    if (!confirmDangerousActions()) {
-      setStatus("已取消导入。", "warn");
-      return;
-    }
     setStatus("正在导入，请稍候...");
     const payload = await requestJson("/api/import", {
       method: "POST",
@@ -975,8 +1012,9 @@ async function importFiles(event) {
     });
     const summary = payload.summary;
     const exportInfo = payload.exportPath ? ` 查询结果已导出：${payload.exportPath}` : "";
+    const skipInfo = summary.skippedFiles ? `，跳过未变更文件 ${summary.skippedFiles} 个` : "";
     setStatus(
-      `成功 ${summary.successFiles}/${summary.totalFiles} 个文件，写入 ${summary.rowsWritten} 行，更新 ${summary.rowsUpdated} 行，跳过 ${summary.rowsSkipped} 行。${exportInfo}`,
+      `成功 ${summary.successFiles}/${summary.totalFiles} 个文件，写入 ${summary.rowsWritten} 行，更新 ${summary.rowsUpdated} 行，跳过 ${summary.rowsSkipped} 行${skipInfo}。${exportInfo}`,
       summary.failedFiles ? "warn" : "success",
     );
     await Promise.all([loadTables(), loadLogs()]);
@@ -987,6 +1025,7 @@ async function importFiles(event) {
     setStatus(error.message, "error");
     await loadLogs();
   } finally {
+    importInFlight = false;
     importButton.disabled = false;
     previewButton.disabled = false;
   }
@@ -1212,4 +1251,153 @@ connectionDialog?.addEventListener("click", (event) => {
 
 ensureImportTaskPanel();
 setImportEditorVisible(false);
-Promise.all([loadConnections(), loadTables(), loadLogs(), loadImportTaskJobs()]).catch((error) => setStatus(error.message, "error"));
+
+// P2-16：导入编辑器草稿。配置实时存 localStorage，刷新后自动恢复；
+// 保存为任务或新建任务后清除。密码类字段（数据库密码、Excel 密码）不落盘。
+const IMPORT_DRAFT_KEY = "dc_import_draft_v1";
+
+function collectImportDraft() {
+  const scope = document.querySelector("main.import-shell");
+  if (!scope) return null;
+  const draft = { values: {}, checks: {}, radios: {} };
+  scope.querySelectorAll("input, select, textarea").forEach((control) => {
+    if (control.type === "file" || control.type === "password") return;
+    if (control.type === "radio") {
+      if (control.checked) draft.radios[control.name] = control.value;
+      return;
+    }
+    if (control.type === "checkbox") {
+      if (control.id) draft.checks[control.id] = control.checked;
+      return;
+    }
+    if (control.id) draft.values[control.id] = control.value;
+  });
+  return draft;
+}
+
+let importDraftTimer = 0;
+// 用户编辑过后才允许 pagehide 兜底保存；保存/新建任务主动清草稿后不再回写
+let importDraftDirty = false;
+
+function scheduleImportDraftSave() {
+  importDraftDirty = true;
+  clearTimeout(importDraftTimer);
+  importDraftTimer = setTimeout(() => {
+    const draft = collectImportDraft();
+    if (draft) {
+      try {
+        localStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(draft));
+      } catch (_) {
+        // 存储满或被禁用时静默放弃，不影响正常导入流程。
+      }
+    }
+  }, 400);
+}
+
+function clearImportDraft() {
+  importDraftDirty = false;
+  try {
+    localStorage.removeItem(IMPORT_DRAFT_KEY);
+  } catch (_) {
+    // 忽略
+  }
+}
+
+function restoreImportDraft() {
+  let raw = "";
+  try {
+    raw = localStorage.getItem(IMPORT_DRAFT_KEY) || "";
+  } catch (_) {
+    return false;
+  }
+  if (!raw) return false;
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch (_) {
+    clearImportDraft();
+    return false;
+  }
+  if (!draft || typeof draft !== "object") return false;
+  const scope = document.querySelector("main.import-shell");
+  if (!scope) return false;
+  let restored = 0;
+  Object.entries(draft.values || {}).forEach(([id, value]) => {
+    const control = scope.querySelector(`#${CSS.escape(id)}`);
+    if (control && control.value !== value) {
+      control.value = value;
+      restored += 1;
+    }
+  });
+  Object.entries(draft.checks || {}).forEach(([id, checked]) => {
+    const control = scope.querySelector(`#${CSS.escape(id)}`);
+    if (control && control.checked !== Boolean(checked)) {
+      control.checked = Boolean(checked);
+      restored += 1;
+    }
+  });
+  Object.entries(draft.radios || {}).forEach(([name, value]) => {
+    setRadioValue(name, value);
+  });
+  return restored > 0 || Object.keys(draft.radios || {}).length > 0;
+}
+
+const importShell = document.querySelector("main.import-shell");
+importShell?.addEventListener("input", scheduleImportDraftSave);
+importShell?.addEventListener("change", scheduleImportDraftSave);
+// 刷新/关闭前的兜底：防抖未到点时立即落盘，避免"输入后马上刷新"丢草稿
+window.addEventListener("pagehide", () => {
+  if (!importDraftDirty) return;
+  const draft = collectImportDraft();
+  if (draft) {
+    try {
+      localStorage.setItem(IMPORT_DRAFT_KEY, JSON.stringify(draft));
+    } catch (_) {
+      // 忽略
+    }
+  }
+});
+
+document.querySelector("#confirmDialogOk")?.addEventListener("click", () => closeConfirmDialog(true));
+document.querySelector("#confirmDialogCancel")?.addEventListener("click", () => closeConfirmDialog(false));
+document.querySelector("#confirmDialogClose")?.addEventListener("click", () => closeConfirmDialog(false));
+document.querySelector("#confirmDialog")?.addEventListener("click", (event) => {
+  if (event.target === document.querySelector("#confirmDialog")) closeConfirmDialog(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeConfirmDialog(false);
+});
+
+async function initImportPage() {
+  // P2-16：草稿恢复必须独立于表/日志/任务加载结果。此前 Promise.all 里任一请求
+  // 失败（如 loadTables 与 loadConnections 并发竞态时空参数直连被拒）都会整体
+  // reject，短路草稿恢复。现在：连接列表先加载 → 恢复草稿（其连接选择参与
+  // 后续表加载）→ 其余数据 allSettled 降级加载，失败仅在无草稿时提示。
+  let connectionError = null;
+  try {
+    await loadConnections();
+  } catch (error) {
+    connectionError = error;
+  }
+  let draftRestored = false;
+  try {
+    draftRestored = restoreImportDraft();
+  } catch (_) {
+    draftRestored = false;
+  }
+  if (draftRestored) {
+    setImportEditorVisible(true);
+    setStatus("已恢复上次未保存的导入配置草稿（文件需重新选择；保存任务后草稿自动清除）。", "warn");
+  } else if (connectionError) {
+    setStatus(connectionError.message, "error");
+  }
+  const settled = await Promise.allSettled([loadTables(), loadLogs(), loadImportTaskJobs()]);
+  if (!draftRestored) {
+    const firstError = settled.find((item) => item.status === "rejected");
+    if (firstError) {
+      setStatus((firstError.reason && firstError.reason.message) || String(firstError.reason), "error");
+    }
+  }
+}
+
+initImportPage();

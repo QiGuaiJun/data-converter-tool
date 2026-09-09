@@ -99,6 +99,7 @@ function startNewExportTask() {
   selectedExportTaskId = "";
   updateExportTaskSelection();
   resetExportEditor();
+  clearExportDraft();
   setExportEditorVisible(true);
   setStatus("已新建导出任务，请配置导出内容和选项。", "success");
 }
@@ -117,6 +118,7 @@ function applyPendingQueryExport() {
   exportSourceList.classList.add("hidden");
   setExportEditorVisible(true);
   setStatus("已从 SQL 查询模块带入查询，可继续配置导出选项。", "success");
+  saveExportDraftNow();
   return true;
 }
 
@@ -200,7 +202,7 @@ function renderSources() {
         <label class="export-source-item">
           <input type="checkbox" value="${escapeHtml(item.name)}" ${index === 0 ? "checked" : ""} />
           <span>${escapeHtml(item.name)}</span>
-          <small>${escapeHtml(item.type || "")}${item.rows ? ` · ${item.rows}` : ""}</small>
+          <small>${escapeHtml(item.type || "")}${item.rows ? ` · ${item.rowsApproximate ? "约 " : ""}${item.rows}` : ""}</small>
         </label>`,
     )
     .join("");
@@ -512,6 +514,7 @@ async function saveExportTask() {
   });
   selectedExportTaskId = result.job.id;
   await loadExportTaskJobs();
+  clearExportDraft();
   setStatus(`${existingJob ? "已更新" : "已保存"}导出任务：${result.job.name}，可在定时任务中调用。`, "success");
   return result.job;
 }
@@ -679,6 +682,7 @@ async function openSelectedExportTask() {
   const step = exportTaskStep(job);
   resetExportEditor();
   setExportEditorVisible(true);
+  clearExportDraft();
   const nameInput = document.querySelector("#exportTaskName");
   if (nameInput) nameInput.value = job.name || "";
   await applyExportTaskConfig(step.config || {});
@@ -749,6 +753,149 @@ $("#explainExport").addEventListener("click", () => setStatus("不支持的 .xls
 
 ensureExportTaskPanel();
 setExportEditorVisible(false);
+
+// P2-16：导出编辑器草稿。配置实时存 localStorage，刷新后自动恢复；
+// 保存为任务、打开任务或新建任务后清除。文件夹/文件直选句柄和密码类字段不落盘。
+const EXPORT_DRAFT_KEY = "dc_export_draft_v1";
+
+function collectExportDraft() {
+  const draft = {
+    values: {},
+    checks: {},
+    radios: {},
+    sourceMode,
+    connectionId: exportConnection.value,
+    // 表模式下勾选的表名单独记录（勾选框无 id，且表列表需异步加载后才能重建）
+    selectedTables: sourceMode === "table"
+      ? [...exportSourceList.querySelectorAll("input[type='checkbox']:checked")].map((input) => input.value)
+      : [],
+    activeExportTab: document.querySelector("[data-export-tab].active")?.dataset.exportTab || "data",
+  };
+  document.querySelectorAll(".export-left input, .export-left select, .export-left textarea, .export-right input, .export-right select, .export-right textarea").forEach((control) => {
+    if (control.type === "file" || control.type === "password") return;
+    if (control.type === "radio") {
+      if (control.checked) draft.radios[control.name] = control.value;
+      return;
+    }
+    if (control.type === "checkbox") {
+      if (control.id) draft.checks[control.id] = control.checked;
+      return;
+    }
+    if (control.id) draft.values[control.id] = control.value;
+  });
+  return draft;
+}
+
+function saveExportDraftNow() {
+  try {
+    localStorage.setItem(EXPORT_DRAFT_KEY, JSON.stringify(collectExportDraft()));
+  } catch (_) {
+    // 存储满或被禁用时静默放弃，不影响正常导出流程。
+  }
+}
+
+let exportDraftTimer = 0;
+// 用户编辑过后才允许 pagehide 兜底保存；保存/打开/新建任务主动清草稿后不再回写
+let exportDraftDirty = false;
+
+function scheduleExportDraftSave() {
+  exportDraftDirty = true;
+  clearTimeout(exportDraftTimer);
+  exportDraftTimer = setTimeout(saveExportDraftNow, 400);
+}
+
+function clearExportDraft() {
+  exportDraftDirty = false;
+  try {
+    localStorage.removeItem(EXPORT_DRAFT_KEY);
+  } catch (_) {
+    // 忽略
+  }
+}
+
+async function restoreExportDraft() {
+  let raw = "";
+  try {
+    raw = localStorage.getItem(EXPORT_DRAFT_KEY) || "";
+  } catch (_) {
+    return false;
+  }
+  if (!raw) return false;
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch (_) {
+    clearExportDraft();
+    return false;
+  }
+  if (!draft || typeof draft !== "object") return false;
+  // 恢复连接选择（须在连接列表加载完成后调用）
+  if (draft.connectionId && [...exportConnection.options].some((option) => option.value === draft.connectionId)) {
+    exportConnection.value = draft.connectionId;
+  }
+  Object.entries(draft.values || {}).forEach(([id, value]) => {
+    const control = document.querySelector(`#${CSS.escape(id)}`);
+    if (control && control.value !== value) {
+      control.value = value;
+    }
+  });
+  Object.entries(draft.checks || {}).forEach(([id, checked]) => {
+    const control = document.querySelector(`#${CSS.escape(id)}`);
+    if (control && control.type === "checkbox" && control.checked !== Boolean(checked)) {
+      control.checked = Boolean(checked);
+    }
+  });
+  Object.entries(draft.radios || {}).forEach(([name, value]) => {
+    setRadioValue(name, value);
+  });
+  // 恢复导出对象模式：表模式需先拉取表列表，再回填勾选状态
+  if (draft.sourceMode === "table") {
+    sourceMode = "table";
+    try {
+      await loadSources();
+      const tableNames = new Set(Array.isArray(draft.selectedTables) ? draft.selectedTables : []);
+      let anyChecked = false;
+      exportSourceList.querySelectorAll("input[type='checkbox']").forEach((input) => {
+        input.checked = tableNames.has(input.value);
+        if (input.checked) anyChecked = true;
+      });
+      if (!anyChecked && exportSourceList.querySelector("input[type='checkbox']")) {
+        // 草稿里的表已不存在时兜底勾选第一张，避免空选择
+        exportSourceList.querySelector("input[type='checkbox']").checked = true;
+      }
+    } catch (_) {
+      exportSourceList.classList.remove("hidden");
+      exportSourceList.textContent = "读取导出对象列表失败，请点击“选择表”重新加载并勾选。";
+    }
+  } else if (draft.sourceMode === "multi") {
+    sourceMode = "multi";
+    exportSourceList.textContent = "当前使用多个 SQL 查询，使用分号分隔";
+    exportSourceList.classList.add("hidden");
+  } else {
+    sourceMode = "query";
+    exportSourceList.textContent = "当前使用单个 SQL 查询";
+    exportSourceList.classList.add("hidden");
+  }
+  const activeTab = draft.activeExportTab || "data";
+  document.querySelectorAll("[data-export-tab]").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.exportTab === activeTab);
+  });
+  document.querySelectorAll("[data-export-panel]").forEach((panel) => {
+    panel.classList.toggle("active", panel.dataset.exportPanel === activeTab);
+  });
+  setExportEditorVisible(true);
+  return true;
+}
+
+const exportShell = document.querySelector("main.export-shell");
+exportShell?.addEventListener("input", scheduleExportDraftSave);
+exportShell?.addEventListener("change", scheduleExportDraftSave);
+// 刷新/关闭前的兜底：防抖未到点时立即落盘，避免"输入后马上刷新"丢草稿
+window.addEventListener("pagehide", () => {
+  if (!exportDraftDirty) return;
+  saveExportDraftNow();
+});
+
 loadConnections()
   .then(() => {
     sourceMode = "query";
@@ -756,6 +903,15 @@ loadConnections()
     exportSourceList.classList.add("hidden");
     exportSql.value = exportSql.value || "select 1 as value";
     loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
-    if (!applyPendingQueryExport()) setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
+    if (applyPendingQueryExport()) return;
+    restoreExportDraft()
+      .then((restored) => {
+        if (restored) {
+          setStatus("已恢复上次未保存的导出配置草稿（文件夹/文件直选和密码项需重新选择；保存任务后草稿自动清除）。", "warn");
+        } else {
+          setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
+        }
+      })
+      .catch((error) => setStatus(error.message, "error"));
   })
   .catch((error) => setStatus(error.message, "error"));

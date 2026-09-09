@@ -46,7 +46,7 @@ function renderTables() {
   const list = $("#tableList");
   list.className = filtered.length ? "tables-list" : "tables-list empty";
   list.innerHTML = filtered.length
-    ? filtered.map((item) => `<button type="button" class="table-list-item ${item.name === selectedTable ? "active" : ""}" data-name="${escapeHtml(item.name)}"><span class="table-type-icon">${item.type === "VIEW" ? "VIEW" : "TAB"}</span><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.comment || "无注释")}</small></span><em>${Number(item.rows || 0).toLocaleString()} 行</em></button>`).join("")
+    ? filtered.map((item) => `<button type="button" class="table-list-item ${item.name === selectedTable ? "active" : ""}" data-name="${escapeHtml(item.name)}"><span class="table-type-icon">${item.type === "VIEW" ? "VIEW" : "TAB"}</span><span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.comment || "无注释")}</small></span><em>${item.rowsApproximate ? "约 " : ""}${Number(item.rows || 0).toLocaleString()} 行</em></button>`).join("")
     : "没有匹配的表";
   list.querySelectorAll("[data-name]").forEach((button) => button.addEventListener("click", () => selectTable(button.dataset.name)));
 }
