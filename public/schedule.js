@@ -3,7 +3,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 let jobs = [];
 let schedules = [];
-let connections = [];
+let savedQueries = []; // 查询页保存的查询资产，定时子任务「查询」类型的候选来源
 let selectedScheduleId = "";
 let editingScheduleId = "";
 let editingJobId = "";
@@ -41,20 +41,6 @@ function localDateValue(offsetMinutes = 0) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-function connectionFields() {
-  const id = $("#scheduleConnection").value;
-  if (!id || id === "__sqlite") return { targetDbType: "sqlite" };
-  return { connectionId: id, targetDbType: "mysql" };
-}
-
-async function loadConnections() {
-  const payload = await requestJson("/api/connections");
-  connections = payload.connections || [];
-  $("#scheduleConnection").innerHTML =
-    '<option value="__sqlite">本地 SQLite</option>' +
-    connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("");
-}
-
 async function loadJobs() {
   const payload = await requestJson("/api/jobs");
   jobs = payload.jobs || [];
@@ -70,8 +56,18 @@ async function loadSchedules() {
   if (refreshTime) refreshTime.textContent = `刷新时间 · ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
 }
 
+async function loadSavedQueries() {
+  try {
+    const payload = await requestJson("/api/queries");
+    savedQueries = payload.queries || [];
+  } catch (error) {
+    console.warn("加载保存查询失败（查询类型不可用）:", error.message);
+    savedQueries = [];
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([loadConnections(), loadJobs(), loadSchedules()]);
+  await Promise.all([loadJobs(), loadSchedules(), loadSavedQueries()]);
 }
 
 async function refreshSchedulesLive(includeAll = false) {
@@ -191,27 +187,29 @@ function candidateJobsForType(type) {
   return jobs.filter((job) => {
     if (job.id === editingJobId) return false;
     if (isScheduleBackingJob(job)) return false;
-    if (type === "job") return true;
+    // 严格按主类型过滤：选「作业」只列真正的作业（多步骤/含子作业），
+    // 不再把导入/导出等单步任务混进作业候选区。
     return jobPrimaryType(job) === type;
   });
 }
 
-function jobKindText(job) {
-  const types = [...new Set((job.steps || []).map((step) => typeText(step.type)))];
-  return types.length ? types.join("+") : "作业";
-}
-
 function renderStepConfig() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
-  const candidates = candidateJobsForType(type);
-  if (!candidates.some((job) => job.id === selectedAvailableJobId)) {
+  // 候选 = 作业（按主类型过滤）+ 保存的查询（仅「查询」类型，来自 _saved_queries 资产）
+  const candidates = candidateJobsForType(type).map((job) => ({ kind: "job", id: job.id, name: job.name }));
+  if (type === "query") {
+    candidates.push(...savedQueries.map((q) => ({ kind: "query", id: q.id, name: q.name })));
+  }
+  if (!candidates.some((item) => item.id === selectedAvailableJobId)) {
     selectedAvailableJobId = candidates[0]?.id || "";
   }
   $("#stepConfig").innerHTML = candidates.length
     ? candidates
-        .map((job) => `<button type="button" class="available-job ${job.id === selectedAvailableJobId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><strong>${escapeHtml(job.name)}</strong><span>${escapeHtml(jobKindText(job))}</span></button>`)
+        .map((item) => `<button type="button" class="available-job ${item.id === selectedAvailableJobId ? "active" : ""}" data-id="${escapeHtml(item.id)}"><strong>${escapeHtml(item.name)}</strong></button>`)
         .join("")
-    : `<div class="empty-list">暂无${typeText(type)}作业，请先在${typeText(type)}页面保存作业</div>`;
+    : type === "query"
+      ? '<div class="empty-list">暂无可选查询，请先在查询页面点击「保存查询」</div>'
+      : `<div class="empty-list">暂无${typeText(type)}作业，请先在${typeText(type)}页面保存作业</div>`;
   $$("#stepConfig .available-job").forEach((button) =>
     button.addEventListener("click", () => {
       selectedAvailableJobId = button.dataset.id;
@@ -223,16 +221,30 @@ function renderStepConfig() {
 function addSelectedAvailableJob() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
   if (type === "sync") throw new Error("同步模块尚未开放。");
-  const job = jobs.find((item) => item.id === selectedAvailableJobId);
-  if (!job) throw new Error(`请先选择一个${typeText(type)}作业。`);
-  draftSteps.push({
-    id: crypto.randomUUID(),
-    type: "job",
-    name: job.name,
-    enabled: true,
-    continueOnError: false,
-    config: { jobId: job.id },
-  });
+  // 查询类型：候选来自保存的查询资产，步骤按 queryId 引用（执行时读取最新 SQL + 连接）
+  const query = savedQueries.find((q) => q.id === selectedAvailableJobId);
+  if (type === "query" || query) {
+    if (!query) throw new Error("请先选择一个保存的查询。");
+    draftSteps.push({
+      id: crypto.randomUUID(),
+      type: "query",
+      name: query.name,
+      enabled: true,
+      continueOnError: false,
+      config: { queryId: query.id, connectionId: query.connectionId || query.connection_id || "" },
+    });
+  } else {
+    const job = jobs.find((item) => item.id === selectedAvailableJobId);
+    if (!job) throw new Error(`请先选择一个${typeText(type)}作业。`);
+    draftSteps.push({
+      id: crypto.randomUUID(),
+      type: "job",
+      name: job.name,
+      enabled: true,
+      continueOnError: false,
+      config: { jobId: job.id },
+    });
+  }
   selectedStepIndex = draftSteps.length - 1;
   renderDraftSteps();
 }
@@ -240,11 +252,7 @@ function addSelectedAvailableJob() {
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
     ? draftSteps
-        .map((step, index) => {
-          const nested = jobs.find((job) => job.id === step.config?.jobId);
-          const primaryType = jobPrimaryType(nested) || step.type;
-          return `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${typeText(primaryType)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`;
-        })
+        .map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`)
         .join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) =>

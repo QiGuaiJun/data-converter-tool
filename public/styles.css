@@ -2369,31 +2369,26 @@ th {
   width: 100%;
   min-height: 38px;
   display: grid;
-  justify-items: start;
+  justify-items: center;
   gap: 2px;
   margin-bottom: 6px;
   padding: 5px 8px;
   border: 1px solid #d0d0d0;
   background: #fff;
-  text-align: left;
+  text-align: center;
 }
 
 .schedule-task-card .available-job {
   width: 100%;
   min-height: 38px;
-  display: grid;
-  justify-items: start;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 6px;
   padding: 5px 8px;
   border: 1px solid #d0d0d0;
   background: #fff;
-  text-align: left;
-}
-
-.schedule-task-card .available-job span {
-  color: #666;
-  font-size: 12px;
+  text-align: center;
 }
 
 .schedule-task-card .selected-step.active {

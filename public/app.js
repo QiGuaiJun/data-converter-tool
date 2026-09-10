@@ -293,7 +293,7 @@ async function chooseOriginalSourceFile() {
       taskPath.dispatchEvent(new Event("change", { bubbles: true }));
     }
     restoreTaskSource(source.sourcePath);
-    setStatus(`已关联本机原文件：${file.name}（已记住此文件；只要路径和文件名不变，本机更新后本页面会自动同步最新内容到服务器，请保持本页面打开）`, "success");
+    setStatus(`已关联本机原文件：${file.name}。⚠️ 请立即点击「保存为任务」重新保存，新路径才会生效（只点关联不保存，任务仍会用旧的一次性副本路径，定时执行会报错）。保存后只要路径和文件名不变，本机更新会自动同步到服务器，请保持本页面打开。`, "error");
   } catch (error) {
     setStatus(`上传源文件失败：${error.message}`, "error");
   }

@@ -2996,7 +2996,12 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     source = Path(source_path).resolve()
     managed_sources = TASK_SOURCES.resolve()
     if source == managed_sources or managed_sources in source.parents:
-        raise ValueError("定时导入不能读取软件副本。请在导入任务中点击“关联本机原文件”，选择电脑中的真实源文件后重新保存任务。")
+        raise ValueError(
+            "该导入任务的源文件仍是软件一次性副本（task_sources），定时/作业执行不读取它。"
+            "请打开这条导入任务，点击「关联本机原文件」选择电脑中的真实源文件，"
+            "然后必须重新点击「保存为任务」——只关联不保存，任务路径不会更新。"
+            "保存后引用该任务的作业会自动使用新路径，无需重新编辑作业。"
+        )
     files = collect_local_files(source_path)
     pending_before_sql = str(fields.get("beforeAllSql") or "").strip()
     pending_after_sql = str(fields.get("afterAllSql") or "").strip()
@@ -4403,6 +4408,19 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if not job_id:
             raise ValueError("缺少作业编号。")
         result = run_saved_job(job_id, schedule_id)
+        if schedule_id:
+            # 立即执行也要把结果同步回定时任务状态，否则列表 last_status 一直停在
+            # 调度器上一次触发的结果，用户会看到"状态与最新日志不一致"。
+            # 只回写 last_run_at/last_status；next_run_at/enabled 仍由调度器管理。
+            status = str(result.get("status") or "失败")
+            try:
+                with connect_db() as conn:
+                    conn.execute(
+                        "update _schedules set last_run_at = ?, last_status = ?, updated_at = ? where id = ?",
+                        (now_text(), status, now_text(), schedule_id),
+                    )
+            except Exception:
+                pass  # 状态回写失败不影响本次执行结果的返回
         json_response(self, {"ok": True, "run": result})
 
     def handle_job_delete(self, query: str) -> None:
