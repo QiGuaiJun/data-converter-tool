@@ -43,6 +43,12 @@ from xml.sax.saxutils import escape as xml_escape
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
 
+# Python 3.12 起 sqlite3 内置 datetime/date 默认适配器已弃用（每次写入都会告警），
+# 按官方文档推荐显式注册替代：datetime→"YYYY-MM-DD HH:MM:SS"，date→"YYYY-MM-DD"。
+# 这同时服务于 dateColumns（dt.date）与导入时间列（dt.datetime）两条写入路径。
+sqlite3.register_adapter(dt.datetime, lambda value: value.isoformat(sep=" ", timespec="seconds"))
+sqlite3.register_adapter(dt.date, lambda value: value.isoformat())
+
 
 def env_path(name: str, fallback: Path) -> Path:
     raw_value = os.environ.get(name, "").strip()
@@ -1260,7 +1266,10 @@ def build_target_data(tabular: TabularData, fields: dict[str, str], file_name: s
 
     extras: list[tuple[str, object]] = []
     if fields.get("importTimeField", "").strip():
-        extras.append((transform_field_name(fields["importTimeField"], fields, "imported_at"), dt.datetime.now().isoformat(sep=" ", timespec="seconds")))
+        # 写入 datetime 对象（而非 ISO 字符串）：MySQL 端据此推断为 datetime 列类型，
+        # 值由驱动原生绑定；SQLite 端经上方显式适配器落为 "YYYY-MM-DD HH:MM:SS" 文本。
+        # 截掉微秒，保证 LOAD DATA 文本路径与 DATETIME(0) 列兼容。
+        extras.append((transform_field_name(fields["importTimeField"], fields, "imported_at"), dt.datetime.now().replace(microsecond=0)))
     if fields.get("sheetNameField", "").strip():
         extras.append((transform_field_name(fields["sheetNameField"], fields, "sheet_name"), tabular.selected_sheet or Path(file_name).stem))
     if fields.get("fixedValueField", "").strip():
