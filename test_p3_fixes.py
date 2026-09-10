@@ -144,5 +144,29 @@ def test_p3_27_mysql_import_time_column_is_datetime() -> None:
     assert TS_PATTERN.match(str(ts)), f"MySQL 导入时间值异常: {ts!r}"
 
 
+# ---------------------------------------------------------------------------
+# P3-19：连接测试接口过滤 MySQL 系统库
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(not MYSQL_READY, reason="本机 MySQL 不可用")
+def test_p3_19_test_connection_filters_system_databases() -> None:
+    result = server.test_mysql_connection(
+        {
+            "dbType": "mysql",
+            "host": MYSQL_FIELDS["dbHost"],
+            "port": MYSQL_FIELDS["dbPort"],
+            "user": MYSQL_FIELDS["dbUser"],
+            "password": MYSQL_FIELDS["dbPassword"],
+            "database": "",
+        }
+    )
+    databases = [name.lower() for name in result["databases"]]
+    leaked = set(databases) & server.MYSQL_SYSTEM_DATABASES
+    assert not leaked, f"下拉不应包含系统库，实际泄露: {leaked}"
+    # 业务库（测试库）必须保留
+    assert MYSQL_FIELDS["dbName"].lower() in databases, "业务库被误过滤"
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-v"]))

@@ -89,6 +89,8 @@ body {
   border-right: 1px solid #aeb7c2;
   background: white;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-title {
@@ -126,6 +128,16 @@ body {
 .tree-node:hover {
   border-color: #8fbadd;
   background: #edf7ff;
+}
+
+/* P3-28：侧边栏底部版本号 */
+.sidebar-version {
+  margin-top: auto;
+  padding: 10px 12px 8px;
+  border-top: 1px solid #d5dde6;
+  font-size: 12px;
+  color: #7a8694;
+  user-select: none;
 }
 
 .module-task-panel {

@@ -66,6 +66,8 @@ def env_path(name: str, fallback: Path) -> Path:
 DATA = env_path("DATA_DIR", ROOT / "data")
 UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
 EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
+# 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
+APP_VERSION = "1.4.0"
 TASK_SOURCES = DATA / "task_sources"
 LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
@@ -661,6 +663,11 @@ def mysql_connection_args(config: dict[str, object], include_database: bool = Tr
     return args
 
 
+# MySQL 系统库：出现在「show databases」结果里但对用户业务无意义，
+# 连接表单的数据库下拉统一过滤掉（用户显式选中的库除外，见 test_mysql_connection）。
+MYSQL_SYSTEM_DATABASES = {"information_schema", "performance_schema", "mysql", "sys"}
+
+
 def test_mysql_connection(config: dict[str, object]) -> dict[str, object]:
     normalized = normalize_connection_payload(config)
     with pymysql.connect(**mysql_connection_args(normalized, include_database=False)) as conn:
@@ -669,6 +676,8 @@ def test_mysql_connection(config: dict[str, object]) -> dict[str, object]:
             version = cursor.fetchone()[0]
             cursor.execute("show databases")
             databases = [row[0] for row in cursor.fetchall()]
+    # P3-19：过滤系统库，避免下拉被 information_schema/performance_schema 等占满。
+    databases = [name for name in databases if name.lower() not in MYSQL_SYSTEM_DATABASES]
     selected_db = str(normalized.get("db_name") or "")
     if selected_db:
         with pymysql.connect(**mysql_connection_args(normalized, include_database=True)) as conn:
@@ -3891,6 +3900,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/ping":
                 json_response(self, {"ok": True, "version": "export-v2-download"})
+                return
+            if parsed.path == "/api/meta":
+                json_response(self, {"ok": True, "appVersion": APP_VERSION})
                 return
             if parsed.path == "/api/storage/status":
                 self.handle_storage_status()

@@ -53,6 +53,7 @@ function renderModulePage() {
         <aside class="app-sidebar">
           <div class="sidebar-title">功能</div>
           <nav class="module-tree">${tree}</nav>
+          <div class="sidebar-version" id="appVersion">数据导表工具</div>
         </aside>
         <section class="app-workspace">
           <main class="module-placeholder">
@@ -80,3 +81,19 @@ function renderModulePage() {
 }
 
 renderModulePage();
+
+// P3-28：动态页（api/docs/feedback/sync 等占位页）渲染后加载版本号
+(async function loadAppVersion() {
+  const target = document.querySelector("#appVersion");
+  if (!target) return;
+  try {
+    const response = await fetch("/api/meta", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    if (payload && payload.ok && payload.appVersion) {
+      target.textContent = `数据导表工具 v${payload.appVersion}`;
+    }
+  } catch (error) {
+    // 网络或服务异常时保留默认文案
+  }
+})();
