@@ -554,14 +554,6 @@ function ensureImportTaskPanel() {
     });
     document.querySelector("#deleteImportTask").addEventListener("click", deleteSelectedImportTask);
   }
-
-  const activeNode = document.querySelector(".module-tree .tree-node.active");
-  if (activeNode && !document.querySelector("#importTaskTree")) {
-    const tree = document.createElement("div");
-    tree.id = "importTaskTree";
-    tree.className = "module-task-tree";
-    activeNode.insertAdjacentElement("afterend", tree);
-  }
 }
 
 function startNewImportTask() {
@@ -575,7 +567,7 @@ function startNewImportTask() {
 
 function updateImportTaskSelection() {
   const hasSelection = Boolean(selectedImportTaskId && importTaskJobs.some((job) => job.id === selectedImportTaskId));
-  document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
+  document.querySelectorAll("#importTaskList [data-id]").forEach((button) => {
     button.classList.toggle("active", button.dataset.id === selectedImportTaskId);
   });
   const openButton = document.querySelector("#openImportTask");
@@ -590,24 +582,17 @@ function updateImportTaskSelection() {
 function renderImportTaskJobs() {
   ensureImportTaskPanel();
   const list = document.querySelector("#importTaskList");
-  const tree = document.querySelector("#importTaskTree");
   if (!list) return;
   if (!importTaskJobs.length) {
     list.className = "module-task-list empty";
     list.textContent = "暂无导入任务";
-    if (tree) tree.textContent = "";
   } else {
     list.className = "module-task-list";
     list.innerHTML = importTaskJobs
       .map((job) => `<button type="button" class="module-task-item task-import ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">IN</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
       .join("");
-    if (tree) {
-      tree.innerHTML = importTaskJobs
-        .map((job) => `<button type="button" class="tree-child task-import ${job.id === selectedImportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">IN</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
-        .join("");
-    }
   }
-  document.querySelectorAll("#importTaskList [data-id], #importTaskTree [data-id]").forEach((button) => {
+  document.querySelectorAll("#importTaskList [data-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedImportTaskId = button.dataset.id;
       updateImportTaskSelection();

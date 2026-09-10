@@ -128,28 +128,6 @@ body {
   background: #edf7ff;
 }
 
-.module-task-tree {
-  display: grid;
-  gap: 2px;
-  margin: -2px 0 6px 34px;
-}
-
-.module-task-tree .tree-child {
-  min-height: 24px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #111;
-  text-align: left;
-  cursor: pointer;
-}
-
-.module-task-tree .tree-child:hover,
-.module-task-tree .tree-child.active {
-  border-color: #8fbadd;
-  background: #e7f3ff;
-}
-
 .module-task-panel {
   grid-column: 1 / -1;
   min-height: 188px;
@@ -234,8 +212,7 @@ body {
   display: none;
 }
 
-.module-task-item,
-.module-task-tree .tree-child {
+.module-task-item {
   justify-content: flex-start;
   text-align: left;
 }
@@ -270,12 +247,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.module-task-tree .tree-child {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 /* SQL query workspace */
@@ -2754,26 +2725,6 @@ body {
   background: #fff;
 }
 
-.module-task-tree {
-  margin: -2px 0 8px 38px;
-  gap: 4px;
-}
-
-.module-task-tree .tree-child {
-  min-height: 28px;
-  padding: 4px 10px;
-  border-radius: 9px;
-  color: #7b8da6;
-  font-weight: 600;
-}
-
-.module-task-tree .tree-child:hover,
-.module-task-tree .tree-child.active {
-  border-color: transparent;
-  background: #dfeeff;
-  color: #2f80ed;
-}
-
 .app-workspace {
   background: transparent;
   padding: 0;
@@ -2975,8 +2926,6 @@ body.import-task-overview .bottom-dock {
   display: none;
 }
 
-body.import-task-editor #importTaskTree,
-body.export-task-editor #exportTaskTree,
 .import-shell:not(.task-overview-mode) #importTaskList,
 .export-shell:not(.task-overview-mode) #exportTaskList {
   display: none;

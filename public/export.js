@@ -548,19 +548,11 @@ function ensureExportTaskPanel() {
     document.querySelector("#newExportTask").addEventListener("click", startNewExportTask);
     document.querySelector("#deleteExportTask").addEventListener("click", () => deleteSelectedExportTask().catch((error) => setStatus(error.message, "error")));
   }
-
-  const activeNode = document.querySelector(".module-tree .tree-node.active");
-  if (activeNode && !document.querySelector("#exportTaskTree")) {
-    const tree = document.createElement("div");
-    tree.id = "exportTaskTree";
-    tree.className = "module-task-tree";
-    activeNode.insertAdjacentElement("afterend", tree);
-  }
 }
 
 function updateExportTaskSelection() {
   const hasSelection = Boolean(selectedExportTaskId && exportTaskJobs.some((job) => job.id === selectedExportTaskId));
-  document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
+  document.querySelectorAll("#exportTaskList [data-id]").forEach((button) => {
     button.classList.toggle("active", button.dataset.id === selectedExportTaskId);
   });
   const openButton = document.querySelector("#openExportTask");
@@ -574,24 +566,17 @@ function updateExportTaskSelection() {
 function renderExportTaskJobs() {
   ensureExportTaskPanel();
   const list = document.querySelector("#exportTaskList");
-  const tree = document.querySelector("#exportTaskTree");
   if (!list) return;
   if (!exportTaskJobs.length) {
     list.className = "module-task-list empty";
     list.textContent = "暂无导出任务";
-    if (tree) tree.textContent = "";
   } else {
     list.className = "module-task-list";
     list.innerHTML = exportTaskJobs
       .map((job) => `<button type="button" class="module-task-item task-export ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">OUT</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
       .join("");
-    if (tree) {
-      tree.innerHTML = exportTaskJobs
-        .map((job) => `<button type="button" class="tree-child task-export ${job.id === selectedExportTaskId ? "active" : ""}" data-id="${escapeHtml(job.id)}"><span class="task-type-icon">OUT</span><span class="task-item-name">${escapeHtml(job.name)}</span></button>`)
-        .join("");
-    }
   }
-  document.querySelectorAll("#exportTaskList [data-id], #exportTaskTree [data-id]").forEach((button) => {
+  document.querySelectorAll("#exportTaskList [data-id]").forEach((button) => {
     button.addEventListener("click", () => {
       selectedExportTaskId = button.dataset.id;
       updateExportTaskSelection();
