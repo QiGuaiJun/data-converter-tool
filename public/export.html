@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>导出功能 - 数据导表工具</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/styles.css?v=20260911_open_to_list" />
+    <link rel="stylesheet" href="/styles.css?v=20260911_server_pick" />
+    <link rel="stylesheet" href="/sql-editor.css?v=20260911_sql_editor" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -40,7 +41,10 @@
         </aside>
         <section class="app-workspace">
     <main class="export-shell">
-      <section class="export-topbar">
+      <!-- 顶栏工具条（连接下拉 / 保存 / 开始 / 结束 / 导入 / 选项说明）按需求整体隐藏。
+           刻意只隐藏、不删除：export.js 里有多处 #exportConnection 引用（导出连接、任务快照），
+           移除节点会抛 TypeError。需要恢复时删掉 style 与 hidden 即可。 -->
+      <section class="export-topbar" hidden style="display: none">
         <select id="exportConnection">
           <option value="">读取连接中...</option>
         </select>
@@ -74,13 +78,13 @@
             <label for="exportTaskName">保存导出任务时使用：</label>
             <input id="exportTaskName" placeholder="例如：云购商城销售数据导出" />
             <span></span>
-            <span class="field-hint">点击「保存」前请先填写；留空不能保存</span>
+            <span class="field-hint">保存任务前请先填写；留空不能保存</span>
           </div>
           <div class="export-group">
             <strong>目标Excel：</strong>
             <label><input type="radio" name="exportTargetMode" value="folder" checked /> 导出到指定文件夹：</label>
-            <input id="exportFolder" value="exports" />
-            <button id="chooseExportFolder" type="button">...</button>
+            <input id="exportFolder" value="" placeholder="留空=服务器默认目录；点「...」打开系统选择框（显示完整路径），或直接填 D:\导出" />
+            <button id="chooseExportFolder" type="button" title="打开系统文件夹选择框（返回完整路径，可随任务保存，定时任务同样生效）">...</button>
             <select id="exportExtension">
               <option value="xlsx">.xlsx</option>
               <option value="csv">.csv</option>
@@ -102,7 +106,7 @@
             <span></span>
             <label><input type="radio" name="exportTargetMode" value="file" /> 导出到指定文件：</label>
             <input id="outputName" placeholder="不填则按表名或查询名生成" />
-            <button id="chooseExportFile" type="button">...</button>
+            <button id="chooseExportFile" type="button" title="打开系统保存框（返回完整路径，可随任务保存，定时任务同样生效）">...</button>
           </div>
 
           <div class="export-group">
@@ -221,7 +225,8 @@
       </div>
     </div>
 
-    <script src="/export.js?v=20260911_open_to_list"></script>
+    <script src="/sql-editor.js?v=20260911_sql_editor"></script>
+    <script src="/export.js?v=20260911_toolbar_save"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
   </body>

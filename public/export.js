@@ -32,6 +32,175 @@ let exportFallbackToDownload = false;
 let exportFolderServerValue = "";
 let outputNameServerValue = "";
 
+// P2-33：导出目标的持久化。
+// 浏览器的 File System Access API 在安全沙箱里只给 handle.name（不暴露绝对路径），
+// 且 FileSystemDirectoryHandle/FileSystemFileHandle 无法序列化进服务端 JSON 配置，
+// 所以「...」直选的结果以前保存后就丢了。这里把句柄按任务 id 存进 IndexedDB（结构化克隆），
+// 重开任务时恢复；手填的绝对路径则照旧进任务配置、由服务端直接落盘（定时任务也生效）。
+const EXPORT_TARGET_DB = "dataToolExportTargets";
+const EXPORT_TARGET_STORE = "targets";
+const EXPORT_TARGET_DRAFT_KEY = "__draft__";
+
+function exportTargetDbOpen() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(EXPORT_TARGET_DB, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(EXPORT_TARGET_STORE)) {
+        db.createObjectStore(EXPORT_TARGET_STORE, { keyPath: "key" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function exportTargetDbPut(record) {
+  const db = await exportTargetDbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(EXPORT_TARGET_STORE, "readwrite");
+    tx.objectStore(EXPORT_TARGET_STORE).put(record);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function exportTargetDbGet(key) {
+  const db = await exportTargetDbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(EXPORT_TARGET_STORE, "readonly");
+    const request = tx.objectStore(EXPORT_TARGET_STORE).get(key);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function exportTargetDbDelete(key) {
+  const db = await exportTargetDbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(EXPORT_TARGET_STORE, "readwrite");
+    tx.objectStore(EXPORT_TARGET_STORE).delete(key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// 编辑中的任务用任务 id 作键；尚未保存的新任务先用 __draft__，保存成功后迁移到新 id。
+function exportTargetKey() {
+  return selectedExportTaskId || EXPORT_TARGET_DRAFT_KEY;
+}
+
+async function rememberExportTarget() {
+  try {
+    const key = exportTargetKey();
+    if (!exportDirectoryHandle && !exportFileHandle) {
+      await exportTargetDbDelete(key);
+      return;
+    }
+    await exportTargetDbPut({
+      key,
+      folderHandle: exportDirectoryHandle || null,
+      folderName: exportDirectoryHandle ? exportDirectoryHandle.name : "",
+      fileHandle: exportFileHandle || null,
+      fileName: exportFileHandle ? exportFileHandle.name : "",
+      updatedAt: Date.now(),
+    });
+  } catch (error) {
+    console.warn("记住导出目标失败（不影响本次选择）:", error);
+  }
+}
+
+async function migrateExportTargetRecord(jobId) {
+  if (!jobId) return;
+  try {
+    const draft = await exportTargetDbGet(EXPORT_TARGET_DRAFT_KEY);
+    if (!draft) return;
+    await exportTargetDbPut({ ...draft, key: jobId });
+    await exportTargetDbDelete(EXPORT_TARGET_DRAFT_KEY);
+  } catch (error) {
+    console.warn("迁移导出目标记录失败:", error);
+  }
+}
+
+async function forgetExportTarget(jobId) {
+  if (!jobId) return;
+  try {
+    await exportTargetDbDelete(jobId);
+  } catch (error) {
+    console.warn("清理导出目标记录失败:", error);
+  }
+}
+
+// queryPermission 不会弹窗，可在页面加载时安全调用；requestPermission 必须在用户手势里调用。
+async function ensureHandlePermission(handle, mode, options = {}) {
+  if (!handle || typeof handle.queryPermission !== "function") return "granted";
+  let permission = "denied";
+  try {
+    permission = await handle.queryPermission({ mode });
+  } catch (_) {
+    return "granted";
+  }
+  if (permission === "granted") return permission;
+  if (!options.request) return permission;
+  try {
+    return await handle.requestPermission({ mode });
+  } catch (_) {
+    return "denied";
+  }
+}
+
+function isAbsolutePath(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  return /^[a-zA-Z]:[\\/]/.test(text) || text.startsWith("\\\\") || text.startsWith("/");
+}
+
+// 「...」直选后输入框里是展示文本（已选择文件夹：xxx），不能当服务端路径发送；
+// 历史上默认值写死为相对路径 "exports"，服务端会直接拒绝，这里一并按空处理（回落到服务器默认导出目录）。
+function normalizeServerPath(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  if (text.startsWith("已选择文件夹：") || text.startsWith("已选择文件：")) return "";
+  if (text === "exports") return "";
+  return text;
+}
+
+// 目标路径自检：返回空串表示没问题，否则返回给用户看的错误文案。
+function exportTargetPathProblem() {
+  const mode = radioValue("exportTargetMode");
+  const raw = mode === "file" ? $("#outputName").value : $("#exportFolder").value;
+  const text = String(raw || "").trim();
+  if (!text) return "";
+  if (text.startsWith("已选择文件夹：") || text.startsWith("已选择文件：")) return "";
+  if (text === "exports") return "";
+  if (!isAbsolutePath(text)) {
+    return `目标路径“${text}”不是完整路径。请填写绝对路径（例如 D:\\导出），或点右侧「...」直接选择文件夹；目标框留空则导出到服务器默认目录。`;
+  }
+  return "";
+}
+
+// 导出前确认句柄仍可用（首次导出会在这里请求一次写权限，必须在用户点击的手势内）。
+async function ensureExportTargetReady() {
+  if (exportFallbackToDownload) return { ok: true };
+  const mode = radioValue("exportTargetMode");
+  const handle = mode === "file" ? exportFileHandle : exportDirectoryHandle;
+  const name = handle ? handle.name : "";
+  if (!handle) {
+    // 没有浏览器句柄时，目标位置由服务端 export_target_path() 按填写的绝对路径直接落盘。
+    // 这里要区分「填了绝对路径」和「什么都没填」：前者已经写到了用户要的位置，
+    // 不能再提示"已生成在服务器默认导出目录"（会让用户以为设置没生效）。
+    const serverPath = normalizeServerPath(mode === "file" ? $("#outputName").value : $("#exportFolder").value);
+    return serverPath
+      ? { ok: false, reason: "server", serverPath }
+      : { ok: false, reason: "missing" };
+  }
+  const permission = await ensureHandlePermission(handle, "readwrite", { request: true });
+  if (permission !== "granted") {
+    return { ok: false, reason: "denied", name };
+  }
+  return { ok: true, name };
+}
+
 function $(selector) {
   return document.querySelector(selector);
 }
@@ -74,6 +243,9 @@ function setExportEditorVisible(visible) {
   document.querySelector(".export-shell")?.classList.toggle("task-overview-mode", !exportEditorVisible);
   document.body.classList.toggle("export-task-overview", !exportEditorVisible);
   document.body.classList.toggle("export-task-editor", exportEditorVisible);
+  // 视图切换会影响工具条第三个按钮的文案（新增导出 / 保存修改 / 保存为新任务），
+  // 统一在这里刷新，避免各处调用点漏掉导致标签滞后。
+  updateExportTaskSelection();
 }
 
 function resetExportEditor() {
@@ -175,7 +347,8 @@ async function loadConnections() {
   for (const item of connections) {
     const option = document.createElement("option");
     option.value = item.id;
-    option.textContent = `${item.name} (${item.host}/${item.database})`;
+    // 只显示连接名称，不在界面上暴露主机 / 库名等连接信息。
+    option.textContent = item.name || item.id;
     exportConnection.append(option);
   }
   const sqlite = document.createElement("option");
@@ -247,9 +420,12 @@ function collectPayload() {
     queryName: ($("#queryName")?.value || "query").trim() || "query",
     sourceMode,
     extension: $("#exportExtension").value,
-    exportFolder: $("#exportFolder").value.startsWith("已选择文件夹：") ? "" : $("#exportFolder").value,
+    // P2-33：以前漏发 exportTargetMode，后端 export_target_path() 恒按 folder 分支处理，
+    // 导致「导出到指定文件」在手填绝对路径时完全无效。
+    exportTargetMode: radioValue("exportTargetMode") || "folder",
+    exportFolder: normalizeServerPath($("#exportFolder").value),
     exportFileName: $("#exportFileName").value.trim(),
-    outputName: $("#outputName").value.startsWith("已选择文件：") ? "" : $("#outputName").value,
+    outputName: normalizeServerPath($("#outputName").value),
     sheetName: $("#sheetName").value,
     headerMode: radioValue("headerMode"),
     exportMode: radioValue("exportMode"),
@@ -312,13 +488,99 @@ function exportFileTypesForExtension(extension) {
   return acceptByExtension[extension] || { "application/octet-stream": [`.${extension}`] };
 }
 
-// 浏览器原生选择导出文件夹。文件夹选择只在浏览器本地生效（导出后由 copyExportedFiles 复制过去），
-// 不再调用后端 /api/export/choose-target（后端已改为不支持并返回错误提示）。
+// 选择导出目标：优先用服务端原生对话框。
+// 浏览器的 showDirectoryPicker/showSaveFilePicker 出于安全永远不给绝对路径（只给 handle.name），
+// 所以界面上只能显示"已选择文件夹：中秋试饮"、存进任务配置时也只能是空串；
+// 而服务端与浏览器同机运行，由服务端弹 Windows 原生对话框就能拿到 D:\导出 这样的完整路径，
+// 该路径可以直接存进任务、由服务端落盘，定时任务（无浏览器）同样生效。
+// 服务端不可用（非 Windows / 无桌面会话 / 旧版本）时，回退到浏览器直选。
+async function pickTargetOnServer(mode) {
+  const isFolder = mode === "folder";
+  // 原生对话框是模态的，这个请求会一直挂到用户关闭窗口为止；期间禁用「...」按钮，
+  // 否则连点几次就会在前一个对话框关掉后接连弹出好几个。
+  const trigger = $(isFolder ? "#chooseExportFolder" : "#chooseExportFile");
+  const restore = () => {
+    if (trigger) trigger.disabled = false;
+  };
+  if (trigger) trigger.disabled = true;
+  setStatus(isFolder ? "已打开系统文件夹选择框，请在弹出的窗口中选择…" : "已打开系统文件保存框，请选择保存位置…", "info");
+  try {
+    let response;
+    try {
+      response = await fetch("/api/export/choose-target", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode,
+          extension: ($("#exportExtension")?.value || "xlsx").replace(/^\./, ""),
+          initial: normalizeServerPath(isFolder ? $("#exportFolder").value : $("#outputName").value),
+          suggest: ($("#exportFileName")?.value || "").trim(),
+        }),
+      });
+    } catch (_) {
+      return { status: "unsupported", path: "" };
+    }
+    if (response.status === 404 || response.status === 501) {
+      return { status: "unsupported", path: "" };
+    }
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_) {
+      return { status: "unsupported", path: "" };
+    }
+    if (!payload || payload.ok !== true) {
+      if (payload && payload.unsupported) return { status: "unsupported", path: "" };
+      throw new Error((payload && payload.error) || "系统选择框返回异常。");
+    }
+    return { status: payload.path ? "picked" : "cancelled", path: payload.path || "" };
+  } finally {
+    restore();
+  }
+}
+
+// 服务端已返回绝对路径：直接写进目标框（并停用浏览器句柄，避免两套机制互相覆盖）。
+function applyServerPickedTarget(mode, path) {
+  exportDirectoryHandle = null;
+  exportFileHandle = null;
+  exportFallbackToDownload = false;
+  if (mode === "file") {
+    outputNameServerValue = "";
+    $("#outputName").value = path;
+    $("#outputName").placeholder = "留空=按文件名生成，或填绝对路径 D:\\导出\\报表.xlsx";
+    document.querySelector('input[name="exportTargetMode"][value="file"]').checked = true;
+    forgetExportTarget(exportTargetKey()).catch(() => {});
+    setStatus(`已选择目标文件：${path}（服务端直接写入，定时任务同样生效）`, "success");
+    return;
+  }
+  exportFolderServerValue = "";
+  $("#exportFolder").value = path;
+  $("#exportFolder").placeholder = "留空=服务器默认目录，或填绝对路径 D:\\导出";
+  document.querySelector('input[name="exportTargetMode"][value="folder"]').checked = true;
+  // 清掉该任务旧的浏览器句柄记录，否则下次打开会被"已选择文件夹：xxx"覆盖掉这条绝对路径。
+  forgetExportTarget(exportTargetKey()).catch(() => {});
+  setStatus(`已选择导出文件夹：${path}（服务端直接写入该目录，定时任务同样生效）`, "success");
+}
+
 async function chooseFolder() {
+  const picked = await pickTargetOnServer("folder");
+  if (picked.status === "picked") {
+    applyServerPickedTarget("folder", picked.path);
+    return;
+  }
+  if (picked.status === "cancelled") {
+    setStatus("已取消选择。", "info");
+    return;
+  }
+  await chooseFolderInBrowser();
+}
+
+// 回退路径：浏览器直选。文件夹选择只在浏览器本地生效（导出后由 copyExportedFiles 复制过去）。
+async function chooseFolderInBrowser() {
   if (!window.showDirectoryPicker) {
     exportFallbackToDownload = true;
     $("#exportFolder").placeholder = "您的浏览器不支持文件夹直选，导出后将通过浏览器下载文件";
-    setStatus("您的浏览器不支持文件夹直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
+    setStatus("无法打开系统文件夹选择框，且当前浏览器不支持文件夹直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
     return;
   }
   let handle;
@@ -340,15 +602,30 @@ async function chooseFolder() {
   $("#exportFolder").value = `已选择文件夹：${handle.name}`;
   $("#exportFolder").placeholder = "导出后复制到所选文件夹";
   document.querySelector('input[name="exportTargetMode"][value="folder"]').checked = true;
-  setStatus(`已选择导出文件夹：${handle.name}（导出后复制到该文件夹）`, "success");
+  // P2-33：句柄存进 IndexedDB，重开任务时自动恢复（以前保存后即丢失）
+  await rememberExportTarget();
+  setStatus(`已选择导出文件夹：${handle.name}（部分浏览器不提供绝对路径，仅浏览器导出时生效）`, "warn");
 }
 
-// 浏览器原生选择导出文件（保存对话框）。
 async function chooseFile() {
+  const picked = await pickTargetOnServer("file");
+  if (picked.status === "picked") {
+    applyServerPickedTarget("file", picked.path);
+    return;
+  }
+  if (picked.status === "cancelled") {
+    setStatus("已取消选择。", "info");
+    return;
+  }
+  await chooseFileInBrowser();
+}
+
+// 回退路径：浏览器原生保存对话框。
+async function chooseFileInBrowser() {
   if (!window.showSaveFilePicker) {
     exportFallbackToDownload = true;
     $("#outputName").placeholder = "您的浏览器不支持文件直选，导出后将通过浏览器下载文件";
-    setStatus("您的浏览器不支持文件直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
+    setStatus("无法打开系统保存框，且当前浏览器不支持文件直选，将改为下载文件（点击导出后用浏览器下载）。", "info");
     return;
   }
   const extension = ($("#exportExtension").value || "xlsx").replace(/^\./, "");
@@ -376,7 +653,9 @@ async function chooseFile() {
   $("#outputName").value = `已选择文件：${handle.name}`;
   $("#outputName").placeholder = "导出后写入该文件";
   document.querySelector('input[name="exportTargetMode"][value="file"]').checked = true;
-  setStatus(`已选择目标文件：${handle.name}（导出后写入该文件）`, "success");
+  // P2-33：同文件夹——句柄存进 IndexedDB，重开任务时自动恢复
+  await rememberExportTarget();
+  setStatus(`已选择目标文件：${handle.name}（部分浏览器不提供绝对路径，仅浏览器导出时生效）`, "warn");
 }
 
 async function copyExportedFiles(result) {
@@ -457,13 +736,20 @@ async function runExport() {
   startExportButton.disabled = true;
   previewExportButton.disabled = true;
   try {
+    // P2-33：相对路径服务端会直接拒绝，先在前端拦下并给出可操作的提示
+    const pathProblem = exportTargetPathProblem();
+    if (pathProblem) {
+      setStatus(pathProblem, "error");
+      return;
+    }
+    const targetReady = await ensureExportTargetReady();
     setStatus("正在导出...");
     const result = await requestJson("/api/export/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(collectPayload()),
     });
-    const copyResult = await copyExportedFiles(result);
+    const copyResult = targetReady.ok ? await copyExportedFiles(result) : { copied: [], errors: [] };
     const copiedByIndex = new Map(copyResult.copied.map((item) => [item.index, item.name]));
     exportResultMeta.textContent = `${result.files.length} 个文件 · ${result.rows} 行 · ${result.elapsedMs} ms`;
     exportResults.innerHTML = result.files.length
@@ -479,8 +765,18 @@ async function runExport() {
     if (copyResult.errors.length) {
       exportResults.innerHTML += copyResult.errors.map((message) => `<div class="log-item failed">${escapeHtml(message)}</div>`).join("");
       setStatus(`${result.message} 文件已生成，但复制到所选位置失败，请点击下载文件或重新选择文件夹。`, "warn");
+    } else if (copyResult.copied.length) {
+      setStatus(`${result.message} 已复制到你选择的位置。`, "success");
+    } else if (targetReady.reason === "server") {
+      // 目标由服务端直接写入用户填写的绝对路径（已完成，不需要前端复制）
+      setStatus(`${result.message} 已按设置写入：${result.files[0] || targetReady.serverPath}`, "success");
+    } else if (targetReady.reason === "missing") {
+      // 任务里既没有句柄（浏览器直选无法随任务跨浏览器保存），也没填绝对路径
+      setStatus(`${result.message} 文件已生成在服务器默认导出目录。该任务未记住目标位置：请点「...」重选文件夹，或直接填写绝对路径后保存任务。`, "warn");
+    } else if (targetReady.reason === "denied") {
+      setStatus(`${result.message} 文件已生成，但浏览器未授权写入“${targetReady.name}”，已跳过复制。请重新点「...」选择该文件夹后再导出。`, "warn");
     } else {
-      setStatus(copyResult.copied.length ? `${result.message} 已复制到你选择的位置。` : result.message, "success");
+      setStatus(result.message, "success");
     }
   } catch (error) {
     setStatus(error.message, "error");
@@ -497,6 +793,12 @@ async function saveExportTask() {
   const taskName = ($("#exportTaskName")?.value || "").trim();
   if (!taskName) {
     setStatus("请填写任务名称。", "error");
+    return null;
+  }
+  // P2-33：相对路径存进任务后，服务端每次导出都会报错，这里提前拦下
+  const pathProblem = exportTargetPathProblem();
+  if (pathProblem) {
+    setStatus(pathProblem, "error");
     return null;
   }
   const config = collectPayload();
@@ -521,6 +823,8 @@ async function saveExportTask() {
     body: JSON.stringify(payload),
   });
   selectedExportTaskId = result.job.id;
+  // P2-33：新任务保存成功，把「尚未保存」时记录的句柄迁移到这个任务 id 下
+  if (!existingJob) await migrateExportTargetRecord(result.job.id);
   await loadExportTaskJobs();
   clearExportDraft();
   setStatus(`${existingJob ? "已更新" : "已保存"}导出任务：${result.job.name}，可在定时任务中调用。`, "success");
@@ -554,7 +858,15 @@ function ensureExportTaskPanel() {
       <div id="exportTaskList" class="module-task-list empty">暂无导出任务</div>`;
     shell.insertAdjacentElement("afterbegin", panel);
     document.querySelector("#openExportTask").addEventListener("click", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
-    document.querySelector("#newExportTask").addEventListener("click", startNewExportTask);
+    // 与导入模块对齐：第三个按钮在主览/编辑态间切换为「新增导出 / 保存修改 / 保存为新任务」，
+    // 保存入口不再依赖已隐藏的顶栏。
+    document.querySelector("#newExportTask").addEventListener("click", () => {
+      if (exportToolbarAction() === "browse") {
+        startNewExportTask();
+      } else {
+        saveExportTask().catch((error) => setStatus(error.message, "error"));
+      }
+    });
     document.querySelector("#deleteExportTask").addEventListener("click", () => deleteSelectedExportTask().catch((error) => setStatus(error.message, "error")));
     // P2-31：同导入模块——编辑器模式没有返回总览的入口，补一个显式返回按钮。
     document.querySelector("#backExportTaskList").addEventListener("click", () => {
@@ -563,6 +875,23 @@ function ensureExportTaskPanel() {
       loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
     });
   }
+}
+
+// 工具条第三个按钮要做的事，随状态切换（与导入模块同一套交互，但补上"新建后保存"这一态）：
+//   browse —— 总览态：新增导出
+//   update —— 编辑态且正在编辑一条已保存任务：保存修改（覆盖该任务）
+//   create —— 编辑态且没有选中任务（刚点「新增导出」）：保存为新任务
+// 为什么必须区分 browse/update：只在总览里单击选中一条任务时，表单里还是"上一个任务"的内容，
+// 若此时允许保存，会把旧表单连名字一起覆盖到刚点中的那条任务上（数据丢失）。
+function exportToolbarAction() {
+  const shell = document.querySelector(".export-shell");
+  if (!shell || shell.classList.contains("task-overview-mode")) return "browse";
+  const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
+  return job ? "update" : "create";
+}
+
+function exportToolbarLabel(action) {
+  return action === "update" ? "保存修改" : action === "create" ? "保存为新任务" : "新增导出";
 }
 
 function updateExportTaskSelection() {
@@ -574,7 +903,7 @@ function updateExportTaskSelection() {
   const newButton = document.querySelector("#newExportTask");
   const deleteButton = document.querySelector("#deleteExportTask");
   if (openButton) openButton.disabled = !hasSelection;
-  if (newButton) newButton.textContent = "新增导出";
+  if (newButton) newButton.textContent = exportToolbarLabel(exportToolbarAction());
   if (deleteButton) deleteButton.disabled = !hasSelection;
 }
 
@@ -625,7 +954,8 @@ async function applyExportTaskConfig(config) {
   if (config?.targetDbType && config.targetDbType !== "sqlite" && config?.connectionId && !connections.some((item) => item.id === config.connectionId)) {
     const option = document.createElement("option");
     option.value = config.connectionId;
-    option.textContent = config.dbHost ? `保存的连接快照 (${config.dbHost}/${config.dbName || ""})` : "连接已丢失，请重新选择";
+    // 快照同样只给名称，不展示主机 / 库名。
+    option.textContent = config.dbHost ? "保存的连接快照" : "连接已丢失，请重新选择";
     exportConnection.prepend(option);
     if (config.dbHost) {
       connections.push({
@@ -676,6 +1006,39 @@ async function applyExportTaskConfig(config) {
   });
 }
 
+// P2-33：打开任务后恢复上次选择的导出目标。
+// 恢复顺序：任务 id 下的 IndexedDB 句柄 → 配置里的绝对路径（由 applyExportTaskConfig 回填）。
+// 句柄权限只做 queryPermission（不弹窗）；真正写文件时在 runExport 的用户手势里再请求。
+async function restoreExportTarget(job) {
+  if (!job?.id) return null;
+  const mode = radioValue("exportTargetMode") || "folder";
+  // 配置里已经有服务端绝对路径时优先用它：服务端会直接写入该目录，定时任务也能生效，
+  // 不能被旧的浏览器句柄记录覆盖成"已选择文件夹：xxx"（那样反而看不到路径）。
+  if (normalizeServerPath(mode === "file" ? $("#outputName").value : $("#exportFolder").value)) return null;
+  let record = null;
+  try {
+    record = await exportTargetDbGet(job.id);
+  } catch (error) {
+    console.warn("读取导出目标记录失败:", error);
+    return null;
+  }
+  if (!record) return null;
+  const handle = mode === "file" ? record.fileHandle : record.folderHandle;
+  const name = mode === "file" ? record.fileName : record.folderName;
+  if (!handle || !name) return null;
+  const permission = await ensureHandlePermission(handle, "readwrite", { request: false });
+  if (mode === "file") {
+    exportFileHandle = handle;
+    exportDirectoryHandle = null;
+    $("#outputName").value = `已选择文件：${name}`;
+  } else {
+    exportDirectoryHandle = handle;
+    exportFileHandle = null;
+    $("#exportFolder").value = `已选择文件夹：${name}`;
+  }
+  return { name, mode, permission };
+}
+
 async function openSelectedExportTask() {
   const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
   if (!job) return;
@@ -688,7 +1051,17 @@ async function openSelectedExportTask() {
   const nameInput = document.querySelector("#exportTaskName");
   if (nameInput) nameInput.value = job.name || "";
   await applyExportTaskConfig(step.config || {});
-  setStatus(`已打开导出任务：${job.name}`, "success");
+  const restored = await restoreExportTarget(job);
+  if (restored && restored.permission === "granted") {
+    setStatus(`已打开导出任务：${job.name}，已恢复导出${restored.mode === "file" ? "文件" : "文件夹"}“${restored.name}”。`, "success");
+  } else if (restored) {
+    setStatus(`已打开导出任务：${job.name}，已记住导出${restored.mode === "file" ? "文件" : "文件夹"}“${restored.name}”，首次导出时会请求一次写入授权。`, "warn");
+  } else if (radioValue("exportTargetMode") === "folder" && !$("#exportFolder").value.trim()) {
+    setStatus(`已打开导出任务：${job.name}。该任务未设置目标文件夹，导出将落在服务器默认目录；如需固定位置，请点「...」选择（会显示完整路径）后重新保存任务。`, "warn");
+  } else {
+    const targetText = normalizeServerPath(radioValue("exportTargetMode") === "file" ? $("#outputName").value : $("#exportFolder").value);
+    setStatus(targetText ? `已打开导出任务：${job.name}，导出目标：${targetText}` : `已打开导出任务：${job.name}`, "success");
+  }
 }
 
 async function deleteSelectedExportTask() {
@@ -696,6 +1069,7 @@ async function deleteSelectedExportTask() {
   if (!job) return;
   if (!window.confirm(`确定删除导出任务“${job.name}”吗？关联的定时任务也会一起删除。`)) return;
   await requestJson(`/api/jobs?id=${encodeURIComponent(job.id)}`, { method: "DELETE" });
+  await forgetExportTarget(job.id);
   selectedExportTaskId = "";
   await loadExportTaskJobs();
   setExportEditorVisible(false);
@@ -746,6 +1120,19 @@ exportConnection.addEventListener("change", () => {
 });
 chooseExportFolder.addEventListener("click", () => chooseFolder().catch((error) => setStatus(error.message, "error")));
 chooseExportFile.addEventListener("click", () => chooseFile().catch((error) => setStatus(error.message, "error")));
+// P2-33：手改目标路径即视为改用「绝对路径」方式，丢弃浏览器直选留下的句柄，避免两处同时落盘。
+$("#exportFolder").addEventListener("input", (event) => {
+  if (!String(event.target.value || "").startsWith("已选择文件夹：")) {
+    exportDirectoryHandle = null;
+    exportFolderServerValue = "";
+  }
+});
+$("#outputName").addEventListener("input", (event) => {
+  if (!String(event.target.value || "").startsWith("已选择文件：")) {
+    exportFileHandle = null;
+    outputNameServerValue = "";
+  }
+});
 $("#previewExport").addEventListener("click", previewExport);
 $("#runExport").addEventListener("click", runExport);
 $("#startExport").addEventListener("click", runExport);
@@ -838,6 +1225,29 @@ function applyExportDraftValues(draft) {
   });
 }
 
+// P2-33：草稿对应「尚未保存的新任务」，其直选句柄存在 __draft__ 键下，这里顺带恢复绑定。
+// 只绑句柄、不改输入框文本（草稿已经把「已选择文件夹：xxx」回填好了）。
+async function restoreDraftExportTarget(draft) {
+  try {
+    const record = await exportTargetDbGet(EXPORT_TARGET_DRAFT_KEY);
+    if (!record) return;
+    const mode = draft?.radios?.exportTargetMode || radioValue("exportTargetMode") || "folder";
+    const handle = mode === "file" ? record.fileHandle : record.folderHandle;
+    const name = mode === "file" ? record.fileName : record.folderName;
+    if (!handle || !name) return;
+    await ensureHandlePermission(handle, "readwrite", { request: false });
+    if (mode === "file") {
+      exportFileHandle = handle;
+      exportDirectoryHandle = null;
+    } else {
+      exportDirectoryHandle = handle;
+      exportFileHandle = null;
+    }
+  } catch (error) {
+    console.warn("恢复草稿导出目标失败:", error);
+  }
+}
+
 async function restoreExportDraft() {
   let raw = "";
   try {
@@ -890,6 +1300,8 @@ async function restoreExportDraft() {
   document.querySelectorAll("[data-export-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.exportPanel === activeTab);
   });
+  // P2-33：恢复直选的导出目标句柄（存在 IndexedDB，草稿本身存不了句柄）
+  await restoreDraftExportTarget(draft);
   // P2-32：只回填、不切视图。打开模块先看到任务列表，草稿留给「新增导出」复用。
   pendingExportDraft = draft;
   return true;

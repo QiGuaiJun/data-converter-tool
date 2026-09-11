@@ -1,0 +1,140 @@
+/*!
+ * sql-editor.css — SQL 语法高亮编辑器 + 排版按钮
+ * 配合 public/sql-editor.js 使用；只在 SQL 输入框上生效，不影响其它表单控件。
+ */
+
+.sql-editor {
+  position: relative;
+  min-width: 0;
+}
+
+.sql-editor-body {
+  position: relative;
+  min-width: 0;
+}
+
+/* 文字透明：真正显示的是下层的高亮图层 */
+.sql-editor-body > textarea {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #26384f;
+  resize: vertical;
+}
+
+.sql-editor-body > textarea::selection {
+  background: rgba(90, 156, 255, 0.3);
+  color: transparent;
+}
+
+/* 高亮图层：尺寸由 JS 按 textarea 的 client 尺寸同步，保证折行一致 */
+.sql-editor-hl {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  margin: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-color: transparent;
+  background: #fff;
+  color: #26384f;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  pointer-events: none;
+}
+
+.sql-editor-hl code {
+  font: inherit;
+  color: inherit;
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+}
+
+/* 右上角工具条 */
+.sql-editor-bar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+}
+
+.sql-editor .sql-editor-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 10px;
+  border: 1px solid #dbe6f3;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2f80ed;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(81, 119, 171, 0.14);
+  opacity: 0.8;
+  transition: opacity 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.sql-editor:hover .sql-editor-btn,
+.sql-editor .sql-editor-btn:focus-visible {
+  opacity: 1;
+}
+
+.sql-editor .sql-editor-btn:hover {
+  background: #eef6ff;
+  border-color: #b9d6ff;
+}
+
+.sql-editor .sql-editor-btn:active {
+  transform: translateY(1px);
+}
+
+.sql-editor-tip {
+  display: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(47, 128, 237, 0.1);
+  color: #1f6fd0;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sql-editor-tip.show {
+  display: inline-block;
+}
+
+/* 只读 SQL / DDL 代码块 */
+.sql-code,
+.sql-editor-hl {
+  tab-size: 4;
+}
+
+.sql-code {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  font-family: Consolas, "Microsoft YaHei", monospace;
+}
+
+/* ---------- 语法着色（浅色主题，白底高对比） ---------- */
+.sql-t-k { color: #0b66bd; font-weight: 600; }  /* 关键字 */
+.sql-t-f { color: #7c3aed; }                    /* 函数   */
+.sql-t-s { color: #0a7f4f; }                    /* 字符串 */
+.sql-t-n { color: #b45309; }                    /* 数字   */
+.sql-t-c { color: #94a3b8; font-style: italic; } /* 注释  */
+.sql-t-i { color: #0f766e; }                    /* 反引号标识符 */
+.sql-t-p { color: #64748b; }                    /* 运算符 / 标点 */

@@ -2158,6 +2158,153 @@ def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -
     return EXPORTS / f"{name}.{extension}"
 
 
+def native_pick_path(mode: str, initial: str = "", extension: str = "", suggest: str = "") -> str:
+    """弹 Windows 原生对话框选目录/文件，返回绝对路径；用户取消返回空串。
+
+    为什么要放在服务端：浏览器出于安全永远不把绝对路径交给页面
+    （showDirectoryPicker 只给 handle.name，界面上那句"已选择文件夹：xxx"就是这么来的），
+    而本工具的服务端与浏览器同机运行，只有服务端弹原生对话框才能拿到 D:\\导出 这样的完整路径。
+    好处是路径能直接存进任务配置，由服务端落盘，定时任务（无浏览器）同样生效。
+
+    只依赖标准库 ctypes —— 本项目 venv 不含 tkinter，也无法保证目标机装有 PowerShell 模块。
+    """
+    if os.name != "nt":
+        raise NotImplementedError("服务端不是 Windows，无法打开系统选择框。")
+
+    import ctypes
+    from ctypes import wintypes
+
+    mode = (mode or "folder").strip().lower()
+    max_path = 260
+
+    def resolve_initial_dir(value: str) -> str:
+        if not value:
+            return ""
+        candidate = Path(value).expanduser()
+        probe = candidate if candidate.is_dir() else candidate.parent
+        return str(probe) if probe.is_dir() else ""
+
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    ole32 = ctypes.WinDLL("ole32", use_last_error=True)
+    ole32.CoInitialize.argtypes = [ctypes.c_void_p]
+    ole32.CoInitialize.restype = ctypes.c_long
+    ole32.CoUninitialize.argtypes = []
+    ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+
+    # SHBrowseForFolderW / GetSaveFileNameW 要求调用线程处于 STA；HTTP 处理线程每次都是新建的，
+    # 所以这里自行初始化。返回 0(S_OK) 或 1(S_FALSE，本线程此前已初始化) 都要配对 CoUninitialize。
+    com_initialized = ole32.CoInitialize(None) in (0, 1)
+    try:
+        if mode == "folder":
+
+            class BROWSEINFOW(ctypes.Structure):
+                _fields_ = [
+                    ("hwndOwner", wintypes.HWND),
+                    ("pidlRoot", ctypes.c_void_p),
+                    ("pszDisplayName", ctypes.c_void_p),
+                    ("lpszTitle", wintypes.LPCWSTR),
+                    ("ulFlags", ctypes.c_uint),
+                    ("lpfn", ctypes.c_void_p),
+                    ("lParam", ctypes.c_void_p),
+                    ("iImage", ctypes.c_int),
+                ]
+
+            shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
+            shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
+            shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
+            shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
+
+            display = ctypes.create_unicode_buffer(max_path)
+            info = BROWSEINFOW()
+            info.hwndOwner = None
+            info.pidlRoot = None
+            info.pszDisplayName = ctypes.addressof(display)
+            info.lpszTitle = "选择导出文件夹（选择后会显示完整路径）"
+            # RETURNONLYFSDIRS | EDITBOX | NEWDIALOGSTYLE：新版对话框，带可直接粘贴路径的输入框。
+            info.ulFlags = 0x0001 | 0x0010 | 0x0040
+            pidl = shell32.SHBrowseForFolderW(ctypes.byref(info))
+            if not pidl:
+                return ""
+            try:
+                buffer = ctypes.create_unicode_buffer(max_path)
+                if not shell32.SHGetPathFromIDListW(pidl, buffer):
+                    return ""
+                return buffer.value
+            finally:
+                ole32.CoTaskMemFree(pidl)
+
+        if mode == "file":
+
+            class OPENFILENAMEW(ctypes.Structure):
+                _fields_ = [
+                    ("lStructSize", wintypes.DWORD),
+                    ("hwndOwner", wintypes.HWND),
+                    ("hInstance", wintypes.HINSTANCE),
+                    ("lpstrFilter", wintypes.LPCWSTR),
+                    ("lpstrCustomFilter", ctypes.c_void_p),
+                    ("nMaxCustFilter", wintypes.DWORD),
+                    ("nFilterIndex", wintypes.DWORD),
+                    ("lpstrFile", ctypes.c_void_p),
+                    ("nMaxFile", wintypes.DWORD),
+                    ("lpstrFileTitle", ctypes.c_void_p),
+                    ("nMaxFileTitle", wintypes.DWORD),
+                    ("lpstrInitialDir", wintypes.LPCWSTR),
+                    ("lpstrTitle", wintypes.LPCWSTR),
+                    ("Flags", wintypes.DWORD),
+                    ("nFileOffset", wintypes.WORD),
+                    ("nFileExtension", wintypes.WORD),
+                    ("lpstrDefExt", wintypes.LPCWSTR),
+                    ("lCustData", ctypes.c_void_p),
+                    ("lpfnHook", ctypes.c_void_p),
+                    ("lpTemplateName", ctypes.c_void_p),
+                    ("pvReserved", ctypes.c_void_p),
+                    ("dwReserved", wintypes.DWORD),
+                    ("FlagsEx", wintypes.DWORD),
+                ]
+
+            ext = (extension or "xlsx").lower().lstrip(".") or "xlsx"
+            default_name = (suggest or "export").strip() or "export"
+            if not default_name.lower().endswith(f".{ext}"):
+                default_name = f"{default_name}.{ext}"
+            # lpstrFile 由系统回写，必须给足缓冲：这里传 buffer 地址，不能传 Python 字符串。
+            file_buffer = ctypes.create_unicode_buffer(default_name, max_path)
+            info = OPENFILENAMEW()
+            info.lStructSize = ctypes.sizeof(OPENFILENAMEW)
+            info.hwndOwner = None
+            info.hInstance = None
+            # 过滤器串以双 NUL 结束（片段自带一个，ctypes 再补一个）。
+            info.lpstrFilter = f"{ext.upper()} 文件 (*.{ext})\0*.{ext}\0所有文件 (*.*)\0*.*\0"
+            info.lpstrCustomFilter = None
+            info.nFilterIndex = 1
+            info.lpstrFile = ctypes.addressof(file_buffer)
+            info.nMaxFile = max_path
+            info.lpstrFileTitle = None
+            info.nMaxFileTitle = 0
+            info.lpstrInitialDir = resolve_initial_dir(initial) or None
+            info.lpstrTitle = "选择导出文件保存位置"
+            # OVERWRITEPROMPT | HIDEREADONLY | NOCHANGEDIR | EXPLORER
+            info.Flags = 0x00000002 | 0x00000004 | 0x00000008 | 0x00080000
+            info.lpstrDefExt = ext
+            info.lCustData = None
+            info.lpfnHook = None
+            info.lpTemplateName = None
+            info.pvReserved = None
+            info.dwReserved = 0
+            info.FlagsEx = 0
+
+            comdlg32 = ctypes.WinDLL("comdlg32", use_last_error=True)
+            comdlg32.GetSaveFileNameW.argtypes = [ctypes.POINTER(OPENFILENAMEW)]
+            comdlg32.GetSaveFileNameW.restype = wintypes.BOOL
+            if not comdlg32.GetSaveFileNameW(ctypes.byref(info)):
+                return ""
+            return file_buffer.value
+
+        raise ValueError(f"不支持的选择类型：{mode}")
+    finally:
+        if com_initialized:
+            ole32.CoUninitialize()
+
+
 def write_rows_to_sheet(sheet, columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> None:
     header_mode = str(fields.get("headerMode") or "field").lower()
     include_header = header_mode != "none"
@@ -4603,7 +4750,40 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         )
 
     def handle_export_choose_target(self) -> None:
-        raise ValueError("本机路径选择请通过页面按钮在浏览器中完成（不支持浏览器选择时将改为下载文件）。")
+        # 由服务端弹 Windows 原生对话框，把绝对路径交还给页面。
+        # 旧的实现直接抛错"请在浏览器中完成"，但浏览器拿不到绝对路径，界面上只能显示文件夹名，
+        # 存进任务配置时也只能写空串，导致"选了文件夹但下次打开不生效"。
+        payload = read_json_body(self)
+        # 必须由前端显式声明选文件夹还是选文件，不能默认成 folder：
+        # 否则一个缺字段的请求（空 body、老版本前端、随手 curl）就会在用户桌面弹出原生对话框，
+        # 并且把该 HTTP 线程一直阻塞到有人去点掉窗口为止。
+        mode = str(payload.get("mode") or "").strip().lower()
+        if mode not in ("folder", "file"):
+            raise ValueError("选择类型不支持，请指定 mode 为 folder 或 file。")
+        if os.name != "nt":
+            json_response(
+                self,
+                {"ok": False, "unsupported": True, "error": "服务端不是 Windows，无法打开系统选择框，请手动填写绝对路径。"},
+                HTTPStatus.NOT_IMPLEMENTED,
+            )
+            return
+        try:
+            path = native_pick_path(
+                mode,
+                initial=str(payload.get("initial") or "").strip(),
+                extension=str(payload.get("extension") or "xlsx").strip(),
+                suggest=str(payload.get("suggest") or "").strip(),
+            )
+        except ValueError:
+            raise
+        except Exception as exc:  # 无桌面会话、对话框创建失败等 → 让前端回退到浏览器直选
+            json_response(
+                self,
+                {"ok": False, "unsupported": True, "error": f"打开系统选择框失败：{exc}"},
+                HTTPStatus.NOT_IMPLEMENTED,
+            )
+            return
+        json_response(self, {"ok": True, "path": path, "cancelled": path == ""})
 
     def handle_export_download(self, query: str) -> None:
         params = parse_qs(query)

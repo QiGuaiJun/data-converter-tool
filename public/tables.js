@@ -35,7 +35,7 @@ async function loadConnections() {
   const payload = await requestJson("/api/connections");
   connections = payload.connections || [];
   $("#tableConnection").innerHTML = connections.length
-    ? connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("")
+    ? connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.id)}</option>`).join("")
     : '<option value="">暂无数据库连接</option>';
 }
 
@@ -96,7 +96,8 @@ async function selectTable(name) {
     $("#selectedTableMeta").textContent = `${table.type}${table.comment ? ` · ${table.comment}` : ""} · ${table.columns.length} 个字段`;
     renderColumns(table.columns || []);
     renderGrid($("#tablePreview"), table.previewColumns || [], table.previewRows || []);
-    $("#tableDdl").textContent = table.ddl || "暂无 DDL";
+    const ddlText = table.ddl || "暂无 DDL";
+    $("#tableDdl").innerHTML = window.SqlEditor ? SqlEditor.highlightBlock(ddlText) : escapeHtml(ddlText);
     setStatus(`已读取 ${name}`, "success");
   } catch (error) {
     setStatus(error.message, "error");

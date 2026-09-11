@@ -830,7 +830,8 @@ async function loadConnections(selectedId = connectionSelect.value) {
   for (const item of savedConnections) {
     const option = document.createElement("option");
     option.value = item.id;
-    option.textContent = `${item.name} (${item.host}${item.database ? `/${item.database}` : ""})`;
+    // 只显示连接名称，不在界面上暴露主机 / 库名等连接信息。
+    option.textContent = item.name || item.id;
     connectionSelect.append(option);
   }
   if (selectedId && savedConnections.some((item) => item.id === selectedId)) {

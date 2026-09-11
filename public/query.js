@@ -23,7 +23,7 @@ async function loadConnections() {
   const payload = await requestJson("/api/connections");
   connections = payload.connections || [];
   $("#queryConnection").innerHTML = connections.length
-    ? connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)} (${escapeHtml(item.host)}/${escapeHtml(item.database)})</option>`).join("")
+    ? connections.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name || item.id)}</option>`).join("")
     : '<option value="">暂无数据库连接</option>';
 }
 

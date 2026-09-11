@@ -6,6 +6,7 @@
     <title>表管理 - 数据导表工具</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/styles.css?v=20260715_tables_module" />
+    <link rel="stylesheet" href="/sql-editor.css?v=20260911_sql_editor" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -63,7 +64,7 @@
                 <div class="table-detail-body">
                   <section class="table-detail-view active" data-table-view="columns"><div id="tableColumns" class="table-wrap empty">选择表后显示字段结构</div></section>
                   <section class="table-detail-view" data-table-view="preview"><div id="tablePreview" class="table-wrap empty">选择表后显示前100行数据</div></section>
-                  <section class="table-detail-view" data-table-view="ddl"><pre id="tableDdl">选择表后显示建表语句</pre></section>
+                  <section class="table-detail-view" data-table-view="ddl"><pre id="tableDdl" class="sql-code">选择表后显示建表语句</pre></section>
                 </div>
               </section>
             </section>
@@ -71,7 +72,8 @@
         </section>
       </div>
     </div>
-    <script src="/tables.js?v=20260715_tables_module_sec"></script>
+    <script src="/sql-editor.js?v=20260911_sql_editor"></script>
+    <script src="/tables.js?v=20260911_sql_editor"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
   </body>
