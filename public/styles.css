@@ -2943,6 +2943,12 @@ body.import-task-overview .bottom-dock {
   display: none;
 }
 
+/* P2-31：返回任务列表按钮只在编辑器模式出现，总览模式下无意义 */
+.import-shell.task-overview-mode #backImportTaskList,
+.export-shell.task-overview-mode #backExportTaskList {
+  display: none;
+}
+
 .export-shell:not(.task-overview-mode) #exportTaskPanel {
   min-height: auto;
 }

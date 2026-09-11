@@ -21,6 +21,9 @@ let exportFileHandle = null;
 let exportTaskJobs = [];
 let selectedExportTaskId = "";
 let exportEditorVisible = false;
+// P2-32：未保存草稿的内存副本。打开模块时停留在任务列表，
+// 点「新增导出」时再复用，避免被 resetExportEditor 清掉。
+let pendingExportDraft = null;
 // 浏览器不支持 File System Access API（showDirectoryPicker/showSaveFilePicker）时切换为“仅下载”模式
 let exportFallbackToDownload = false;
 // 用户用浏览器选择文件夹/文件后，输入框只显示 handle.name（沙箱不暴露绝对路径）。
@@ -98,8 +101,13 @@ function resetExportEditor() {
 function startNewExportTask() {
   selectedExportTaskId = "";
   updateExportTaskSelection();
-  resetExportEditor();
-  clearExportDraft();
+  if (pendingExportDraft) {
+    // P2-32：已有未保存草稿，直接沿用当前表单内容（含导出对象勾选），不重置。
+    pendingExportDraft = null;
+  } else {
+    resetExportEditor();
+    clearExportDraft();
+  }
   setExportEditorVisible(true);
   setStatus("已新建导出任务，请配置导出内容和选项。", "success");
 }
@@ -537,6 +545,7 @@ function ensureExportTaskPanel() {
     panel.className = "module-task-panel";
     panel.innerHTML = `
       <div class="module-task-toolbar">
+        <button id="backExportTaskList" type="button">返回任务列表</button>
         <button id="openExportTask" type="button" disabled>打开导出</button>
         <button id="newExportTask" type="button">新增导出</button>
         <button id="deleteExportTask" type="button" disabled>删除导出</button>
@@ -547,6 +556,12 @@ function ensureExportTaskPanel() {
     document.querySelector("#openExportTask").addEventListener("click", () => openSelectedExportTask().catch((error) => setStatus(error.message, "error")));
     document.querySelector("#newExportTask").addEventListener("click", startNewExportTask);
     document.querySelector("#deleteExportTask").addEventListener("click", () => deleteSelectedExportTask().catch((error) => setStatus(error.message, "error")));
+    // P2-31：同导入模块——编辑器模式没有返回总览的入口，补一个显式返回按钮。
+    document.querySelector("#backExportTaskList").addEventListener("click", () => {
+      selectedExportTaskId = "";
+      setExportEditorVisible(false);
+      loadExportTaskJobs().catch((error) => setStatus(error.message, "error"));
+    });
   }
 }
 
@@ -665,6 +680,8 @@ async function openSelectedExportTask() {
   const job = exportTaskJobs.find((item) => item.id === selectedExportTaskId);
   if (!job) return;
   const step = exportTaskStep(job);
+  // 打开已有任务后草稿不再有复用价值，避免下次「新增导出」误带旧数据。
+  pendingExportDraft = null;
   resetExportEditor();
   setExportEditorVisible(true);
   clearExportDraft();
@@ -798,22 +815,8 @@ function clearExportDraft() {
   }
 }
 
-async function restoreExportDraft() {
-  let raw = "";
-  try {
-    raw = localStorage.getItem(EXPORT_DRAFT_KEY) || "";
-  } catch (_) {
-    return false;
-  }
-  if (!raw) return false;
-  let draft;
-  try {
-    draft = JSON.parse(raw);
-  } catch (_) {
-    clearExportDraft();
-    return false;
-  }
-  if (!draft || typeof draft !== "object") return false;
+function applyExportDraftValues(draft) {
+  if (!draft || typeof draft !== "object") return;
   // 恢复连接选择（须在连接列表加载完成后调用）
   if (draft.connectionId && [...exportConnection.options].some((option) => option.value === draft.connectionId)) {
     exportConnection.value = draft.connectionId;
@@ -833,6 +836,25 @@ async function restoreExportDraft() {
   Object.entries(draft.radios || {}).forEach(([name, value]) => {
     setRadioValue(name, value);
   });
+}
+
+async function restoreExportDraft() {
+  let raw = "";
+  try {
+    raw = localStorage.getItem(EXPORT_DRAFT_KEY) || "";
+  } catch (_) {
+    return false;
+  }
+  if (!raw) return false;
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch (_) {
+    clearExportDraft();
+    return false;
+  }
+  if (!draft || typeof draft !== "object") return false;
+  applyExportDraftValues(draft);
   // 恢复导出对象模式：表模式需先拉取表列表，再回填勾选状态
   if (draft.sourceMode === "table") {
     sourceMode = "table";
@@ -868,7 +890,8 @@ async function restoreExportDraft() {
   document.querySelectorAll("[data-export-panel]").forEach((panel) => {
     panel.classList.toggle("active", panel.dataset.exportPanel === activeTab);
   });
-  setExportEditorVisible(true);
+  // P2-32：只回填、不切视图。打开模块先看到任务列表，草稿留给「新增导出」复用。
+  pendingExportDraft = draft;
   return true;
 }
 
@@ -892,7 +915,7 @@ loadConnections()
     restoreExportDraft()
       .then((restored) => {
         if (restored) {
-          setStatus("已恢复上次未保存的导出配置草稿（文件夹/文件直选和密码项需重新选择；保存任务后草稿自动清除）。", "warn");
+          setStatus("已恢复上次未保存的导出配置草稿，点击「新增导出」可继续编辑。", "warn");
         } else {
           setStatus("已进入 SQL 查询导出模式。可直接预览或开始导出。", "success");
         }

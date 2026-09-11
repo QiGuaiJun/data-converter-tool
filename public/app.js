@@ -41,6 +41,9 @@ let selectedTaskSourcePath = "";
 let activeImportTaskConfig = {};
 let previewColumnTypes = {};
 let previewTypeWarnings = [];
+// P2-32：未保存草稿在内存中的副本。打开模块时停留在任务列表，
+// 用户点「新增导入」时再把它回填到表单，避免被任务列表的默认值覆盖。
+let pendingImportDraft = null;
 
 function $(selector) {
   return document.querySelector(selector);
@@ -532,6 +535,7 @@ function ensureImportTaskPanel() {
     panel.className = "module-task-panel";
     panel.innerHTML = `
       <div class="module-task-toolbar">
+        <button id="backImportTaskList" type="button">返回任务列表</button>
         <button id="openImportTask" type="button" disabled>打开导入</button>
         <button id="newImportTask" type="button">新增导入</button>
         <button id="deleteImportTask" type="button" disabled>删除导入</button>
@@ -553,6 +557,14 @@ function ensureImportTaskPanel() {
       }
     });
     document.querySelector("#deleteImportTask").addEventListener("click", deleteSelectedImportTask);
+    // P2-31：编辑器模式此前没有任何返回总览的入口，一旦进入（例如刷新时自动恢复草稿）
+    // 任务列表就被 CSS 永久隐藏。此处补一个显式返回按钮。
+    document.querySelector("#backImportTaskList").addEventListener("click", () => {
+      selectedImportTaskId = "";
+      openedImportTaskId = "";
+      setImportEditorVisible(false);
+      loadImportTaskJobs().catch((error) => setStatus(error.message, "error"));
+    });
   }
 }
 
@@ -560,8 +572,14 @@ function startNewImportTask() {
   selectedImportTaskId = "";
   openedImportTaskId = "";
   updateImportTaskSelection();
-  clearImportEditor();
-  clearImportDraft();
+  if (pendingImportDraft) {
+    // P2-32：有未保存草稿时直接复用（updateImportTaskSelection 已把表单重置为默认值）。
+    applyImportDraftValues(pendingImportDraft);
+    pendingImportDraft = null;
+  } else {
+    clearImportEditor();
+    clearImportDraft();
+  }
   setImportEditorVisible(true);
 }
 
@@ -688,6 +706,8 @@ function openSelectedImportTask() {
   const job = importTaskJobs.find((item) => item.id === selectedImportTaskId);
   if (!job) return;
   openedImportTaskId = job.id;
+  // 打开已有任务后，草稿不再有复用价值，避免下次「新增导入」误带旧数据。
+  pendingImportDraft = null;
   setImportEditorVisible(true);
   const step = importTaskStep(job);
   applyImportTaskConfig(step.config || {});
@@ -1288,24 +1308,9 @@ function clearImportDraft() {
   }
 }
 
-function restoreImportDraft() {
-  let raw = "";
-  try {
-    raw = localStorage.getItem(IMPORT_DRAFT_KEY) || "";
-  } catch (_) {
-    return false;
-  }
-  if (!raw) return false;
-  let draft;
-  try {
-    draft = JSON.parse(raw);
-  } catch (_) {
-    clearImportDraft();
-    return false;
-  }
-  if (!draft || typeof draft !== "object") return false;
+function applyImportDraftValues(draft) {
   const scope = document.querySelector("main.import-shell");
-  if (!scope) return false;
+  if (!scope || !draft || typeof draft !== "object") return 0;
   let restored = 0;
   Object.entries(draft.values || {}).forEach(([id, value]) => {
     const control = scope.querySelector(`#${CSS.escape(id)}`);
@@ -1324,6 +1329,29 @@ function restoreImportDraft() {
   Object.entries(draft.radios || {}).forEach(([name, value]) => {
     setRadioValue(name, value);
   });
+  return restored;
+}
+
+function restoreImportDraft() {
+  let raw = "";
+  try {
+    raw = localStorage.getItem(IMPORT_DRAFT_KEY) || "";
+  } catch (_) {
+    return false;
+  }
+  if (!raw) return false;
+  let draft;
+  try {
+    draft = JSON.parse(raw);
+  } catch (_) {
+    clearImportDraft();
+    return false;
+  }
+  if (!draft || typeof draft !== "object") return false;
+  if (!document.querySelector("main.import-shell")) return false;
+  const restored = applyImportDraftValues(draft);
+  // P2-32：只回填、不切视图。打开模块始终先看到任务列表，草稿留给「新增导入」复用。
+  pendingImportDraft = draft;
   return restored > 0 || Object.keys(draft.radios || {}).length > 0;
 }
 
@@ -1371,8 +1399,9 @@ async function initImportPage() {
     draftRestored = false;
   }
   if (draftRestored) {
-    setImportEditorVisible(true);
-    setStatus("已恢复上次未保存的导入配置草稿（文件需重新选择；保存任务后草稿自动清除）。", "warn");
+    // P2-32：打开导入页始终先显示任务列表（与导出模块一致），
+    // 不再因为存在草稿就自动跳到编辑器；草稿内容等用户点「新增导入」时回填。
+    setStatus("已恢复上次未保存的导入配置草稿，点击「新增导入」可继续编辑。", "warn");
   } else if (connectionError) {
     setStatus(connectionError.message, "error");
   }
