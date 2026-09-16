@@ -61,6 +61,29 @@ def mysql_available() -> bool:
 
 MYSQL_READY = mysql_available()
 
+
+def _drop_mysql_tables(*tables: str) -> None:
+    """清理本文件在共享 MySQL 库中创建的夹具表。
+
+    测试库（默认 dc_p2_test）是长期存在的共享库，用例必须自行收尾，
+    否则每跑一次就残留一批垃圾表。
+    """
+    if not MYSQL_READY:
+        return
+    try:
+        conn = server.connect_target_db(MYSQL_FIELDS)
+    except Exception:
+        return
+    try:
+        with conn.cursor() as cursor:
+            for table in tables:
+                cursor.execute(f"drop table if exists {table}")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
 MAPPING = json.dumps(
     [
         {"sourceIndex": 0, "target": "name", "enabled": True, "defaultValue": "", "matchKey": False},
@@ -123,25 +146,28 @@ def test_p3_27_mysql_import_time_column_is_datetime() -> None:
         "commitMode": "once",
     }
 
-    results, failures, _ = server.run_import_batch([uploaded], fields)
-    assert not failures and results[0]["rowsWritten"] == 2
-
-    conn = server.connect_target_db(MYSQL_FIELDS)
     try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                "select data_type from information_schema.columns "
-                "where table_schema = %s and table_name = 'p3_27_mysql' and column_name = 'imported_at'",
-                (MYSQL_FIELDS["dbName"],),
-            )
-            data_type = cursor.fetchone()[0]
-            cursor.execute("select imported_at from p3_27_mysql order by name limit 1")
-            ts = cursor.fetchone()[0]
-    finally:
-        conn.close()
+        results, failures, _ = server.run_import_batch([uploaded], fields)
+        assert not failures and results[0]["rowsWritten"] == 2
 
-    assert data_type == "datetime", f"导入时间列必须是 datetime，实际: {data_type}"
-    assert TS_PATTERN.match(str(ts)), f"MySQL 导入时间值异常: {ts!r}"
+        conn = server.connect_target_db(MYSQL_FIELDS)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "select data_type from information_schema.columns "
+                    "where table_schema = %s and table_name = 'p3_27_mysql' and column_name = 'imported_at'",
+                    (MYSQL_FIELDS["dbName"],),
+                )
+                data_type = cursor.fetchone()[0]
+                cursor.execute("select imported_at from p3_27_mysql order by name limit 1")
+                ts = cursor.fetchone()[0]
+        finally:
+            conn.close()
+
+        assert data_type == "datetime", f"导入时间列必须是 datetime，实际: {data_type}"
+        assert TS_PATTERN.match(str(ts)), f"MySQL 导入时间值异常: {ts!r}"
+    finally:
+        _drop_mysql_tables("p3_27_mysql")
 
 
 # ---------------------------------------------------------------------------

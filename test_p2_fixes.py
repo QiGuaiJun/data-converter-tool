@@ -60,6 +60,29 @@ def mysql_available() -> bool:
 MYSQL_READY = mysql_available()
 
 
+def _drop_mysql_tables(*tables: str) -> None:
+    """清理本文件在共享 MySQL 库中创建的夹具表。
+
+    测试库（默认 dc_p2_test）是长期存在的共享库，用例必须自行收尾，
+    否则每跑一次就残留一批垃圾表。
+    """
+    if not MYSQL_READY:
+        return
+    try:
+        conn = server.connect_target_db(MYSQL_FIELDS)
+    except Exception:
+        return
+    try:
+        with conn.cursor() as cursor:
+            for table in tables:
+                cursor.execute(f"drop table if exists {table}")
+        conn.commit()
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+
 def sqlite_import_fields(table: str) -> dict[str, str]:
     return {
         "targetDbType": "sqlite",
@@ -164,20 +187,23 @@ def test_p2_7_sqlite_sources_are_precise() -> None:
 
 @pytest.mark.skipif(not MYSQL_READY, reason="本机 MySQL 不可用")
 def test_p2_7_mysql_small_table_uses_exact_count() -> None:
-    conn = server.connect_target_db(MYSQL_FIELDS)
     try:
-        with conn.cursor() as cursor:
-            cursor.execute("drop table if exists p2_rowcount_t")
-            cursor.execute("create table p2_rowcount_t (id int primary key, name varchar(32))")
-            cursor.executemany("insert into p2_rowcount_t values (%s, %s)", [(i, f"n{i}") for i in range(1234)])
-        conn.commit()
-    finally:
-        conn.close()
+        conn = server.connect_target_db(MYSQL_FIELDS)
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("drop table if exists p2_rowcount_t")
+                cursor.execute("create table p2_rowcount_t (id int primary key, name varchar(32))")
+                cursor.executemany("insert into p2_rowcount_t values (%s, %s)", [(i, f"n{i}") for i in range(1234)])
+            conn.commit()
+        finally:
+            conn.close()
 
-    sources = server.export_sources(MYSQL_FIELDS)
-    entry = next(item for item in sources if item["name"] == "p2_rowcount_t")
-    assert entry["rows"] == 1234, "≤10 万行的表必须返回 COUNT(*) 精确值"
-    assert entry["rowsApproximate"] is False
+        sources = server.export_sources(MYSQL_FIELDS)
+        entry = next(item for item in sources if item["name"] == "p2_rowcount_t")
+        assert entry["rows"] == 1234, "≤10 万行的表必须返回 COUNT(*) 精确值"
+        assert entry["rowsApproximate"] is False
+    finally:
+        _drop_mysql_tables("p2_rowcount_t")
 
 
 # ---------------------------------------------------------------------------
@@ -201,25 +227,28 @@ def _mysql_fixture_table(table: str, comment: str, rows: int) -> None:
 
 @pytest.mark.skipif(not MYSQL_READY, reason="本机 MySQL 不可用")
 def test_p2_13_comment_as_filename_mysql() -> None:
-    _mysql_fixture_table("p2_comment_t", "P2注释文件名", 3)
+    try:
+        _mysql_fixture_table("p2_comment_t", "P2注释文件名", 3)
 
-    def run(extra: dict[str, str]) -> str:
-        payload = {
-            **MYSQL_FIELDS,
-            "items": [{"type": "table", "table": "p2_comment_t", "name": "p2_comment_t"}],
-            "extension": "xlsx",
-        }
-        payload.update(extra)
-        result = server.run_export_job(payload)
-        assert result["rows"] == 3
-        return Path(result["files"][0]).stem
+        def run(extra: dict[str, str]) -> str:
+            payload = {
+                **MYSQL_FIELDS,
+                "items": [{"type": "table", "table": "p2_comment_t", "name": "p2_comment_t"}],
+                "extension": "xlsx",
+            }
+            payload.update(extra)
+            result = server.run_export_job(payload)
+            assert result["rows"] == 3
+            return Path(result["files"][0]).stem
 
-    # 开关开启且未指定文件名 → 表注释作为文件名
-    assert run({"commentAsFileName": "true"}) == "P2注释文件名"
-    # 显式文件名优先于表注释
-    assert run({"commentAsFileName": "true", "outputName": "explicit_name"}) == "explicit_name"
-    # 开关关闭 → 表名
-    assert run({}) == "p2_comment_t"
+        # 开关开启且未指定文件名 → 表注释作为文件名
+        assert run({"commentAsFileName": "true"}) == "P2注释文件名"
+        # 显式文件名优先于表注释
+        assert run({"commentAsFileName": "true", "outputName": "explicit_name"}) == "explicit_name"
+        # 开关关闭 → 表名
+        assert run({}) == "p2_comment_t"
+    finally:
+        _drop_mysql_tables("p2_comment_t")
 
 
 def test_p2_13_sqlite_unaffected_by_flag() -> None:
