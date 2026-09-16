@@ -1,0 +1,2065 @@
+/* ==========================================================================
+   数据导表工具 · 设计系统层
+   --------------------------------------------------------------------------
+   规范来源：项目根目录 DESIGN.md（Claude 规范）
+
+   这一层只负责视觉：颜色、字体、圆角、描边、阴影。不改变任何布局几何，
+   也不改动元素 id 与 class 名，因此 app.js / export.js / connections.js 等
+   交互脚本不受影响。
+
+   必须放在 styles.css、connections.css、sql-editor.css 之后加载，
+   否则会被各页面的历史样式覆盖。
+
+   关于面板底色：规范原文用深色面板承载代码与数据界面。本项目按使用反馈
+   改为「淡底面板」——用比画布深一档的暖灰承载代码、数据与日志，保持整站
+   表面语言统一。
+   ========================================================================== */
+
+/* ==========================================================================
+   1. 设计令牌
+   ========================================================================== */
+:root {
+  /* 表面 */
+  --canvas: #faf9f5;
+  --surface-soft: #f5f0e8;
+  --surface-card: #efe9de;
+  --surface-strong: #e8e0d2;
+  --panel: #f4efe6; /* 代码 / 数据 / 日志面板用的淡底 */
+  --panel-edge: #e6dfd8;
+  --hairline: #e6dfd8;
+  --hairline-soft: #ebe6df;
+
+  /* 品牌 */
+  --primary: #cc785c;
+  --primary-active: #a9583e;
+  --primary-disabled: #e6dfd8;
+
+  /* 文字 */
+  --ink: #141413;
+  --body: #3d3d3a;
+  --body-strong: #252523;
+  --muted: #6c6a64;
+  --muted-soft: #8e8b82;
+
+  /* 语义 */
+  --success: #2f7d4f;
+  --success-bg: #e4efdf;
+  --warning: #8a5a00;
+  --warning-bg: #f7ecd7;
+  --error: #b3372f;
+  --error-bg: #f6e2de;
+
+  /* 代码语法色（浅底可读） */
+  --code-key: #a9583e;
+  --code-str: #2f7d6e;
+  --code-num: #7a5c3e;
+  --code-cm: #8e8b82;
+
+  /* 字体 */
+  --serif: "EB Garamond", "Source Han Serif SC", "Noto Serif SC", "Songti SC",
+    STSong, SimSun, Georgia, serif;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas,
+    "Courier New", monospace;
+
+  /* 圆角 */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-pill: 9999px;
+
+  /* ---- 兼容历史变量名，指向新色板 ---- */
+  --bg: var(--canvas);
+  --line: var(--hairline);
+  --soft: var(--surface-soft);
+  --active: var(--surface-card);
+  --text: var(--ink);
+  --blue: var(--primary);
+  --blue-strong: var(--primary-active);
+  --blue-soft: var(--surface-card);
+  --card: var(--canvas);
+  --shadow: none;
+  --shadow-sm: none;
+  --side-color: var(--primary);
+  --side-soft: var(--surface-card);
+  --side-border: var(--hairline);
+  --green-soft: var(--surface-card);
+  --orange-soft: var(--surface-card);
+  --cyan-soft: var(--surface-card);
+  --red-soft: var(--surface-card);
+  --purple-soft: var(--surface-card);
+  --pink-soft: var(--surface-card);
+
+  /* ---- 连接页自带的令牌，一并接管 ---- */
+  --conn-primary: var(--primary);
+  --conn-primary-hover: var(--primary-active);
+  --conn-primary-light: var(--surface-card);
+  --conn-text: var(--ink);
+  --conn-text-secondary: var(--muted);
+  --conn-text-tertiary: var(--muted-soft);
+  --conn-border: var(--hairline);
+  --conn-divider: var(--hairline-soft);
+  --conn-danger: var(--primary-active);
+  --conn-danger-text: var(--primary-active);
+  --conn-warning-bg: var(--warning-bg);
+  --conn-warning-border: var(--hairline);
+  --conn-warning-text: var(--warning);
+  --conn-success-text: var(--success);
+  --conn-success-bg: var(--success-bg);
+  --conn-warn-strong-bg: var(--warning-bg);
+  --conn-radius: var(--r-lg);
+  --conn-radius-ctl: var(--r-md);
+  --conn-ctl-h: 32px;
+  --conn-field-gap: 10px;
+  --conn-glass-bg: var(--canvas);
+  --conn-glass-border: var(--hairline);
+  --conn-glass-shadow: none;
+  --conn-glass-blur: none;
+}
+
+/* ==========================================================================
+   2. 基础
+   ========================================================================== */
+body {
+  background: var(--canvas);
+  color: var(--body);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+strong,
+b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+::selection {
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+/* 全站取消阴影：层次改由底色与 1px 发丝线承担 */
+.dialog-card,
+.connection-card,
+.module-card,
+.conn-card,
+.conn-modal,
+.job-panel,
+.module-task-panel,
+.schedule-task-card,
+.schedule-assistant-card,
+.schedule-log-card,
+.job-dialog-card,
+.assistant-card {
+  box-shadow: none;
+}
+
+/* 滚动条 */
+* {
+  scrollbar-color: var(--surface-strong) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-strong);
+  border-radius: var(--r-pill);
+  border: 2px solid var(--canvas);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-soft);
+}
+
+/* ==========================================================================
+   3. 应用外壳
+   ========================================================================== */
+
+/* 画布改为不透明奶油色，应用自带壁纸不再透出 */
+.desktop-shell {
+  background: var(--canvas);
+}
+
+.app-ribbon {
+  background: var(--canvas);
+  border-bottom: 1px solid var(--hairline);
+}
+
+.ribbon-item {
+  color: var(--ink);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+
+.ribbon-item.active,
+.ribbon-item:hover {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+}
+
+/* 十一种模块色块统一为单色标签 */
+.ribbon-icon,
+.ribbon-icon.green,
+.ribbon-icon.orange,
+.ribbon-icon.cyan,
+.ribbon-icon.red,
+.ribbon-icon.dark,
+.ribbon-icon.blue,
+.ribbon-icon.teal,
+.ribbon-icon.purple,
+.ribbon-icon.black,
+.ribbon-icon.violet,
+.ribbon-icon.sky {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.ribbon-item.active .ribbon-icon,
+.ribbon-item:hover .ribbon-icon {
+  background: var(--surface-strong);
+}
+
+.desktop-main {
+  border-top: 0;
+}
+
+.app-sidebar {
+  background: var(--surface-soft);
+  border-right: 1px solid var(--hairline);
+  backdrop-filter: none;
+}
+
+.sidebar-title {
+  background: transparent;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+}
+
+.tree-node {
+  color: var(--body);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font-size: 14px;
+  transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.tree-node span {
+  color: var(--muted-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.tree-node.active,
+.tree-node:hover {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.tree-node.active span,
+.tree-node:hover span {
+  color: var(--primary);
+}
+
+.sidebar-version {
+  border-top: 1px solid var(--hairline);
+  color: var(--muted-soft);
+  font-size: 12px;
+}
+
+.app-workspace {
+  background: var(--canvas);
+}
+
+/* ==========================================================================
+   4. 面板与卡片
+   ========================================================================== */
+.module-task-panel,
+.left-pane,
+.right-pane,
+.job-panel,
+.query-saved-panel,
+.query-editor-panel,
+.query-result-panel,
+.query-history-panel,
+.tables-list-panel,
+.table-detail-panel,
+.connection-list-panel,
+.connection-editor-panel,
+.bottom-dock > div,
+.module-card,
+.conn-card,
+.conn-guide-card,
+.dialog-card,
+.connection-card,
+.job-dialog-card,
+.assistant-card,
+.schedule-task-card,
+.schedule-assistant-card,
+.schedule-log-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+/* 工具条与表头带：比卡片再深一档 */
+.module-task-toolbar,
+.job-toolbar,
+.query-toolbar,
+.tables-toolbar,
+.schedule-desktop-toolbar,
+.export-topbar,
+.tables-list-panel > header,
+.query-saved-panel header,
+.query-result-panel header,
+.query-history-panel header,
+.conn-list-head,
+.table-detail-header,
+.bottom-dock strong,
+.module-task-toolbar span {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+.panel-title,
+.conn-card-title,
+.query-saved-panel header strong,
+.query-result-panel header strong,
+.tables-list-panel > header strong,
+.table-detail-header strong,
+.conn-list-title-row strong,
+.job-panel > strong,
+.bottom-dock strong {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.meta,
+.hint,
+.field-hint,
+.conn-field-note,
+.conn-probe-hint,
+.conn-list-sub,
+.query-shortcut,
+.mapping-empty,
+.table-wrap.empty,
+.empty,
+.empty-list,
+.schedule-empty {
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   5. 按钮
+   ========================================================================== */
+button,
+.button,
+input[type="button"],
+input[type="submit"] {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  box-shadow: none;
+  transition: background-color 0.18s ease, border-color 0.18s ease,
+    color 0.18s ease;
+}
+
+button:hover:not(:disabled),
+.button:hover {
+  background: var(--surface-card);
+  border-color: var(--hairline);
+}
+
+button.primary,
+.button.primary,
+.primary,
+#runExport,
+#startExport {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+button.primary:hover:not(:disabled),
+.button.primary:hover {
+  background: var(--primary-active);
+  border-color: var(--primary-active);
+}
+
+button:disabled,
+.button:disabled,
+button[disabled] {
+  background: var(--primary-disabled);
+  border-color: transparent;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.module-task-item,
+.query-list-item,
+.table-list-item,
+.job-item,
+.connection-list-item,
+.log-item {
+  border-color: var(--hairline-soft);
+  color: var(--body);
+}
+
+.module-task-item:hover,
+.module-task-item.active,
+.query-list-item:hover,
+.query-list-item.active,
+.table-list-item:hover,
+.table-list-item.active,
+.job-item:hover,
+.job-item.active {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+}
+
+.module-task-item.active,
+.query-list-item.active,
+.table-list-item.active,
+.job-item.active {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+/* ==========================================================================
+   6. 表单控件
+   ========================================================================== */
+input:not([type="radio"]):not([type="checkbox"]):not([type="file"]),
+select,
+textarea {
+  background: var(--canvas);
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  font-family: var(--sans);
+  font-size: 14px;
+  box-shadow: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+input:not([type="radio"]):not([type="checkbox"]):not([type="file"])::placeholder,
+textarea::placeholder {
+  color: var(--muted-soft);
+}
+
+input:not([type="radio"]):not([type="checkbox"]):not([type="file"]):focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.15);
+}
+
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--primary);
+}
+
+label {
+  color: var(--body);
+}
+
+fieldset {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: transparent;
+}
+
+legend {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 0 6px;
+}
+
+/* 开关 */
+.conn-switch-slider {
+  background: var(--surface-strong);
+  border-color: var(--hairline);
+}
+
+.conn-switch input:checked + .conn-switch-slider {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+/* ==========================================================================
+   7. 选项卡
+   ========================================================================== */
+.tabs,
+.connection-tabs,
+.schedule-tab-title {
+  border-color: var(--hairline);
+}
+
+.tab,
+.conn-tab,
+.schedule-tab-title button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.18s ease, color 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.tab:hover,
+.conn-tab:hover,
+.schedule-tab-title button:hover {
+  background: var(--surface-soft);
+  color: var(--ink);
+}
+
+.tab.active,
+.conn-tab.active {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+}
+
+.tab-body,
+.tab-panel,
+.conn-panel {
+  background: transparent;
+}
+
+/* ==========================================================================
+   8. 表格
+   ========================================================================== */
+table {
+  border-color: var(--hairline);
+  background: transparent;
+}
+
+th {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+td {
+  border-color: var(--hairline-soft);
+  color: var(--body);
+}
+
+tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+tbody tr.selected td,
+tr.selected td {
+  background: var(--surface-card);
+}
+
+.table-wrap,
+.conn-table-wrap,
+.schedule-table-wrap {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  border-radius: var(--r-lg);
+}
+
+.mono,
+.conn-mono,
+.date-chip,
+code,
+pre {
+  font-family: var(--mono);
+}
+
+.date-chip {
+  background: var(--surface-card);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   9. 状态与徽标
+   ========================================================================== */
+.pill,
+.conn-pill,
+.conn-pill-connected,
+.conn-pill-checking,
+.conn-pill-disconnected,
+.conn-pill-unsupported,
+.type-warning {
+  border-radius: var(--r-pill);
+  font-size: 13px;
+  font-weight: 500;
+  border-width: 1px;
+}
+
+.conn-pill-connected {
+  background: var(--success-bg);
+  border-color: var(--success-bg);
+  color: var(--success);
+}
+
+.conn-pill-checking {
+  background: var(--warning-bg);
+  border-color: var(--warning-bg);
+  color: var(--warning);
+}
+
+.conn-pill-disconnected,
+.conn-pill-unsupported {
+  background: var(--error-bg);
+  border-color: var(--error-bg);
+  color: var(--error);
+}
+
+#status,
+#exportStatus,
+#queryStatus,
+#tableStatus,
+#jobStatus,
+#scheduleStatus {
+  color: var(--muted);
+}
+
+#status.success,
+#exportStatus.success,
+#queryStatus.success,
+#tableStatus.success,
+#jobStatus span.success,
+.job-toolbar span.success,
+.schedule-desktop-toolbar span.success,
+.panel-title span.success {
+  color: var(--success);
+}
+
+#status.error,
+#exportStatus.error,
+#queryStatus.error,
+#tableStatus.error,
+.job-toolbar span.error,
+.schedule-desktop-toolbar span.error,
+.panel-title span.error {
+  color: var(--error);
+}
+
+#status.warn,
+#exportStatus.warn,
+.job-toolbar span.skipped,
+.panel-title span.warn {
+  color: var(--warning);
+}
+
+/* ==========================================================================
+   10. 任务类型与列表图标：统一单色
+   ========================================================================== */
+.task-type-icon,
+.table-type-icon,
+.module-task-item::before,
+.schedule-tab-icon,
+.conn-title-icon {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+}
+
+.task-import .task-type-icon,
+.task-export .task-type-icon,
+.module-task-item.task-import::before,
+.module-task-item.task-export::before {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   11. 日志
+   ========================================================================== */
+.logs,
+.job-runs,
+.schedule-run-list,
+.schedule-runs {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r-lg);
+}
+
+.log-item,
+.schedule-run-list .log-item,
+.job-runs .log-item {
+  border-color: var(--hairline);
+  color: var(--body);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.log-item strong,
+.schedule-run-list .log-item > strong > span,
+.job-runs .log-item > strong > span,
+.run-step > strong > span {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.log-item.success > strong > span,
+.schedule-run-list .log-item.success > strong > span,
+.job-runs .log-item.success > strong > span,
+.run-step.success > strong > span {
+  color: var(--success);
+}
+
+.log-item.failed > strong > span,
+.schedule-run-list .log-item.failed > strong > span,
+.job-runs .log-item.failed > strong > span,
+.run-step.failed > strong > span {
+  color: var(--error);
+}
+
+.log-item.skipped > strong > span,
+.schedule-run-list .log-item.skipped > strong > span,
+.job-runs .log-item.skipped > strong > span,
+.run-step.skipped > strong > span {
+  color: var(--warning);
+}
+
+/* ==========================================================================
+   12. 代码与数据面板：淡底，不用深色
+
+   注意：sql-editor.js 会把 SQL 输入框的文字设为透明，真正的文字画在它下层
+   的 .sql-editor-hl 上。所以这里绝不能给这些 textarea 的 #id 设背景色——
+   一旦输入框变成不透明，下层的文字就看不见了。只给高亮层上色。
+   ========================================================================== */
+.sql-code,
+#tableDdl {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r-lg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sql-code {
+  padding: 16px 18px;
+}
+
+/* SQL 编辑器：高亮层用淡底，输入框本体保持透明 */
+.sql-editor-hl {
+  background: var(--panel);
+  border-color: transparent;
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sql-editor-body > textarea {
+  background: transparent;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--r-md);
+  caret-color: var(--primary);
+  color: transparent;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sql-editor-body > textarea::selection {
+  background: rgba(204, 120, 92, 0.24);
+  color: transparent;
+}
+
+.sql-editor .sql-editor-btn {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  box-shadow: none;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sql-editor .sql-editor-btn:hover {
+  background: var(--surface-card);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+.sql-editor .sql-editor-btn:active {
+  transform: none;
+}
+
+.sql-editor-tip {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  font-family: var(--sans);
+  font-weight: 500;
+}
+
+/* 语法着色：浅底高对比，关键字用品牌珊瑚色 */
+.sql-t-k {
+  color: var(--code-key);
+  font-weight: 500;
+}
+
+.sql-t-f,
+.sql-t-i {
+  color: var(--code-str);
+}
+
+.sql-t-s {
+  color: var(--code-str);
+}
+
+.sql-t-n {
+  color: var(--code-num);
+}
+
+.sql-t-c {
+  color: var(--code-cm);
+}
+
+.sql-t-p {
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   13. 对话框
+   ========================================================================== */
+.dialog {
+  background: rgba(24, 23, 21, 0.52);
+}
+
+.dialog-card,
+.connection-card {
+  border-radius: var(--r-xl);
+  box-shadow: none;
+}
+
+.dialog-title,
+.job-dialog-card header,
+.assistant-card header,
+.schedule-task-card header,
+.schedule-assistant-card header,
+.schedule-log-card header {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.footer-actions,
+.job-dialog-card footer,
+.assistant-card footer,
+.schedule-task-card footer,
+.schedule-assistant-card footer,
+.schedule-log-card footer,
+.confirm-actions {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.job-dialog::backdrop,
+.schedule-dialog::backdrop {
+  background: rgba(24, 23, 21, 0.52);
+}
+
+/* 确认对话框的强调按钮 */
+.confirm-actions .primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* ==========================================================================
+   14. 占位模块页
+   ========================================================================== */
+.module-placeholder {
+  background: var(--canvas);
+}
+
+.module-header h1 {
+  font-family: var(--serif);
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.3px;
+}
+
+.module-header p {
+  color: var(--muted);
+}
+
+.module-board {
+  gap: 16px;
+}
+
+.module-card p {
+  color: var(--muted);
+}
+
+/* ==========================================================================
+   15. 页面标题
+   ========================================================================== */
+.schedule-tab-title {
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.2px;
+}
+
+.schedule-clock,
+.schedule-live-refresh {
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+
+.conn-visually-hidden {
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   16. 杂项收尾
+   ========================================================================== */
+.conn-toast {
+  background: var(--ink);
+  color: var(--canvas);
+  border-radius: var(--r-md);
+  box-shadow: none;
+}
+
+.conn-modal-mask,
+.conn-modal {
+  box-shadow: none;
+}
+
+.conn-alert {
+  background: var(--warning-bg);
+  border-color: var(--hairline);
+  color: var(--warning);
+}
+
+.conn-field-error {
+  color: var(--error);
+}
+
+.conn-input.conn-has-spinner,
+.conn-input-wrap {
+  border-radius: var(--r-md);
+}
+
+.guard-summary,
+.step-row.guard-summary {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.conn-guide-icon,
+.conn-help-icon {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+}
+
+.conn-op-btn {
+  border-radius: var(--r-sm);
+  color: var(--muted);
+}
+
+.conn-op-btn:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.conn-op-delete:hover {
+  color: var(--error);
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ==========================================================================
+   17. 对齐历史高优先级样式
+   历史样式里有若干选择器比通用规则更具体（按位置给模块配色、毛玻璃、
+   位移悬停等），这里逐一收口，避免出现半新半旧的状态。
+   ========================================================================== */
+
+/* 顶栏：去掉毛玻璃、投影和位移动效 */
+.app-ribbon {
+  background: var(--canvas);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.ribbon-item,
+.ribbon-item.active,
+.ribbon-item:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+  color: var(--muted);
+}
+
+.ribbon-item.active,
+.ribbon-item:hover {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+}
+
+/* 侧栏：去掉投影，八种模块配色统一为单色 */
+.app-sidebar {
+  background: var(--surface-soft);
+  border-right: 1px solid var(--hairline);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.module-tree > .tree-node,
+.module-tree > .tree-node:nth-of-type(1),
+.module-tree > .tree-node:nth-of-type(2),
+.module-tree > .tree-node:nth-of-type(3),
+.module-tree > .tree-node:nth-of-type(4),
+.module-tree > .tree-node:nth-of-type(5),
+.module-tree > .tree-node:nth-of-type(6),
+.module-tree > .tree-node:nth-of-type(7),
+.module-tree > .tree-node:nth-of-type(8) {
+  --side-color: var(--ink);
+  --side-soft: var(--surface-card);
+  --side-border: var(--hairline);
+}
+
+.module-tree > .tree-node {
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-weight: 500;
+}
+
+.module-tree > .tree-node span {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline);
+  color: var(--ink);
+  box-shadow: none;
+  font-family: var(--mono);
+  font-weight: 500;
+}
+
+.module-tree > .tree-node:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.module-tree > .tree-node.active {
+  background: var(--surface-card);
+  color: var(--ink);
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+.module-tree > .tree-node.active span {
+  background: var(--surface-strong);
+  border-color: var(--surface-strong);
+  color: var(--ink);
+}
+
+/* ==========================================================================
+   18. 按页面收口
+   历史样式在后半段还有一层带蓝色调的「重皮肤」，选择器比通用规则更具体。
+   这里用同名的选择器逐条对齐，保证没有半新半旧的残留。
+   ========================================================================== */
+
+/* 查询页 */
+.query-toolbar,
+.query-saved-panel,
+.query-editor-panel,
+.query-result-panel,
+.query-history-panel {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.query-toolbar {
+  background: var(--surface-soft);
+}
+
+.query-toolbar #queryStatus.success {
+  color: var(--success);
+}
+
+.query-toolbar #queryStatus.error {
+  color: var(--error);
+}
+
+.query-saved-panel header,
+.query-result-panel header,
+.query-history-panel header {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+.query-list-item.active {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+}
+
+/* 表页 */
+.tables-toolbar,
+.tables-list-panel,
+.table-detail-panel {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.tables-toolbar {
+  background: var(--surface-soft);
+}
+
+.tables-toolbar #tableStatus.success {
+  color: var(--success);
+}
+
+.tables-toolbar #tableStatus.error {
+  color: var(--error);
+}
+
+.tables-list-panel > header,
+.table-detail-header {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.table-list-item.active,
+.table-list-item:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+/* 作业与步骤选择 */
+.job-item.active,
+.selected-step.active,
+.schedule-task-card .selected-step.active,
+.schedule-task-card .available-job.active,
+.module-task-item:hover,
+.module-task-item.active,
+.connection-list-item:hover {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+}
+
+/* 导入 / 导出页公共容器 */
+.module-task-panel,
+.left-pane,
+.right-pane,
+.export-left,
+.export-right,
+.job-toolbar,
+.job-panel,
+.connection-list-panel,
+.connection-editor-panel,
+.module-header,
+.module-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.module-task-toolbar,
+.bottom-dock,
+.module-task-toolbar,
+.export-topbar {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.table-list button,
+.log-item,
+.table-wrap,
+.mapping-table,
+.mapping-empty,
+.table-wrap.empty,
+.logs,
+.job-list,
+.job-runs,
+.selected-steps,
+.step-config {
+  background: var(--canvas);
+  border-color: var(--hairline);
+}
+
+.log-item,
+.job-runs .log-item,
+.schedule-run-list .log-item {
+  color: var(--body);
+}
+
+.export-source-list {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  color: var(--muted);
+}
+
+/* 对话框与卡片 */
+.job-dialog-card,
+.assistant-card,
+.schedule-task-card,
+.schedule-assistant-card,
+.schedule-log-card,
+.dialog-card,
+.connection-card {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+}
+
+.schedule-task-card header button,
+.schedule-assistant-card header button,
+.schedule-log-card header button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.schedule-task-card header button:hover,
+.schedule-assistant-card header button:hover,
+.schedule-log-card header button:hover {
+  background: var(--surface-card);
+  color: var(--ink);
+}
+
+.schedule-task-card footer button.primary,
+.schedule-assistant-card footer button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+/* 定时任务页 */
+.schedule-tab-title,
+.schedule-desktop-toolbar,
+.schedule-table-wrap {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  box-shadow: none;
+}
+
+.schedule-tab-icon,
+.schedule-clock {
+  background: var(--surface-card);
+  color: var(--ink);
+  border-radius: var(--r-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.schedule-tab-title #refreshSchedules {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+.schedule-tab-title #refreshSchedules:hover {
+  background: var(--surface-card);
+  border-color: var(--hairline);
+}
+
+.schedule-desktop-toolbar {
+  background: var(--surface-soft);
+}
+
+.schedule-desktop-toolbar button:not(:disabled):hover {
+  background: var(--surface-card);
+  border-color: var(--surface-card);
+  color: var(--ink);
+}
+
+.schedule-desktop-toolbar span.success {
+  color: var(--success);
+}
+
+.schedule-desktop-toolbar span.error {
+  color: var(--error);
+}
+
+.schedule-table th {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.schedule-table td {
+  background: transparent;
+  border-bottom: 1px solid var(--hairline-soft);
+  color: var(--body);
+}
+
+.schedule-table tr.selected td {
+  outline: 0;
+  background: var(--surface-card);
+}
+
+.schedule-plan,
+.schedule-plan .rule-summary {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--body);
+}
+
+.schedule-task-card,
+.schedule-assistant-card,
+.schedule-log-card {
+  background: var(--canvas);
+}
+
+.schedule-task-card header,
+.schedule-assistant-card header,
+.schedule-log-card header,
+.job-dialog-card header,
+.assistant-card header,
+.job-dialog-card footer,
+.assistant-card footer {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+.schedule-empty,
+.schedule-no-runs {
+  color: var(--muted);
+}
+
+/* 连接页：毛玻璃卡片换成实底 */
+.conn-card,
+.conn-guide-card,
+.conn-list-card,
+.conn-modal {
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.conn-card-head,
+.conn-list-head,
+.conn-modal-actions {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+}
+
+.conn-table thead th {
+  background: var(--surface-soft);
+  border-color: var(--hairline);
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.conn-table tbody td {
+  border-bottom: 1px solid var(--hairline-soft);
+  color: var(--body);
+}
+
+.conn-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+
+.conn-btn-new,
+.conn-actions .primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.conn-filter-select,
+.conn-search-box,
+.conn-input,
+.conn-select,
+.conn-db-trigger,
+.conn-suffix-btn {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+/* 卡片标题图标：内联 SVG 里写死的蓝色改用令牌（CSS 可以覆盖 SVG 表现属性） */
+.conn-title-icon rect {
+  fill: var(--surface-strong);
+}
+
+.conn-title-icon path {
+  stroke: var(--ink);
+}
+
+.conn-db-menu,
+.conn-db-type-list {
+  background: var(--canvas);
+  border-color: var(--hairline);
+  box-shadow: none;
+}
+
+/* ==========================================================================
+   19. 文字颜色与阴影收口
+   历史样式里还有一层按 id / 页面前缀写的蓝色文字与按钮投影。这里统一压平，
+   只保留输入框的珊瑚色聚焦环。
+   ========================================================================== */
+
+/* 全站去投影（设计规范里层次只由底色和发丝线承担） */
+* {
+  box-shadow: none !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.15) !important;
+}
+
+input.input--error:focus,
+.conn-input.conn-input-error:focus {
+  box-shadow: 0 0 0 3px rgba(179, 55, 47, 0.15) !important;
+}
+
+/* 正文类文字 */
+label,
+legend,
+.plan-label,
+.form-line,
+.inline-row,
+.option-group,
+.export-group,
+.schedule-name-line,
+.connection-line,
+.conn-field-label,
+.conn-switch-label,
+.file-list,
+.schedule-empty,
+.schedule-no-runs,
+.empty,
+.empty-list,
+.mapping-empty,
+.table-wrap.empty,
+.conn-empty-cell,
+#queryStatus,
+#tableStatus,
+#jobStatus,
+#scheduleStatus,
+#lastRefreshTime,
+#selectedTableMeta,
+#tableCount,
+#exportPreviewMeta,
+#exportResultMeta,
+#tableMeta {
+  color: var(--muted) !important;
+}
+
+/* 强调类文字 */
+strong,
+b,
+h1,
+h2,
+h3,
+.option-group strong,
+.export-group > strong,
+.export-left > strong,
+.module-header h1,
+.schedule-tab-title,
+.conn-title-icon ~ *,
+.conn-field-error,
+.field-error {
+  color: var(--ink) !important;
+}
+
+.conn-field-error,
+.field-error,
+.type-warning {
+  color: var(--error) !important;
+}
+
+/* 其他残留的蓝色描边与遮罩 */
+.file-list {
+  border-color: var(--hairline) !important;
+}
+
+.conn-modal-mask,
+.dialog {
+  background: rgba(24, 23, 21, 0.52) !important;
+}
+
+.conn-ghost-btn-text,
+.conn-ghost-btn {
+  color: var(--muted) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+}
+
+.conn-ghost-btn-text:hover,
+.conn-ghost-btn:hover {
+  color: var(--ink) !important;
+  background: var(--surface-card) !important;
+}
+
+.conn-filter-select,
+.conn-search-box {
+  border-color: var(--hairline) !important;
+}
+
+/* 输入框文字色（不含 textarea，SQL 编辑器的 textarea 必须保持透明） */
+input,
+select {
+  color: var(--ink) !important;
+}
+
+.query-name-row > span,
+.query-name-row span,
+.query-shortcut,
+.schedule-live-refresh span {
+  color: var(--muted) !important;
+}
+
+/* 列表里的小字与类型图标 */
+small,
+em,
+.run-meta-grid,
+.run-meta-grid span,
+.step-meta,
+.run-message,
+.job-runs small,
+.table-list-item small,
+.table-list-item em,
+.query-list-item small {
+  color: var(--muted) !important;
+}
+
+.task-type-icon,
+.table-type-icon,
+.query-list-item .task-type-icon,
+.module-task-item .task-type-icon,
+.table-list-item .table-type-icon {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+.run-meta-grid b {
+  color: var(--ink) !important;
+}
+
+.run-step,
+.run-summary,
+.run-step-meta,
+.log-item {
+  border-color: var(--hairline) !important;
+}
+
+/* ==========================================================================
+   20. 操作手册页
+   这一页在仓库里是独立子系统，自带深蓝侧栏与蓝色强调色。
+   这里把它拉回同一套表面语言：奶油底、发丝线、珊瑚强调。
+   ========================================================================== */
+.docs-site,
+.docs-main,
+.docs-main-inner,
+.docs-body,
+.docs-article {
+  background: var(--canvas) !important;
+  color: var(--body) !important;
+}
+
+/* 侧栏 */
+.docs-sidebar {
+  background: var(--surface-soft) !important;
+  border-right: 1px solid var(--hairline) !important;
+}
+
+.docs-sidebar .docs-brand,
+.docs-brand-name b {
+  color: var(--ink) !important;
+}
+
+.docs-brand-name span,
+.docs-sidebar .doc-tree-cat {
+  color: var(--muted) !important;
+}
+
+.docs-brand-logo {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+.docs-sidebar .doc-tree-item {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--muted) !important;
+  border-radius: var(--r-md) !important;
+}
+
+.docs-sidebar .doc-tree-item:hover {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+}
+
+.docs-sidebar .doc-tree-item.active {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+  box-shadow: inset 3px 0 0 var(--primary) !important;
+}
+
+.docs-sidebar-foot,
+.docs-return {
+  background: var(--canvas) !important;
+  border-color: var(--hairline) !important;
+  color: var(--ink) !important;
+}
+
+.docs-return:hover {
+  background: var(--surface-card) !important;
+}
+
+/* 顶栏与统计块 */
+.docs-topbar {
+  background: var(--canvas) !important;
+  border-bottom: 1px solid var(--hairline) !important;
+}
+
+.docs-topbar-title b {
+  color: var(--ink) !important;
+}
+
+.docs-topbar-title span {
+  color: var(--muted) !important;
+}
+
+.docs-stat,
+.docs-topbar .docs-stat {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--body) !important;
+}
+
+.docs-stat::before {
+  background: var(--surface-strong) !important;
+}
+
+.docs-stat-num,
+.docs-topbar .docs-stat b {
+  color: var(--ink) !important;
+}
+
+.docs-stat-label,
+.docs-topbar .docs-stat span {
+  color: var(--muted) !important;
+}
+
+/* 搜索 */
+.docs-search input,
+.docs-topbar-search input {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--r-md) !important;
+  color: var(--ink) !important;
+}
+
+.docs-search input::placeholder {
+  color: var(--muted-soft) !important;
+}
+
+.docs-search-results,
+.docs-search-hit {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--body) !important;
+}
+
+.docs-search-hit:hover {
+  background: var(--surface-card) !important;
+}
+
+.docs-search-hit span,
+.docs-search-empty {
+  color: var(--muted) !important;
+}
+
+/* 卡片与流程 */
+.docs-hero,
+.docs-welcome {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--r-lg) !important;
+}
+
+.docs-hero::before,
+.docs-hero::after,
+.docs-welcome::before {
+  display: none !important;
+}
+
+.docs-hero h1,
+.docs-welcome h1,
+.docs-section-title,
+.docs-quick-start h2,
+.docs-flow-card h2,
+.docs-module-head h3,
+.docs-article-header h1,
+.docs-body h1,
+.docs-body h2,
+.docs-body h3 {
+  color: var(--ink) !important;
+  font-family: var(--serif) !important;
+  font-weight: 400 !important;
+  letter-spacing: -0.2px !important;
+}
+
+.docs-hero p,
+.docs-welcome > p,
+.docs-welcome-txt p,
+.docs-quick-start p,
+.docs-card-desc,
+.docs-module-desc,
+.docs-module-pts,
+.docs-flow-txt span,
+.docs-quick-txt span,
+.docs-footer-meta,
+.docs-loading {
+  color: var(--muted) !important;
+}
+
+.docs-hero-badge {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-pill) !important;
+}
+
+.docs-task-card,
+.docs-module-card,
+.docs-quick,
+.docs-flow-card,
+.docs-flow-step,
+.docs-quick-start,
+.docs-table-of-contents,
+.docs-article-header {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--r-lg) !important;
+  box-shadow: none !important;
+}
+
+.docs-task-card:hover,
+.docs-module-card:hover,
+.docs-quick:hover,
+.docs-flow-step:hover {
+  background: var(--surface-card) !important;
+  border-color: var(--hairline) !important;
+}
+
+.docs-card-text strong,
+.docs-quick-txt b,
+.docs-flow-txt b {
+  color: var(--ink) !important;
+}
+
+.docs-card-go,
+.docs-module-link,
+.docs-quick-start .js-doc-link,
+.docs-table-of-contents a,
+.docs-footer-links a,
+.docs-article-header .docs-back {
+  color: var(--primary) !important;
+}
+
+.docs-article-header .docs-back:hover,
+.docs-table-of-contents a:hover,
+.docs-footer-links a:hover {
+  color: var(--primary-active) !important;
+}
+
+.docs-table-of-contents .docs-toc-label {
+  color: var(--muted) !important;
+}
+
+.docs-flow-arrow {
+  color: var(--muted-soft) !important;
+}
+
+/* 正文、代码与表格 */
+.docs-body blockquote {
+  background: var(--surface-soft) !important;
+  border-left: 3px solid var(--primary) !important;
+  color: var(--body) !important;
+}
+
+.docs-body code {
+  background: var(--panel) !important;
+  border: 1px solid var(--panel-edge) !important;
+  border-radius: var(--r-xs) !important;
+  color: var(--code-key) !important;
+  font-family: var(--mono) !important;
+}
+
+.docs-body table {
+  border-color: var(--hairline) !important;
+}
+
+.docs-body table th {
+  background: var(--surface-soft) !important;
+  border-color: var(--hairline) !important;
+  color: var(--muted) !important;
+}
+
+.docs-body table td {
+  border-color: var(--hairline-soft) !important;
+  color: var(--body) !important;
+}
+
+.docs-footer {
+  background: var(--surface-soft) !important;
+  border-top: 1px solid var(--hairline) !important;
+}
+
+.docs-error {
+  color: var(--error) !important;
+}
+
+.docs-footer,
+.docs-footer-links {
+  color: var(--muted) !important;
+}
+
+/* --------------------------------------------------------------------------
+   手册页的实际类名（渲染后与上面旧命名不同，这里按真实 DOM 补齐）
+   -------------------------------------------------------------------------- */
+.docs-nav {
+  background: var(--surface-soft) !important;
+  border-right: 1px solid var(--hairline) !important;
+}
+
+.docs-nav-brand,
+.docs-nav-brand b {
+  color: var(--ink) !important;
+}
+
+.docs-nav-brand span,
+.docs-sidebar-version {
+  color: var(--muted) !important;
+}
+
+.docs-tree,
+.docs-nav-foot {
+  background: transparent !important;
+  border-color: var(--hairline) !important;
+}
+
+.docs-tree .doc-tree-item,
+.doc-tree-item {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--muted) !important;
+  border-radius: var(--r-md) !important;
+}
+
+.docs-tree .doc-tree-item:hover,
+.doc-tree-item:hover {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+}
+
+.docs-tree .doc-tree-item.active,
+.doc-tree-item.active {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+  box-shadow: inset 3px 0 0 var(--primary) !important;
+}
+
+.doc-tree-cat {
+  color: var(--muted) !important;
+}
+
+.doc-tree-chip {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+}
+
+.doc-tree-dot {
+  background: var(--muted-soft) !important;
+}
+
+/* 顶栏搜索 */
+.docs-topbar-search {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--r-md) !important;
+  color: var(--muted) !important;
+}
+
+.docs-search-results {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+}
+
+/* 模块卡里的缩略示意图：同样去掉蓝色调 */
+.doc-thumb,
+.doc-thumb-main,
+.doc-thumb-side,
+.doc-thumb-toolbar,
+.doc-thumb-body,
+.doc-thumb-title,
+.doc-thumb-dot,
+.doc-thumb-link {
+  background: var(--surface-soft) !important;
+  border-color: var(--hairline) !important;
+  color: var(--muted) !important;
+}
+
+.doc-thumb-title,
+.doc-thumb-link {
+  color: var(--ink) !important;
+}
+
+.thm-bar,
+.thm-pill,
+.thm-table,
+.thm-trow {
+  background: var(--surface-strong) !important;
+  color: var(--muted) !important;
+  border-color: var(--hairline) !important;
+}
+
+/* 模块编号：去掉蓝绿配色，统一为奶油标签 */
+.docs-module-no {
+  background: var(--surface-card) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+/* 流程条：按钮与图标统一中性色 */
+.docs-flow-step,
+.docs-flow-card .docs-flow-step {
+  background: var(--canvas) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-lg) !important;
+}
+
+.docs-flow-step:hover {
+  background: var(--surface-card) !important;
+}
+
+.docs-flow-txt b {
+  color: var(--ink) !important;
+}
+
+.docs-flow-txt span,
+.docs-flow-step i,
+.docs-flow-step svg,
+.docs-flow-ico svg {
+  color: var(--muted) !important;
+}
+
+.docs-flow-ico {
+  background: var(--surface-card) !important;
+  border: 1px solid var(--hairline) !important;
+  color: var(--ink) !important;
+  border-radius: var(--r-sm) !important;
+}
+
+.docs-flow-ico svg {
+  color: var(--ink) !important;
+}
+
+/* 模块卡里的迷你示意图：整体压成中性灰，不再用蓝色示意 */
+.doc-thumb svg,
+.doc-thumb svg * {
+  color: var(--muted) !important;
+  fill: currentColor;
+}
+
+.doc-thumb-title i,
+.doc-thumb-side i,
+.doc-thumb-side span,
+.doc-thumb-side span.on,
+.doc-thumb-dot {
+  background: var(--surface-strong) !important;
+  color: var(--ink) !important;
+}
+
+.doc-thumb-side span {
+  background: rgba(232, 224, 210, 0.85) !important;
+}
+
+/* 缩略图里的占位条与类型小块：统一暖灰 */
+.doc-thumb-body span,
+.doc-thumb-body i,
+.doc-thumb-main span,
+.doc-thumb-main i {
+  background: var(--surface-strong) !important;
+  border-color: var(--hairline) !important;
+  color: var(--ink) !important;
+}
