@@ -2486,6 +2486,43 @@ def split_sql_statements(sql: str) -> list[str]:
     return statements
 
 
+def sql_after_leading_comments(sql: str) -> str:
+    """跳过 SQL 开头连续的空白与注释，返回从第一段实际代码开始的后缀。
+
+    仅用于「取首个关键字」这一判断用途，不改变语义（真正执行的仍是原 SQL 文本）。
+    注释规则与 ``split_sql_statements`` 保持一致：
+    ``/* ... */`` 块注释、``--`` 后跟空白或行尾的行注释、``#`` 行注释。
+    若整段都是注释 / 空白，返回空字符串。
+    """
+    index = 0
+    length = len(sql)
+    while index < length:
+        char = sql[index]
+        if char.isspace():
+            index += 1
+            continue
+        if sql.startswith("/*", index):
+            closing = sql.find("*/", index + 2)
+            if closing < 0:
+                return ""
+            index = closing + 2
+            continue
+        if char == "-" and sql.startswith("--", index) and (index + 2 >= length or sql[index + 2].isspace()):
+            newline = sql.find("\n", index)
+            if newline < 0:
+                return ""
+            index = newline + 1
+            continue
+        if char == "#":
+            newline = sql.find("\n", index)
+            if newline < 0:
+                return ""
+            index = newline + 1
+            continue
+        break
+    return sql[index:]
+
+
 def export_query_from_item(item: dict[str, object], fields: dict[str, str]) -> tuple[str, str]:
     item_type = str(item.get("type") or "table")
     if item_type == "query":
@@ -3498,15 +3535,21 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
 
 
 def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
-    sql = str(payload.get("sql") or "").strip().rstrip(";").strip()
-    if not sql:
+    raw_sql = str(payload.get("sql") or "").strip()
+    # 复用与导出模块同一套「引号感知 + 注释感知」切分：
+    # 不再把注释内部、字符串字面量内部的分号误判为「多条语句」，
+    # 并且天然支持以注释（-- / # / /* */）开头的合法查询。
+    statements = split_sql_statements(raw_sql)
+    if not statements:
         raise ValueError("请输入要执行的 SQL。")
-    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", sql)
+    if len(statements) > 1:
+        raise ValueError("一次只能执行一条 SQL 查询。")
+    sql = statements[0]
+    head = sql_after_leading_comments(sql)
+    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", head)
     command = first_word.group(1).lower() if first_word else ""
     if command not in {"select", "show", "describe", "desc", "explain", "with"}:
         raise ValueError("查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。")
-    if ";" in sql:
-        raise ValueError("一次只能执行一条 SQL 查询。")
 
     fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
     started = time.time()
