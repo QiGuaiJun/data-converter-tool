@@ -27,8 +27,15 @@ function setStatus(message, type = "") {
   $("#tableStatus").className = type;
 }
 
+// 取所选连接真实的 dbType，取不到时回退 mysql（与 export.js 的 connectionPayload 保持一致）
+function selectedDbType(selectId) {
+  const connectionId = $(selectId)?.value || "";
+  const item = connections.find((connection) => connection.id === connectionId);
+  return item?.dbType || "mysql";
+}
+
 function connectionParams() {
-  return new URLSearchParams({ targetDbType: "mysql", connectionId: $("#tableConnection").value });
+  return new URLSearchParams({ targetDbType: selectedDbType("#tableConnection"), connectionId: $("#tableConnection").value });
 }
 
 async function loadConnections() {

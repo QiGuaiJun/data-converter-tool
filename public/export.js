@@ -389,6 +389,91 @@ function renderSources() {
     .join("");
 }
 
+// 与后端 server.py:split_sql_statements 保持同一套语义：引号感知 + 注释感知 + 纯注释片段过滤，
+// 避免同一条 SQL 在「单个查询」模式可用、在「多个查询」模式被切坏。
+// 引号（' " `，含反斜杠转义与双写）与注释（/* */、-- 后跟空白、#）原文都逐字节保留，
+// 只决定在哪里切分，绝不删改 SQL 文本。
+// 纯注释 / 纯空白片段（如 `select 1; -- tail` 里的 `-- tail`）不产出 item，
+// 因此多查询模式下 `select 1; -- tail` 切出 1 项、`select 1; select 2` 切出 2 项。
+function splitSqlStatements(text) {
+  const source = String(text ?? "");
+  const statements = [];
+  let current = "";
+  let quoteChar = "";
+  let hasCode = false;
+  let index = 0;
+  const length = source.length;
+  while (index < length) {
+    const char = source[index];
+    if (quoteChar) {
+      current += char;
+      if (char === "\\" && quoteChar !== "`" && index + 1 < length) {
+        current += source[index + 1];
+        index += 2;
+        continue;
+      }
+      if (char === quoteChar) {
+        if (index + 1 < length && source[index + 1] === quoteChar) {
+          current += source[index + 1];
+          index += 2;
+          continue;
+        }
+        quoteChar = "";
+      }
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") {
+      // 字面量本身即代码：开启引号即标记本片段含代码
+      quoteChar = char;
+      current += char;
+      hasCode = true;
+      index += 1;
+      continue;
+    }
+    if (char === "/" && source.startsWith("/*", index)) {
+      const closing = source.indexOf("*/", index + 2);
+      const end = closing < 0 ? length : closing + 2;
+      current += source.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === "-" && source.startsWith("--", index) && (index + 2 >= length || /\s/.test(source[index + 2]))) {
+      const newline = source.indexOf("\n", index);
+      const end = newline < 0 ? length : newline;
+      current += source.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === "#") {
+      const newline = source.indexOf("\n", index);
+      const end = newline < 0 ? length : newline;
+      current += source.slice(index, end);
+      index = end;
+      continue;
+    }
+    if (char === ";") {
+      // 仅当本片段含实际代码时才产出 item；纯注释/纯空白片段被丢弃
+      if (hasCode) {
+        const piece = current.trim();
+        if (piece) statements.push(piece);
+      }
+      current = "";
+      hasCode = false;
+      index += 1;
+      continue;
+    }
+    current += char;
+    if (!/\s/.test(char)) hasCode = true;
+    index += 1;
+  }
+  if (hasCode) {
+    const tail = current.trim();
+    if (tail) statements.push(tail);
+  }
+  return statements;
+}
+
 function selectedItems() {
   const queryName = ($("#queryName")?.value || "query").trim() || "query";
   if (sourceMode === "query") {
@@ -397,10 +482,7 @@ function selectedItems() {
     return [{ type: "query", name: queryName, sql }];
   }
   if (sourceMode === "multi") {
-    const parts = exportSql.value
-      .split(";")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    const parts = splitSqlStatements(exportSql.value);
     if (!parts.length) throw new Error("请填写多个查询 SQL。");
     return parts.map((sql, index) => ({ type: "query", name: `${queryName}_${index + 1}`, sql }));
   }
@@ -715,20 +797,53 @@ async function previewExport() {
   try {
     setStatus("正在预览...");
     const payload = collectPayload();
-    payload.items = undefined;
     const result = await requestJson("/api/export/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    exportPreviewMeta.textContent = `${result.sourceName} · ${result.rows.length} 行 · ${result.columns.length} 列`;
-    renderTable(exportPreviewTable, result.columns, result.rows);
-    setStatus("预览完成。", "success");
+    // 后端真实预览全部 item 时返回 previews（每个 item 一块）。多结果集逐块渲染，
+    // 不再遮盖"仅预览第 1 条"；单结果/旧字段则沿用原有展示，保证行为一致。
+    if (Array.isArray(result.previews) && result.previews.length > 1) {
+      renderPreviewTables(exportPreviewTable, result.previews);
+      const totalRows = result.previews.reduce((sum, p) => sum + (p.rows ? p.rows.length : 0), 0);
+      exportPreviewMeta.textContent = `共 ${result.previews.length} 条查询 · 合计预览 ${totalRows} 行`;
+      setStatus("预览完成。", "success");
+    } else {
+      const previewLabel = `${result.sourceName} · ${result.rows.length} 行 · ${result.columns.length} 列`;
+      exportPreviewMeta.textContent = previewLabel;
+      renderTable(exportPreviewTable, result.columns, result.rows);
+      setStatus("预览完成。", "success");
+    }
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
     previewExportButton.disabled = false;
   }
+}
+
+// 多查询预览：每个 item 一块（带来源名与列头），失败的 item 显示错误占位而非整块崩。
+function renderPreviewTables(container, previews) {
+  container.className = "table-wrap";
+  container.innerHTML = "";
+  previews.forEach((preview, index) => {
+    const block = document.createElement("div");
+    block.className = "preview-block";
+    const head = document.createElement("div");
+    head.className = "preview-block-head";
+    const title = preview.sourceName || `(查询 ${index + 1})`;
+    if (preview.ok === false) {
+      head.textContent = `查询 ${index + 1} · ${title}：预览失败 — ${preview.error || "未知错误"}`;
+      block.appendChild(head);
+    } else {
+      head.textContent = `查询 ${index + 1} · ${title} · ${preview.rows.length} 行 · ${preview.columns.length} 列`;
+      block.appendChild(head);
+      const host = document.createElement("div");
+      block.appendChild(host);
+      renderTable(host, preview.columns, preview.rows);
+    }
+    container.appendChild(block);
+  });
 }
 
 async function runExport() {

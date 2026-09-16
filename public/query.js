@@ -27,6 +27,13 @@ async function loadConnections() {
     : '<option value="">暂无数据库连接</option>';
 }
 
+// 取所选连接真实的 dbType，取不到时回退 mysql（与 export.js 的 connectionPayload 保持一致）
+function selectedDbType(selectId) {
+  const connectionId = $(selectId)?.value || "";
+  const item = connections.find((connection) => connection.id === connectionId);
+  return item?.dbType || "mysql";
+}
+
 function renderSavedQueries() {
   const list = $("#savedQueryList");
   list.className = savedQueries.length ? "query-list" : "query-list empty";
@@ -75,7 +82,7 @@ async function runQuery() {
     const result = await requestJson("/api/query/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionId: $("#queryConnection").value, targetDbType: "mysql", sql: $("#querySql").value }),
+      body: JSON.stringify({ connectionId: $("#queryConnection").value, targetDbType: selectedDbType("#queryConnection"), sql: $("#querySql").value }),
     });
     renderResult(result.columns || [], result.rows || []);
     $("#queryResultMeta").textContent = `${result.rowCount} 行 · ${result.elapsedMs} ms${result.truncated ? " · 仅显示前 1000 行" : ""}`;

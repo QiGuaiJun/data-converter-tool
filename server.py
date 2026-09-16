@@ -42,6 +42,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
+DOCS = ROOT / "docs"
 
 # Python 3.12 起 sqlite3 内置 datetime/date 默认适配器已弃用（每次写入都会告警），
 # 按官方文档推荐显式注册替代：datetime→"YYYY-MM-DD HH:MM:SS"，date→"YYYY-MM-DD"。
@@ -730,6 +731,180 @@ def error_response(handler: SimpleHTTPRequestHandler, message: str, status: int 
     json_response(handler, {"ok": False, "error": message}, status)
 
 
+# ---------------------------------------------------------------------------
+# 操作手册（docs 帮助中心）
+#
+# Markdown 是内容层（docs/ 下 .md），docs.html 是展示层。服务端把 .md 渲染为
+# HTML 后经 /api/docs 返回。这里同时维护可浏览的目录索引（首页任务卡片 + 侧栏树）。
+# 新增文档：在 docs/ 放入 .md，并在 DOC_INDEX 里加一项即可。
+# ---------------------------------------------------------------------------
+
+DOC_INDEX: list[dict[str, object]] = [
+    {"id": "user/quick-start", "title": "快速开始", "category": "user", "tag": "向导"},
+    {"id": "user/connections", "title": "数据库连接", "category": "user", "tag": "功能"},
+    {"id": "user/import", "title": "数据导入", "category": "user", "tag": "功能"},
+    {"id": "user/export", "title": "数据导出", "category": "user", "tag": "功能"},
+    {"id": "user/query", "title": "数据查询", "category": "user", "tag": "功能"},
+    {"id": "user/tables", "title": "数据表", "category": "user", "tag": "功能"},
+    {"id": "user/jobs", "title": "作业", "category": "user", "tag": "功能"},
+    {"id": "user/schedule", "title": "定时任务", "category": "user", "tag": "功能"},
+    {"id": "user/faq", "title": "常见问题", "category": "user", "tag": "FAQ"},
+]
+DOC_CATEGORY_LABELS = {
+    "user": "功能说明",
+}
+
+
+def _doc_path(doc_id: str) -> Path | None:
+    rel = Path(doc_id + ".md")
+    if rel.is_absolute() or ".." in rel.parts or "." in rel.parts:
+        return None
+    target = (DOCS / rel).resolve()
+    try:
+        target.relative_to(DOCS.resolve())
+    except ValueError:
+        return None
+    return target if target.is_file() else None
+
+
+def _md_inline(text: str) -> str:
+    # 行内：`code`、**bold**、*italic*、[text](href)
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a rel="noopener" href="\2">\1</a>', text)
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", text)
+    return text
+
+
+def _md_blockquote(lines: list[str]) -> str:
+    body = " ".join(line.lstrip("> ").strip() for line in lines)
+    return f"<blockquote>{_md_inline(body)}</blockquote>"
+
+
+def _md_items(block: list[str], ordered: bool) -> str:
+    tag = "ol" if ordered else "ul"
+    items: list[str] = []
+    collected: list[list[str]] = []
+    for line in block:
+        m = re.match(r"^(\s*)([-*+]|\d+\.)\s+(.*)$", line)
+        if m:
+            collected.append([m.group(3)])
+        elif line.strip() == "":
+            collected.append([""])
+        else:
+            if collected:
+                collected[-1].append(line.strip())
+    for it in collected:
+        text = "<br>".join(_md_inline(x) for x in it if x != "")
+        if text:
+            items.append(f"<li>{text}</li>")
+    return f"<{tag}>{''.join(items)}</{tag}>"
+
+
+def _md_table(block: list[str]) -> str:
+    rows: list[list[str]] = []
+    for line in block:
+        if re.match(r"^\s*\|\s*[-:]+\s*\|", line.strip(), flags=re.I):
+            continue  # 分隔行
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        rows.append(cells)
+    if not rows:
+        return ""
+    header = rows[0]
+    thead = "".join(f"<th>{_md_inline(c)}</th>" for c in header)
+    tbody_rows = "".join(
+        "<tr>" + "".join(f"<td>{_md_inline(c)}</td>" for c in row) + "</tr>"
+        for row in rows[1:]
+    )
+    return f"<table><thead><tr>{thead}</tr></thead><tbody>{tbody_rows}</tbody></table>"
+
+
+def render_doc_markdown(raw: str) -> str:
+    """极简 Markdown 渲染器，覆盖操作手册用到的语法（标题/列表/表格/引用/代码/粗体）。"""
+    lines = raw.split("\n")
+    out: list[str] = []
+    i, n = 0, len(lines)
+    while i < n:
+        line = lines[i]
+        stripped = line.strip()
+        if stripped == "":
+            i += 1
+            continue
+        hr = re.match(r"^\s*---+\s*$", line)
+        if hr:
+            out.append("<hr />")
+            i += 1
+            continue
+        # 标题
+        hm = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if hm:
+            level = len(hm.group(1))
+            out.append(f"<h{level}>{_md_inline(hm.group(2))}</h{level}>")
+            i += 1
+            continue
+        # 引用块
+        if line.lstrip().startswith(">"):
+            block: list[str] = []
+            while i < n and lines[i].lstrip().startswith(">"):
+                block.append(lines[i])
+                i += 1
+            out.append(_md_blockquote(block))
+            continue
+        # 有序/无序列表
+        lm = re.match(r"^\s*([-*+]|\d+\.)\s+\S", line)
+        if lm:
+            ordered = lm.group(1) not in ("-", "*", "+")
+            block = [line]
+            i += 1
+            while i < n:
+                cur = lines[i]
+                cm = re.match(r"^\s*([-*+]|\d+\.)\s+\S", cur)
+                if cm:
+                    cur_ordered = cm.group(1) not in ("-", "*", "+")
+                    if cur_ordered != ordered:
+                        break
+                    block.append(cur)
+                    i += 1
+                    continue
+                if cur.strip() == "":
+                    break
+                break
+            out.append(_md_items(block, ordered))
+            continue
+        # 表格
+        if stripped.startswith("|") and "|" in stripped[1:]:
+            block = []
+            while i < n and lines[i].strip().startswith("|"):
+                block.append(lines[i])
+                i += 1
+            out.append(_md_table(block))
+            continue
+        # 普通段落（合并多行）
+        para = []
+        while i < n and lines[i].strip() != "":
+            if lines[i].lstrip().startswith(">"):
+                break
+            para.append(lines[i].strip())
+            i += 1
+        out.append(f"<p>{_md_inline(' '.join(para))}</p>")
+    return "".join(out)
+
+
+def load_doc_content(doc_id: str) -> tuple[str, str]:
+    """读取并渲染一篇 .md，返回 (标题, HTML)。"""
+    path = _doc_path(doc_id)
+    if path is None:
+        return "", ""
+    raw = path.read_text(encoding="utf-8")
+    title = _md_inline((raw.strip("\n").split("\n")[0] or doc_id).lstrip("# "))
+    return title, render_doc_markdown(raw)
+
+
+def doc_index_payload() -> dict[str, object]:
+    return {"ok": True, "index": DOC_INDEX, "categories": DOC_CATEGORY_LABELS}
+
+
 def parse_bool(fields: dict[str, str], name: str, default: bool = False) -> bool:
     value = fields.get(name)
     if value is None:
@@ -1351,6 +1526,7 @@ def target_table_exists(conn, table_name: str, fields: dict[str, str]) -> bool:
 
 
 def target_existing_columns(conn, table_name: str, fields: dict[str, str]) -> list[str]:
+    """目标表已有列名，保留数据库报告的**原始大小写**（MySQL 取自 information_schema）。"""
     if target_db_type(fields) == "mysql":
         with conn.cursor() as cursor:
             cursor.execute(
@@ -1363,6 +1539,22 @@ def target_existing_columns(conn, table_name: str, fields: dict[str, str]) -> li
             )
             return [row[0] for row in cursor.fetchall()]
     return existing_columns(conn, table_name)
+
+
+def target_existing_column_keys(conn, table_name: str, fields: dict[str, str]) -> set[str]:
+    """目标表已有列名的「比对键」集合（统一折叠为小写）。
+
+    为什么需要单独的比对键：MySQL 的列名不区分大小写，但
+    ``information_schema.columns.column_name`` 返回的是**建表时写的大小写**。
+    导入侧启用 fieldCase=lower 后列名被归一成 ``name``，若用大小写敏感的方式比对，
+    已有的 ``NAME`` 会被误判成「缺列」，于是 ADD COLUMN name 撞上既有列，
+    报 1060 Duplicate column——目标表其实完全兼容却导入失败。
+    SQLite 同样按大小写不敏感解析标识符，所以两者统一折叠。
+
+    注意：这里只用于**存在性判断**；回写列定义时仍必须使用
+    :func:`target_existing_columns` 返回的原始大小写，否则会把用户的大写列改名。
+    """
+    return {column.strip().lower() for column in target_existing_columns(conn, table_name, fields)}
 
 
 def target_row_count(conn, table_name: str, fields: dict[str, str]) -> int:
@@ -1548,6 +1740,168 @@ def detect_type_warnings(columns: list[str], rows: list[list[object]], column_ty
     return warnings
 
 
+# autoExpand 只拓宽这两类字符列；其余类型（bigint/double/date…）不做自动拓宽。
+MYSQL_CHARACTER_TYPES = {"varchar", "char"}
+
+# 被当作表达式而不是字符串字面量输出的默认值（MySQL 的 default 允许 CURRENT_TIMESTAMP 之类）。
+_MYSQL_DEFAULT_EXPRESSION_RE = re.compile(
+    r"^(?:current_timestamp(?:\(\d*\))?|current_date|current_time|now\(\)|null)$",
+    re.I,
+)
+
+# pymysql 的 1406：Data too long for column 'xxx' at row N
+_MYSQL_TOO_LONG_COLUMN_RE = re.compile(r"column '([^']+)'")
+
+
+def mysql_character_column_profiles(conn, table_name: str) -> dict[str, dict[str, object]]:
+    """读取 MySQL 目标表上的字符列长度与需要原样重述的属性。
+
+    MySQL 的 MODIFY COLUMN 会**丢弃**未重述的属性，所以这里把 IS_NULLABLE /
+    COLUMN_DEFAULT / EXTRA / COLUMN_COMMENT / 字符集 / 排序规则全部取回，
+    重建列定义时逐项写回，避免拓宽长度时把主键自增、默认值、注释弄丢。
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            select column_name, data_type, character_maximum_length, is_nullable,
+                   column_default, extra, column_comment, character_set_name, collation_name
+            from information_schema.columns
+            where table_schema = database() and table_name = %s
+            order by ordinal_position
+            """,
+            (table_name,),
+        )
+        profiles: dict[str, dict[str, object]] = {}
+        for row in cursor.fetchall():
+            data_type = str(row[1] or "").strip().lower()
+            if data_type not in MYSQL_CHARACTER_TYPES or row[2] is None:
+                continue
+            profiles[str(row[0])] = {
+                # 原样保留 information_schema 报告的列名大小写：ALTER TABLE ... MODIFY
+                # COLUMN 必须使用实际列名，否则会顺带把用户的大写列改成小写。
+                "name": str(row[0]),
+                "data_type": data_type,
+                "length": int(row[2]),
+                "nullable": str(row[3] or "").strip().upper() == "YES",
+                "default": row[4],
+                "extra": str(row[5] or "").strip(),
+                "comment": row[6],
+                "charset": str(row[7] or "").strip(),
+                "collation": str(row[8] or "").strip(),
+            }
+        return profiles
+
+
+def mysql_sql_literal(conn, value: object) -> str:
+    """把 Python 值渲染成 MySQL 字面量；CURRENT_TIMESTAMP 之类表达式原样输出。"""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    if isinstance(value, (int, float)):
+        return repr(value)
+    text = str(value)
+    if _MYSQL_DEFAULT_EXPRESSION_RE.match(text.strip()):
+        return text.strip()
+    escape = getattr(conn, "escape", None)
+    if callable(escape):
+        return str(escape(text))
+    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+
+
+def mysql_max_text_length(rows: list[list[object]], index: int) -> int:
+    """返回本批数据中第 index 列的最大字符长度（None 忽略，非字符串按 str() 长度计）。"""
+    longest = 0
+    for row in rows:
+        if index >= len(row):
+            continue
+        value = row[index]
+        if value is None:
+            continue
+        text = value if isinstance(value, str) else str(value)
+        if len(text) > longest:
+            longest = len(text)
+    return longest
+
+
+def expand_mysql_character_columns(
+    conn, table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str]
+) -> None:
+    """autoExpand：把既有字符列拓宽到能容纳本批数据（只加宽，绝不缩短）。
+
+    仅处理 DATA_TYPE ∈ {varchar, char} 的列，且仅当本批实际最大长度 > 现有长度时才 ALTER；
+    新长度取 max(现有长度, 本批实际最大长度)。其他类型不处理，长度不足时由插入阶段给出提示。
+    """
+    if not rows:
+        return
+    profiles = mysql_character_column_profiles(conn, table_name)
+    if not profiles:
+        return
+    # 列名匹配同样要大小写不敏感：既有大写列 NAME 必须能被导入侧的小写 name 命中，
+    # 否则该列永远不会被拓宽，长数据最终在插入阶段报 1406。
+    profile_index = {str(profile["name"]).strip().lower(): profile for profile in profiles.values()}
+    table = db_quote(table_name, fields)
+    for index, column in enumerate(columns):
+        profile = profile_index.get(column.strip().lower())
+        if not profile:
+            continue
+        # 但重述列定义时必须用**实际列名**：MODIFY COLUMN `name` 会把大写列改名。
+        actual_column = str(profile["name"])
+        current = int(profile["length"])
+        needed = mysql_max_text_length(rows, index)
+        if needed <= current:
+            continue
+        definition = f"{db_quote(actual_column, fields)} {profile['data_type']}({needed})"
+        if profile["charset"]:
+            definition += f" character set {profile['charset']}"
+        if profile["collation"]:
+            definition += f" collate {profile['collation']}"
+        definition += " null" if profile["nullable"] else " not null"
+        if profile["default"] is not None:
+            definition += f" default {mysql_sql_literal(conn, profile['default'])}"
+        if profile["extra"]:
+            definition += " " + str(profile["extra"])
+        if profile["comment"] not in (None, ""):
+            definition += f" comment {mysql_sql_literal(conn, profile['comment'])}"
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f"alter table {table} modify column {definition}")
+        except Exception as exc:
+            # ALTER 失败（如参与主键/索引长度限制）必须暴露原因，不能吞掉。
+            raise ValueError(
+                f"自动扩展失败：无法把字段 {actual_column} 从 {current} 拓宽到 {needed} 字符，"
+                f"请检查该字段是否参与主键/索引长度限制或手动调整表结构。原始错误：{exc}"
+            ) from exc
+
+
+def mysql_error_code(exc: Exception) -> int:
+    """pymysql 异常的 args 通常是 (errno, errmsg)，取出 errno；取不到时返回 0。"""
+    args = getattr(exc, "args", ())
+    if args and isinstance(args[0], int):
+        return int(args[0])
+    return 0
+
+
+def wrap_mysql_insert_error(exc: Exception) -> Exception:
+    """把 MySQL「数据过长」类驱动异常翻译成一句可操作的中文提示。
+
+    非字符类型列（bigint / double / date …）不会被 autoExpand 拓宽，
+    因此这里必须给出可落地的建议，而不是把 (1406, "Data too long for column ...")
+    原样抛给用户。无法识别时返回原异常，保持其他错误原样暴露。
+    """
+    if mysql_error_code(exc) != 1406:
+        return exc
+    matched = _MYSQL_TOO_LONG_COLUMN_RE.search(str(exc))
+    column = matched.group(1) if matched else ""
+    target = f"字段 {column} " if column else "目标字段 "
+    return ValueError(
+        f"写入失败：{target}长度不足，数据库拒绝了本批数据。"
+        "自动扩展（autoExpand）只会拓宽字符类型（varchar/char）列，"
+        "其他类型或因索引限制无法拓宽时，请改用 typeMode=text，"
+        "或通过 columnTypeOverrides 调整该字段类型后再导入。"
+    )
+
+
 def target_create_or_expand_table(conn, table_name: str, columns: list[str], rows: list[list[object]], rebuild: bool, allow_expand: bool, fields: dict[str, str]) -> None:
     table = db_quote(table_name, fields)
     column_types = infer_column_types(columns, rows, fields)
@@ -1571,8 +1925,10 @@ def target_create_or_expand_table(conn, table_name: str, columns: list[str], row
             cursor.execute(sql)
     else:
         conn.execute(sql)
-    existing = target_existing_columns(conn, table_name, fields)
-    missing = [column for column in columns if column not in existing]
+    # 缺列判断必须大小写不敏感（MySQL/SQLite 的列名本身就不区分大小写），
+    # 否则「目标表已有大写列 NAME、导入侧列名 name」会被误判成缺列并触发 1060。
+    existing_keys = target_existing_column_keys(conn, table_name, fields)
+    missing = [column for column in columns if column.strip().lower() not in existing_keys]
     if missing and not allow_expand:
         raise ValueError(f"目标表缺少字段：{', '.join(missing)}")
     for column in missing:
@@ -1582,6 +1938,10 @@ def target_create_or_expand_table(conn, table_name: str, columns: list[str], row
                 cursor.execute(sql)
         else:
             conn.execute(sql)
+    # autoExpand：既补齐缺失列，也把已存在的**字符列**拓宽到能容纳本批数据。
+    # 仅在 MySQL 目标生效（SQLite 弱类型，不做处理）；autoExpand=false 时行为完全不变。
+    if allow_expand and target_db_type(fields) == "mysql":
+        expand_mysql_character_columns(conn, table_name, columns, rows, fields)
 
 
 def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str], progress=None) -> int:
@@ -1606,7 +1966,13 @@ def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[lis
     if target_db_type(fields) == "mysql":
         with conn.cursor() as cursor:
             for batch in batches:
-                cursor.executemany(sql, [project(row) for row in batch])
+                try:
+                    cursor.executemany(sql, [project(row) for row in batch])
+                except Exception as exc:
+                    wrapped = wrap_mysql_insert_error(exc)
+                    if wrapped is exc:
+                        raise
+                    raise wrapped from exc
                 total += len(batch)
                 if progress:
                     progress(total)
@@ -2023,13 +2389,118 @@ def export_field_list(value: object) -> list[str]:
     return export_split_list(value)
 
 
+def split_sql_statements(sql: str) -> list[str]:
+    """按分号切分 SQL 文本，跳过**引号内部**与**注释内部**的分号（引号 + 注释感知）。
+
+    - 引号：单引号字符串、双引号标识符/字符串、反引号标识符；反斜杠转义（MySQL 风格）
+      与引号双写（'' / "" / ``）都按"仍在字面量内"处理。
+    - 注释：``/* ... */`` 块注释（不要求嵌套，未闭合时剩余全部按注释处理）；
+      行注释 ``--`` **仅当其后跟空白或位于行尾**（MySQL 规则，因此 ``select 1--2``
+      里的 ``--`` 不是注释）；``#`` 行注释。
+    - 纯注释片段过滤：切分时维护 ``has_code`` 标记，**只有跳过注释与空白后仍有实际
+      代码**的片段才算一条语句；纯注释 / 纯空白 / 纯注释+空白的片段直接被丢弃。因此
+      ``select 1; -- tail`` 只有一条语句（``-- tail`` 属纯注释尾块），而
+      ``/* c1 */; select 1`` 也归一为一条（``/* c1 */`` 属纯注释前块）。
+    - 关键不变量：
+        1. 含代码的片段，其原文**逐字节 append** 进当前语句缓冲，本函数只决定在哪里
+           切分，绝不删改任何 SQL 文本。
+        2. **剥掉注释与空白后，输出与输入的代码内容完全一致**（语义零改动）；
+           被丢弃的只有"不含任何代码"的片段。
+        3. **无纯注释片段**的输入，仍满足更强的旧不变量：只产出一条语句时，返回值与
+           「去掉首尾空白 + 尾部分号后的原输入」逐字节一致（``select 1--2 as x`` 不会
+           被截成 ``select 1``）。
+
+    返回去掉首尾空白后的非空语句列表；分隔用的分号本身不属于任何语句。全为注释/空白/
+    分号的输入返回空列表（交给调用方按"无语句"处理，不在这里抛错）。
+    """
+    statements: list[str] = []
+    current: list[str] = []
+    quote_char = ""
+    has_code = False
+    index = 0
+    length = len(sql)
+    while index < length:
+        char = sql[index]
+        if quote_char:
+            current.append(char)
+            if char == "\\" and quote_char != "`" and index + 1 < length:
+                # 反斜杠转义：下一个字符无论是什么都不结束字面量
+                current.append(sql[index + 1])
+                index += 2
+                continue
+            if char == quote_char:
+                if index + 1 < length and sql[index + 1] == quote_char:
+                    # 引号双写（'' / "" / ``）表示字面量里的引号本身，字面量未结束
+                    current.append(sql[index + 1])
+                    index += 2
+                    continue
+                quote_char = ""
+            index += 1
+            continue
+        if char in {"'", '"', "`"}:
+            # 字面量本身即代码：开启引号即标记本片段含代码
+            quote_char = char
+            current.append(char)
+            has_code = True
+            index += 1
+            continue
+        if char == "/" and sql.startswith("/*", index):
+            # 块注释：整段原样保留（含未闭合时的剩余全部），内部的分号不切分；
+            # 注释不计入 has_code，故纯注释片段会被丢弃
+            closing = sql.find("*/", index + 2)
+            end = length if closing < 0 else closing + 2
+            current.append(sql[index:end])
+            index = end
+            continue
+        if char == "-" and sql.startswith("--", index) and (index + 2 >= length or sql[index + 2].isspace()):
+            # MySQL 行注释：-- 后必须跟空白/换行或位于行尾；不跟空白的 -- 是运算符/双写负号
+            newline = sql.find("\n", index)
+            end = length if newline < 0 else newline
+            current.append(sql[index:end])
+            index = end
+            continue
+        if char == "#":
+            # MySQL 行注释：独占到行尾
+            newline = sql.find("\n", index)
+            end = length if newline < 0 else newline
+            current.append(sql[index:end])
+            index = end
+            continue
+        if char == ";":
+            # 仅当本片段含实际代码时才产出一条语句；纯注释/纯空白片段被丢弃
+            if has_code:
+                text = "".join(current).strip()
+                if text:
+                    statements.append(text)
+            current = []
+            has_code = False
+        else:
+            current.append(char)
+            if not char.isspace():
+                has_code = True
+        index += 1
+    if has_code:
+        tail = "".join(current).strip()
+        if tail:
+            statements.append(tail)
+    return statements
+
+
 def export_query_from_item(item: dict[str, object], fields: dict[str, str]) -> tuple[str, str]:
     item_type = str(item.get("type") or "table")
     if item_type == "query":
         sql = str(item.get("sql") or "").strip()
         if not sql:
             raise ValueError("查询 SQL 不能为空。")
-        return sql, str(item.get("name") or "query")
+        # 归一化：去掉首尾空白与尾部分号（保持既有行为），同时给出可操作的多语句提示，
+        # 不再把驱动原文（如 near ";" syntax error）直接抛给用户。
+        statements = split_sql_statements(sql)
+        if len(statements) > 1:
+            raise ValueError("一次只能导出一条 SQL；检测到多条语句，请改用「多个查询」模式。")
+        if not statements:
+            # 整个输入只有空白/分号：保持原有行为，交给数据库报错。
+            return sql.rstrip(";").strip(), str(item.get("name") or "query")
+        return statements[0], str(item.get("name") or "query")
     table_name = str(item.get("table") or item.get("name") or "").strip()
     if not table_name:
         raise ValueError("请选择要导出的表。")
@@ -2040,6 +2511,38 @@ def export_query_from_item(item: dict[str, object], fields: dict[str, str]) -> t
     if where:
         sql += " where " + re.sub(r"^\s*where\s+", "", where, flags=re.I)
     return sql, table_name
+
+
+def export_header_labels(item: dict[str, object], columns: list[str], fields: dict[str, str], conn) -> list[str]:
+    """按 headerMode 解析导出表头标签（三条写出路径共用）。
+
+    - headerMode != "comment"（field / none）：原样返回 columns，行为与修复前逐字节一致。
+    - headerMode == "comment" 且目标是 MySQL 且 item 是表：取 information_schema 的字段注释，
+      注释为空的列回退用列名。
+    - headerMode == "comment" 但源头是查询（type=query）或目标是 SQLite：
+      两者都没有字段注释可用，一律回退用列名（不报错）。
+    """
+    if str(fields.get("headerMode") or "field").lower() != "comment":
+        return columns
+    if target_db_type(fields) != "mysql" or str(item.get("type") or "table") != "table":
+        return columns
+    table_name = str(item.get("table") or item.get("name") or "").strip()
+    if not table_name:
+        return columns
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select column_name, column_comment from information_schema.columns
+                where table_schema = database() and table_name = %s
+                """,
+                (table_name,),
+            )
+            comments = {str(row[0]): str(row[1] or "").strip() for row in cursor.fetchall()}
+    except Exception:
+        # 读不到注释时不影响导出本身，回退列名。
+        return columns
+    return [comments.get(column) or column for column in columns]
 
 
 def fetch_export_rows(conn, sql: str, fields: dict[str, str], limit: int = 0) -> tuple[list[str], list[list[object]]]:
@@ -2124,6 +2627,44 @@ def row_to_dict(columns: list[str], row: list[object]) -> dict[str, object]:
     return {column: row[index] if index < len(row) else None for index, column in enumerate(columns)}
 
 
+def open_exported_files(fields: dict[str, str], files: list[str]) -> None:
+    """导出完成后按界面选项在本机打开文件或所在文件夹。
+
+    这是桌面工具的使用场景：服务跑在用户自己机器上，用系统默认程序打开。
+    非 Windows、没有桌面会话、路径不存在时静默跳过，绝不影响导出结果本身。
+    此前这两个选项只被前端采集进任务配置，后端从未读取，属于"假开关"。
+    """
+    if os.name != "nt":
+        return
+    want_file = parse_bool(fields, "openFileAfterExport", False)
+    want_folder = parse_bool(fields, "openFolderAfterExport", False)
+    if not (want_file or want_folder):
+        return
+
+    def launch(target: str, opened: set[str]) -> None:
+        if not target or target in opened:
+            return
+        opened.add(target)
+        try:
+            os.startfile(target)  # type: ignore[attr-defined]
+        except Exception:
+            # 打开失败不影响导出结果，用户仍可手动去目录里取文件
+            return
+
+    opened: set[str] = set()
+    if want_folder:
+        for item in files:
+            folder = Path(str(item)).parent
+            if folder.is_dir():
+                launch(str(folder), opened)
+    if want_file:
+        # 只打开前几个，避免一次导出几十个文件时弹满屏幕的窗口
+        for item in files[:5]:
+            path = Path(str(item))
+            if path.is_file():
+                launch(str(path), opened)
+
+
 def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -> Path:
     extension = extension.lower().lstrip(".") or "xlsx"
     if extension == "xls":
@@ -2196,42 +2737,137 @@ def native_pick_path(mode: str, initial: str = "", extension: str = "", suggest:
     com_initialized = ole32.CoInitialize(None) in (0, 1)
     try:
         if mode == "folder":
+            # 为什么不用 SHBrowseForFolderW：
+            #   实测在 BIF_NEWDIALOGSTYLE 下 BFFM_SETSELECTIONW 完全不生效 —— 8 种组合
+            #   （发给顶层 #32770 / 回调 hwnd / 回调 root，传 pidl / 传宽字符串，带 /
+            #   不带 NEWDIALOGSTYLE）SendMessage 全返回 0，对话框里显示的还是默认目录，
+            #   用户点确定只能拿到 C:\Users\<用户>。回调本身是通的（确实收到
+            #   BFFM_INITIALIZED=1，且 hwnd 就是顶层对话框），所以不是接线问题。
+            # 改用 Vista+ 的通用项对话框：IFileDialog + FOS_PICKFOLDERS + SetFolder，
+            #   实测地址栏直接显示 initial 目录，点确定返回的正是该目录。
+            SIGDN_FILESYSPATH = 0x80058000
+            S_OK = 0
+            ERROR_CANCELLED = 0x800704C7
+            CLSCTX_INPROC_SERVER = 1
+            FOS_PICKFOLDERS = 0x00000020
+            FOS_FORCEFILESYSTEM = 0x00000040
+            FOS_PATHMUSTEXIST = 0x00000800
+            CLSID_FILE_OPEN_DIALOG = "DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7"
+            IID_FILE_DIALOG = "42F85136-DB7E-439C-85F1-E4075D135FC8"
+            IID_SHELL_ITEM = "43826D1E-E718-42EE-BC55-A1E261C37BFE"
+            # COM vtable 下标：IUnknown(QueryInterface/AddRef/Release)=0/1/2，
+            # IModalWindow::Show=3，IFileDialog::SetOptions=9、SetFolder=12、
+            # SetTitle=17、GetResult=20，IShellItem::GetDisplayName=5。
+            VT_RELEASE = 2
+            VT_SHOW = 3
+            VT_SET_OPTIONS = 9
+            VT_SET_FOLDER = 12
+            VT_SET_TITLE = 17
+            VT_GET_RESULT = 20
+            VT_GET_DISPLAY_NAME = 5
 
-            class BROWSEINFOW(ctypes.Structure):
+            class GUID(ctypes.Structure):
                 _fields_ = [
-                    ("hwndOwner", wintypes.HWND),
-                    ("pidlRoot", ctypes.c_void_p),
-                    ("pszDisplayName", ctypes.c_void_p),
-                    ("lpszTitle", wintypes.LPCWSTR),
-                    ("ulFlags", ctypes.c_uint),
-                    ("lpfn", ctypes.c_void_p),
-                    ("lParam", ctypes.c_void_p),
-                    ("iImage", ctypes.c_int),
+                    ("Data1", ctypes.c_ulong),
+                    ("Data2", ctypes.c_ushort),
+                    ("Data3", ctypes.c_ushort),
+                    ("Data4", ctypes.c_ubyte * 8),
                 ]
 
-            shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
-            shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
-            shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
-            shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
+            ole32.CLSIDFromString.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(GUID)]
+            ole32.CLSIDFromString.restype = ctypes.c_long
+            ole32.CoCreateInstance.argtypes = [
+                ctypes.POINTER(GUID),
+                ctypes.c_void_p,
+                wintypes.DWORD,
+                ctypes.POINTER(GUID),
+                ctypes.POINTER(ctypes.c_void_p),
+            ]
+            ole32.CoCreateInstance.restype = ctypes.c_long
+            shell32.SHCreateItemFromParsingName.argtypes = [
+                wintypes.LPCWSTR,
+                ctypes.c_void_p,
+                ctypes.POINTER(GUID),
+                ctypes.POINTER(ctypes.c_void_p),
+            ]
+            shell32.SHCreateItemFromParsingName.restype = ctypes.c_long
 
-            display = ctypes.create_unicode_buffer(max_path)
-            info = BROWSEINFOW()
-            info.hwndOwner = None
-            info.pidlRoot = None
-            info.pszDisplayName = ctypes.addressof(display)
-            info.lpszTitle = "选择导出文件夹（选择后会显示完整路径）"
-            # RETURNONLYFSDIRS | EDITBOX | NEWDIALOGSTYLE：新版对话框，带可直接粘贴路径的输入框。
-            info.ulFlags = 0x0001 | 0x0010 | 0x0040
-            pidl = shell32.SHBrowseForFolderW(ctypes.byref(info))
-            if not pidl:
-                return ""
+            def make_guid(text: str) -> GUID:
+                """字符串转 GUID；CLSIDFromString 只认带花括号的写法。"""
+                value = GUID()
+                if ole32.CLSIDFromString("{" + text + "}", ctypes.byref(value)) != 0:
+                    raise RuntimeError(f"无效的 COM GUID：{text}")
+                return value
+
+            def com_method(pointer, index: int, restype, *arg_types):
+                """按 vtable 下标取 COM 方法（this 指针作为第一个参数传入）。"""
+                vtable = ctypes.cast(pointer, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p)))[0]
+                return ctypes.WINFUNCTYPE(restype, ctypes.c_void_p, *arg_types)(vtable[index])
+
+            dialog = ctypes.c_void_p()
+            folder_item = ctypes.c_void_p()
+            result_item = ctypes.c_void_p()
             try:
-                buffer = ctypes.create_unicode_buffer(max_path)
-                if not shell32.SHGetPathFromIDListW(pidl, buffer):
+                created = ole32.CoCreateInstance(
+                    ctypes.byref(make_guid(CLSID_FILE_OPEN_DIALOG)),
+                    None,
+                    CLSCTX_INPROC_SERVER,
+                    ctypes.byref(make_guid(IID_FILE_DIALOG)),
+                    ctypes.byref(dialog),
+                )
+                if created != S_OK or not dialog.value:
+                    raise RuntimeError(f"无法创建系统文件夹选择对话框（HRESULT={created & 0xFFFFFFFF:#010x}）")
+
+                set_options = com_method(dialog, VT_SET_OPTIONS, ctypes.c_long, wintypes.DWORD)
+                set_options(dialog, FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST)
+                set_title = com_method(dialog, VT_SET_TITLE, ctypes.c_long, wintypes.LPCWSTR)
+                set_title(dialog, "选择导出文件夹（选择后会显示完整路径）")
+
+                # initial 不存在时退到它的父目录；再不可用就不设初值，让系统用自己的默认位置。
+                directory = resolve_initial_dir(initial)
+                if directory:
+                    item_hr = shell32.SHCreateItemFromParsingName(
+                        directory,
+                        None,
+                        ctypes.byref(make_guid(IID_SHELL_ITEM)),
+                        ctypes.byref(folder_item),
+                    )
+                    if item_hr == S_OK and folder_item.value:
+                        set_folder = com_method(dialog, VT_SET_FOLDER, ctypes.c_long, ctypes.c_void_p)
+                        set_folder(dialog, folder_item.value)
+
+                shown = com_method(dialog, VT_SHOW, ctypes.c_long, wintypes.HWND)(dialog, None)
+                if shown & 0xFFFFFFFF == ERROR_CANCELLED:
                     return ""
-                return buffer.value
+                if shown != S_OK:
+                    raise RuntimeError(f"文件夹选择对话框返回失败（HRESULT={shown & 0xFFFFFFFF:#010x}）")
+
+                get_result = com_method(
+                    dialog, VT_GET_RESULT, ctypes.c_long, ctypes.POINTER(ctypes.c_void_p)
+                )
+                if get_result(dialog, ctypes.byref(result_item)) != S_OK or not result_item.value:
+                    return ""
+                get_display_name = com_method(
+                    result_item,
+                    VT_GET_DISPLAY_NAME,
+                    ctypes.c_long,
+                    ctypes.c_uint,
+                    ctypes.POINTER(ctypes.c_void_p),
+                )
+                path_pointer = ctypes.c_void_p()
+                if get_display_name(result_item, SIGDN_FILESYSPATH, ctypes.byref(path_pointer)) != S_OK:
+                    return ""
+                if not path_pointer.value:
+                    return ""
+                try:
+                    return ctypes.wstring_at(path_pointer.value)
+                finally:
+                    ole32.CoTaskMemFree(path_pointer)
             finally:
-                ole32.CoTaskMemFree(pidl)
+                # 三个 COM 对象按「后拿先放」顺序 Release，避免泄漏。
+                for borrowed in (result_item, folder_item, dialog):
+                    if borrowed.value:
+                        com_method(borrowed, VT_RELEASE, ctypes.c_ulong)(borrowed)
 
         if mode == "file":
 
@@ -2305,11 +2941,88 @@ def native_pick_path(mode: str, initial: str = "", extension: str = "", suggest:
             ole32.CoUninitialize()
 
 
-def write_rows_to_sheet(sheet, columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> None:
+# ---------------------------------------------------------------------------
+# M12-011: 给原生选择框加「超时看门狗」。
+# native_pick_path 内部的 Show()/GetSaveFileNameW 是同步阻塞的，会一直占用调用线程，
+# 直到有人关掉窗口。若调用方超时/断开，窗口就会残留在桌面成为幽灵窗口。
+# 这里保持同步接口不变（方案 B），另起一个 watchdog 线程：超时后通过 EnumWindows
+# 找到本次请求新弹出的 #32770 窗口并 PostMessage(WM_CLOSE)，让 Show() 返回
+# ERROR_CANCELLED，请求以 cancelled:true 正常结束，桌面不再残留窗口。
+# 安全点：只按窗口类名 #32770 匹配 + 「本次请求前不存在」的基线排除，绝不按标题关键词
+# 过滤（历史上曾因标题关键词匹配误关用户自己的 Chrome 窗口）。
+# 注：本环境下 IFileDialog 会把 UI 代理到另一个进程（实测对话框 PID 与服务器不同），
+# 按 PID 过滤反而永远匹配不到、无法清理；改用基线对比可无论是否代理都精准命中本请求的窗口。
+# 超时时长可配：模块常量 NATIVE_DIALOG_TIMEOUT，或环境变量 NATIVE_DIALOG_TIMEOUT（秒）。
+# ---------------------------------------------------------------------------
+NATIVE_DIALOG_TIMEOUT = float(os.environ.get("NATIVE_DIALOG_TIMEOUT", "120"))
+
+
+def _snapshot_dialogs() -> set[int]:
+    """快照：当前系统里所有顶层 #32770 窗口（不限进程），用于基线对比。"""
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    found: set[int] = set()
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, lparam):
+        cls = ctypes.create_unicode_buffer(256)
+        u.GetClassNameW(hwnd, cls, 256)
+        if cls.value == "#32770":
+            found.add(int(hwnd))
+        return True
+
+    u.EnumWindows(cb, 0)
+    return found
+
+
+def _close_new_dialogs(baseline: set[int]) -> list[int]:
+    """关闭本次请求新出现的 #32770 窗口（基线之外的），强制 Show()/GetSaveFileNameW 取消。
+
+    只按类名 #32770 匹配 + 基线排除（不碰请求前已存在的窗口，避免误伤用户其它对话框）；
+    绝不按标题过滤。返回被关闭窗口的 HWND 列表。
+    """
+    import ctypes
+    from ctypes import wintypes
+    u = ctypes.WinDLL("user32", use_last_error=True)
+    u.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    closed: list[int] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def cb(hwnd, lparam):
+        cls = ctypes.create_unicode_buffer(256)
+        u.GetClassNameW(hwnd, cls, 256)
+        if cls.value != "#32770":
+            return True
+        if int(hwnd) in baseline:
+            return True
+        u.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+        closed.append(int(hwnd))
+        return True
+
+    u.EnumWindows(cb, 0)
+    return closed
+
+
+def _dialog_watchdog(timeout: float, baseline: set[int], stop: threading.Event) -> list[int]:
+    """看门狗：stop 触发前对话框仍开着（调用方超时/断开），则强制关闭本次新弹出的窗口。"""
+    if stop.wait(timeout):
+        return []
+    return _close_new_dialogs(baseline)
+
+
+def write_rows_to_sheet(
+    sheet,
+    columns: list[str],
+    rows: list[list[object]],
+    fields: dict[str, str],
+    header_labels: list[str] | None = None,
+) -> None:
     header_mode = str(fields.get("headerMode") or "field").lower()
     include_header = header_mode != "none"
     if include_header:
-        sheet.append(columns)
+        sheet.append(header_labels or columns)
     for row in rows:
         sheet.append(row)
 
@@ -2334,22 +3047,36 @@ def write_rows_to_sheet(sheet, columns: list[str], rows: list[list[object]], fie
             if add_border:
                 cell.border = border
 
-    if parse_bool(fields, "lockHeader", False) and include_header:
-        sheet.protection.sheet = True
-        for cell in sheet[1]:
-            cell.protection = Protection(locked=True)
+    # 锁定：openpyxl 的单元格默认就是 locked=True，直接开工作表保护会把整张表都变成只读，
+    # 而不是只锁表头行或指定列。所以先把整张表解锁，再只锁目标单元格，锁定范围才和界面上
+    # 写的「锁定表头行 / 锁定指定列」一致。
+    lock_header = parse_bool(fields, "lockHeader", False) and include_header
     locked_columns = export_split_list(fields.get("lockedColumns", ""))
-    if locked_columns:
+    if lock_header or locked_columns:
+        for row in sheet.iter_rows():
+            for cell in row:
+                cell.protection = Protection(locked=False)
+        if lock_header:
+            for cell in sheet[1]:
+                cell.protection = Protection(locked=True)
+        if locked_columns:
+            column_indexes = {name: index + 1 for index, name in enumerate(columns)}
+            for name in locked_columns:
+                col_idx = column_indexes.get(name)
+                if col_idx:
+                    for row_idx in range(1, sheet.max_row + 1):
+                        sheet.cell(row=row_idx, column=col_idx).protection = Protection(locked=True)
         sheet.protection.sheet = True
-        column_indexes = {name: index + 1 for index, name in enumerate(columns)}
-        for name in locked_columns:
-            col_idx = column_indexes.get(name)
-            if col_idx:
-                for row_idx in range(1, sheet.max_row + 1):
-                    sheet.cell(row=row_idx, column=col_idx).protection = Protection(locked=True)
 
 
-def write_export_file(path: Path, columns: list[str], rows: list[list[object]], fields: dict[str, str], sheet_name: str) -> None:
+def write_export_file(
+    path: Path,
+    columns: list[str],
+    rows: list[list[object]],
+    fields: dict[str, str],
+    sheet_name: str,
+    header_labels: list[str] | None = None,
+) -> None:
     EXPORTS.mkdir(parents=True, exist_ok=True)
     extension = path.suffix.lower()
     if extension == ".xlsx":
@@ -2363,7 +3090,7 @@ def write_export_file(path: Path, columns: list[str], rows: list[list[object]], 
             workbook = Workbook()
             sheet = workbook.active
             sheet.title = sheet_name
-        write_rows_to_sheet(sheet, columns, rows, fields)
+        write_rows_to_sheet(sheet, columns, rows, fields, header_labels)
         workbook.save(path)
         return
     if extension in {".csv", ".txt"}:
@@ -2373,7 +3100,7 @@ def write_export_file(path: Path, columns: list[str], rows: list[list[object]], 
         with path.open("w", encoding=encoding, newline="") as handle:
             writer = csv.writer(handle, delimiter=delimiter, lineterminator=line_delimiter)
             if str(fields.get("headerMode") or "field") != "none":
-                writer.writerow(columns)
+                writer.writerow(header_labels or columns)
             writer.writerows(rows)
         return
     if extension == ".json":
@@ -2418,6 +3145,7 @@ def write_export_file_streaming(
     batches: Iterable[list[list[object]]],
     fields: dict[str, str],
     sheet_name: str,
+    header_labels: list[str] | None = None,
 ) -> int:
     EXPORTS.mkdir(parents=True, exist_ok=True)
     extension = path.suffix.lower()
@@ -2436,7 +3164,7 @@ def write_export_file_streaming(
             for col_idx in range(1, len(columns) + 1):
                 sheet.column_dimensions[get_column_letter(col_idx)].width = col_width
         if include_header:
-            styled_write_only_row(sheet, columns, fields, header=True)
+            styled_write_only_row(sheet, header_labels or columns, fields, header=True)
         for batch in batches:
             for row in batch:
                 styled_write_only_row(sheet, row, fields)
@@ -2451,7 +3179,7 @@ def write_export_file_streaming(
         with path.open("w", encoding=encoding, newline="") as handle:
             writer = csv.writer(handle, delimiter=delimiter, lineterminator=line_delimiter)
             if include_header:
-                writer.writerow(columns)
+                writer.writerow(header_labels or columns)
             for batch in batches:
                 writer.writerows(batch)
                 rows_written += len(batch)
@@ -2554,7 +3282,17 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
         target_execute_sql_batch(conn, str(payload.get("beforeSql") or ""), "导出开始前 SQL", fields)
         split_field = str(fields.get("splitField") or "").strip()
         split_by_batch = parse_bool(fields, "splitByBatch", False) and int(fields.get("batchRows") or 0) > 0
-        can_stream = not split_field and not split_by_batch and str(fields.get("exportMode") or "workbook") == "workbook"
+        lock_requested = parse_bool(fields, "lockHeader", False) or bool(
+            export_split_list(fields.get("lockedColumns", ""))
+        )
+        # 流式写入用的是 write_only 工作簿，没法逐格设置锁定；一旦要求锁定就改走普通写入，
+        # 否则「锁定表头行 / 锁定指定列」会被静默忽略。
+        can_stream = (
+            not split_field
+            and not split_by_batch
+            and not lock_requested
+            and str(fields.get("exportMode") or "workbook") == "workbook"
+        )
 
         if can_stream and extension == "xlsx" and len(items) > 1:
             workbook = Workbook(write_only=True)
@@ -2565,6 +3303,7 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                 sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
                 sheet = workbook.create_sheet(sheet_name)
                 row_count = 0
+                header_labels: list[str] = []
                 export_time_field = str(fields.get("exportTimeField") or "").strip()
                 export_time_value = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 batch_limit = int(fields.get("batchRows") or 0) if parse_bool(fields, "splitByBatch", False) else 0
@@ -2572,7 +3311,9 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                     if export_time_field and export_time_field not in columns:
                         columns = columns + [export_time_field]
                     if row_count == 0 and str(fields.get("headerMode") or "field") != "none":
-                        styled_write_only_row(sheet, columns, fields, header=True)
+                        # 按当前 item 的源表取注释（不能复用上一个 item 的映射）
+                        header_labels = export_header_labels(item, columns, fields, conn)
+                        styled_write_only_row(sheet, header_labels or columns, fields, header=True)
                     batch = add_export_time_to_batch(batch, export_time_field, export_time_value)
                     if batch_limit:
                         batch = batch[: max(0, batch_limit - row_count)]
@@ -2627,7 +3368,15 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                             continue
                         first_columns = []
                         first_batch = []
-                    row_count = write_export_file_streaming(path, first_columns, chain([first_batch], buffered_batches), fields, sheet_name)
+                    header_labels = export_header_labels(item, first_columns, fields, conn)
+                    row_count = write_export_file_streaming(
+                        path,
+                        first_columns,
+                        chain([first_batch], buffered_batches),
+                        fields,
+                        sheet_name,
+                        header_labels,
+                    )
                     written_files.append(str(path))
                     total_rows += row_count
                 else:
@@ -2635,14 +3384,29 @@ def run_export_job(payload: dict[str, object]) -> dict[str, object]:
                     columns, rows = add_export_time_column(columns, rows, str(fields.get("exportTimeField") or ""))
                     if parse_bool(fields, "skipEmptyTable", False) and not rows:
                         continue
+                    # P2-14：按字段分割时的两个附加选项（此前只被界面采集、后端从未读取）
+                    #   splitIntoFolder    —— 每个分组值单独建一个文件夹
+                    #   splitNameWithField —— 文件名固定用「字段名_表名」，靠文件夹区分分组；
+                    #                         未分文件夹时仍拼上分组值，避免同名互相覆盖。
+                    split_into_folder = parse_bool(fields, "splitIntoFolder", False)
+                    split_name_with_field = parse_bool(fields, "splitNameWithField", False)
+                    header_labels = export_header_labels(item, columns, fields, conn)
                     groups = group_rows_by_field(columns, rows, split_field)
                     for group_name, group_rows in groups.items():
                         group_base_name = base_name
                         if group_name:
-                            group_base_name = f"{group_base_name}_{group_name}"
+                            if split_name_with_field:
+                                group_base_name = f"{split_field}_{base_name}"
+                                if not split_into_folder:
+                                    group_base_name = f"{group_base_name}_{group_name}"
+                            else:
+                                group_base_name = f"{group_base_name}_{group_name}"
                         for chunk_suffix, chunk_rows in split_rows_by_batch(group_rows, fields):
                             chunk_path = export_target_path(f"{group_base_name}{chunk_suffix}", extension, fields)
-                            write_export_file(chunk_path, columns, chunk_rows, fields, sheet_name)
+                            if split_into_folder and group_name:
+                                chunk_path = chunk_path.parent / safe_file_stem(group_name, "group") / chunk_path.name
+                            chunk_path.parent.mkdir(parents=True, exist_ok=True)
+                            write_export_file(chunk_path, columns, chunk_rows, fields, sheet_name, header_labels)
                             written_files.append(str(chunk_path))
                             total_rows += len(chunk_rows)
         target_execute_sql_batch(conn, str(payload.get("afterSql") or ""), "导出结束后 SQL", fields)
@@ -2661,16 +3425,76 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
     items = payload.get("items")
     if isinstance(items, list) and items and isinstance(items[0], dict):
-        item = items[0]
+        item_list = [entry for entry in items if isinstance(entry, dict)]
     else:
-        item = {"type": payload.get("sourceType") or "table", "name": payload.get("table") or "query", "table": payload.get("table"), "sql": payload.get("sql")}
-    sql, source_name = export_query_from_item(item, fields)
+        item_list = [
+            {
+                "type": payload.get("sourceType") or "table",
+                "name": payload.get("table") or "query",
+                "table": payload.get("table"),
+                "sql": payload.get("sql"),
+            }
+        ]
+    item_count = len(item_list)
+    # 先解析每个 item 的 SQL 与来源名（解析阶段失败不挡整体，标记错误占位）。
+    source_names: list[str] = []
+    parsed_items: list[tuple[dict, "str | None", "str | None"]] = []
+    for entry in item_list:
+        try:
+            sql, source_name = export_query_from_item(entry, fields)
+            parsed_items.append((entry, sql, source_name))
+            source_names.append(source_name)
+        except ValueError:
+            # 名称解析失败不应挡住预览本身，回退用 item 自带的名字。
+            source_names.append(str(entry.get("name") or entry.get("table") or ""))
+            parsed_items.append((entry, None, None))
+
+    # 真实预览全部 item：每个 item 各自受 MAX_PREVIEW_ROWS 限制（互不抢占内存，
+    # 不会让 N 个查询把内存打爆）；某个 item 执行失败（如语法错误）只影响该 item，
+    # 返回错误占位、其余照常返回，避免整个预览请求 500。
+    previews: list[dict[str, object]] = []
     conn = connect_target_db(fields)
     try:
-        columns, rows = fetch_export_rows(conn, sql, fields, MAX_PREVIEW_ROWS)
+        for entry, sql, source_name in parsed_items:
+            if sql is None:
+                previews.append({
+                    "sourceName": str(entry.get("name") or entry.get("table") or ""),
+                    "columns": [],
+                    "rows": [],
+                    "ok": False,
+                    "error": "查询解析失败（请检查表名或 SQL）。",
+                })
+                continue
+            try:
+                columns, rows = fetch_export_rows(conn, sql, fields, MAX_PREVIEW_ROWS)
+                previews.append({
+                    "sourceName": source_name,
+                    "columns": columns,
+                    "rows": [[cell_to_text(cell) for cell in row] for row in rows],
+                    "ok": True,
+                    "error": None,
+                })
+            except Exception as exc:
+                previews.append({
+                    "sourceName": source_name,
+                    "columns": [],
+                    "rows": [],
+                    "ok": False,
+                    "error": friendly_export_error(exc, fields),
+                })
     finally:
         conn.close()
-    return {"sourceName": source_name, "columns": columns, "rows": [[cell_to_text(cell) for cell in row] for row in rows]}
+
+    # 顶层兼容字段：取值 = 第 1 个 item 的预览结果（旧调用方依赖 sourceName/columns/rows）。
+    first_preview = previews[0] if previews else None
+    return {
+        "sourceName": first_preview["sourceName"] if first_preview else "",
+        "columns": first_preview["columns"] if first_preview else [],
+        "rows": first_preview["rows"] if first_preview else [],
+        "itemCount": item_count,
+        "sourceNames": source_names,
+        "previews": previews,
+    }
 
 
 def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
@@ -3259,6 +4083,10 @@ def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -
     if gtype == "date_match":
         now = now or dt.datetime.now()
         mode = str(guard.get("mode") or "weekday").strip().lower()
+        if mode not in {"range", "dates", "weekday", "monthday"}:
+            # 模式拼错（如 weekdayy）此前会走到末尾静默返回 (True, "")，条件等于没配；
+            # 这里显式失败，让用户在作业日志里看到真实原因。
+            raise ValueError(f"作业执行条件：不支持的日期模式：{mode}。")
         today = now.strftime("%Y-%m-%d")
         if mode == "range":
             start = str(guard.get("start") or "").strip()[:10]
@@ -3277,24 +4105,27 @@ def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -
             return True, "今天为作业指定执行日期"
         values = guard.get("values") if isinstance(guard.get("values"), list) else []
         try:
+            # 宽松解析：合法数字项照常生效，空串 / 非数字垃圾项直接忽略。
             nums = sorted({int(v) for v in values if str(v).strip().isdigit()})
         except (TypeError, ValueError):
             nums = []
-        if not nums:
-            return True, ""
         if mode == "weekday":
+            if not nums:
+                # 空列表或全是垃圾值会让条件形同虚设（等于天天执行），与 dates/range 保持一致显式报错。
+                raise ValueError("作业执行条件：请至少选择一个执行日。")
             today_wd = now.isoweekday()  # 1=周一 .. 7=周日
             if today_wd not in nums:
                 names = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
                 label = "、".join(f"周{names.get(n, n)}" for n in nums)
                 return False, f"作业仅在 {label} 执行，今天不是执行日，作业已跳过"
             return True, "今天为作业执行日"
-        if mode == "monthday":
-            today_md = now.day
-            if today_md not in nums:
-                return False, f"作业仅在每月 {nums} 号执行，今天 {today_md} 号不是执行日，作业已跳过"
-            return True, "今天为作业执行日"
-        return True, ""
+        # mode == "monthday"（mode 已在上面校验过，只剩这一种可能）
+        if not nums:
+            raise ValueError("作业执行条件：请至少选择一个执行日。")
+        today_md = now.day
+        if today_md not in nums:
+            return False, f"作业仅在每月 {nums} 号执行，今天 {today_md} 号不是执行日，作业已跳过"
+        return True, "今天为作业执行日"
     raise ValueError(f"不支持的作业执行条件类型：{gtype}")
 
 
@@ -3774,8 +4605,8 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         cp_key = checkpoint_key(uploaded, table_name, fields)
         resume_offset = get_checkpoint(cp_key) if parse_bool(fields, "resumeImport", False) and mode in {"append", "rebuild", "overwrite"} else 0
         target_create_or_expand_table(conn, table_name, columns, rows, mode == "rebuild" and resume_offset == 0, parse_bool(fields, "autoExpand", True), fields)
-        existing = target_existing_columns(conn, table_name, fields)
-        if any(column not in existing for column in columns):
+        existing_keys = target_existing_column_keys(conn, table_name, fields)
+        if any(column.strip().lower() not in existing_keys for column in columns):
             raise ValueError("目标表字段与当前导入字段不一致。")
         rows_before = target_row_count(conn, table_name, fields)
 
@@ -3956,8 +4787,16 @@ def bind_host() -> str:
 # Connection credential query parameters that must never reach the logs (P1-3).
 SENSITIVE_QUERY_PARAMS = ("dbPassword", "dbPasswordSecret", "password")
 
+# 脱敏必须把「整个敏感值」吃掉，同时又绝不能吞掉后面的合法参数（例如 &z=1）。
+# 取值优先级（三选一，靠前的优先）：
+#   1) 成对引号包裹（单/双）—— 引号内部允许空格、& 等任意字符，因此
+#      ?dbPassword='a b'&z=1 会被整体抹成 ***，且 &z=1 原样保留。
+#      （旧写法用 [^&#\s]* 取值，遇到引号内的空格就提前截断，把 " b'" 漏了出去）
+#   2) 无引号值 —— 退化为「取到 & / # / 空白为止」，与既有行为完全一致；
+#   3) 引号未闭合 —— 成对分支匹配失败后自动落回无引号分支，后续参数仍然保留。
 _SENSITIVE_QUERY_VALUE_RE = re.compile(
-    r"([?&](?:" + "|".join(re.escape(p) for p in SENSITIVE_QUERY_PARAMS) + r")=)[^&#\s\"']*",
+    r"([?&](?:" + "|".join(re.escape(p) for p in SENSITIVE_QUERY_PARAMS) + r")=)"
+    r"(?:\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^&#\s]*)",
     re.IGNORECASE,
 )
 
@@ -4045,11 +4884,16 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/logs":
                 self.handle_logs()
                 return
+            # 版本标识统一到唯一真值来源 APP_VERSION：两个探活/元信息接口都同时返回
+            # appVersion（前端侧边栏读它）与 version（打包冒烟脚本读它），避免口径漂移。
             if parsed.path == "/api/ping":
-                json_response(self, {"ok": True, "version": "export-v2-download"})
+                json_response(self, {"ok": True, "appVersion": APP_VERSION, "version": APP_VERSION})
                 return
             if parsed.path == "/api/meta":
-                json_response(self, {"ok": True, "appVersion": APP_VERSION})
+                json_response(self, {"ok": True, "appVersion": APP_VERSION, "version": APP_VERSION})
+                return
+            if parsed.path == "/api/docs":
+                self.handle_docs(parsed.query)
                 return
             if parsed.path == "/api/storage/status":
                 self.handle_storage_status()
@@ -4476,6 +5320,23 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             },
         )
 
+    def handle_docs(self, query: str) -> None:
+        """返回帮助中心目录索引或一篇文档渲染后的 HTML。
+
+        /api/docs                   -> 目录索引（首页任务卡片 + 侧栏树）
+        /api/docs?id=user/import    -> 该文档的渲染 HTML
+        """
+        params = parse_qs(query)
+        doc_id = (params.get("id") or [""])[0].strip()
+        if not doc_id:
+            json_response(self, doc_index_payload())
+            return
+        title, html = load_doc_content(doc_id)
+        if not html:
+            error_response(self, "文档不存在。", HTTPStatus.NOT_FOUND)
+            return
+        json_response(self, {"ok": True, "id": doc_id, "title": title, "html": html})
+
     def handle_connections(self) -> None:
         with connect_db() as conn:
             rows = conn.execute("select * from _db_connections order by updated_at desc, name").fetchall()
@@ -4737,6 +5598,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         except Exception as exc:
             fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
             raise ValueError(friendly_export_error(exc, fields)) from exc
+        fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+        # 「导出完成后打开文件 / 打开文件夹」——此前只采集不执行，这里补上真正的动作。
+        open_exported_files(fields, [str(path) for path in result["files"]])
         json_response(
             self,
             {
@@ -4767,6 +5631,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.NOT_IMPLEMENTED,
             )
             return
+        # M12-011: 同步弹框 + 超时看门狗，避免 HTTP 线程被无限占用、超时后残留幽灵窗口。
+        # 先拍基线：本次请求前系统里已有的 #32770 窗口（含其它进程），看门狗只关新弹出的。
+        baseline = _snapshot_dialogs()
+        stop = threading.Event()
+        threading.Thread(
+            target=_dialog_watchdog,
+            args=(NATIVE_DIALOG_TIMEOUT, baseline, stop),
+            daemon=True,
+        ).start()
         try:
             path = native_pick_path(
                 mode,
@@ -4783,6 +5656,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.NOT_IMPLEMENTED,
             )
             return
+        finally:
+            stop.set()
         json_response(self, {"ok": True, "path": path, "cancelled": path == ""})
 
     def handle_export_download(self, query: str) -> None:
