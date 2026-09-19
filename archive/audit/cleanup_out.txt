@@ -1,0 +1,66 @@
+========================================================================
+清理对象清单（共 18 项）
+========================================================================
+  [目录] dist                                                      80.2M
+  [目录] build                                                     32.8M
+  [目录] __pycache__                                              766.4K
+  [目录] .pytest_cache                                              3.3K
+  [目录] scripts/__pycache__                                       25.8K
+  [文件] data/imports.db.bak_20260912_before_restore              588.0K
+  [文件] data/imports.db.bak_20260912_restore                     588.0K
+  [文件] data/imports.db.bak_before_restore                         2.9M
+  [文件] data/imports.db.bak_cleanup                                2.9M
+  [文件] data/imports.db.bak_orphan_cleanup                         2.9M
+  [文件] data/imports.db.bak_pathfix                                2.9M
+  [文件] data/server.log                                           12.8K
+  [文件] data/server.session.log                                    2.8K
+  [文件] data/server_test.log                                     164.0B
+  [文件] data/watchdog.log                                          6.6K
+  [文件] data/proc_chain.txt                                      789.0B
+  [文件] data/wmi_launch.txt                                       25.0B
+  [文件] data/app.db                                                0.0B
+
+========================================================================
+送回收站 ...
+========================================================================
+  !! dist                                                 rc=120 aborted=False
+  !! build                                                rc=2 aborted=False
+  !! __pycache__                                          rc=2 aborted=False
+  !! .pytest_cache                                        rc=2 aborted=False
+  !! scripts/__pycache__                                  rc=2 aborted=False
+  !! data/imports.db.bak_20260912_before_restore          rc=2 aborted=False
+  !! data/imports.db.bak_20260912_restore                 rc=2 aborted=False
+  !! data/imports.db.bak_before_restore                   rc=2 aborted=False
+  !! data/imports.db.bak_cleanup                          rc=2 aborted=False
+  !! data/imports.db.bak_orphan_cleanup                   rc=2 aborted=False
+  !! data/imports.db.bak_pathfix                          rc=2 aborted=False
+  !! data/server.log                                      rc=2 aborted=False
+  !! data/server.session.log                              rc=2 aborted=False
+  !! data/server_test.log                                 rc=2 aborted=False
+  !! data/watchdog.log                                    rc=2 aborted=False
+  !! data/proc_chain.txt                                  rc=2 aborted=False
+  !! data/wmi_launch.txt                                  rc=2 aborted=False
+  !! data/app.db                                          rc=2 aborted=False
+
+========================================================================
+复核：保护清单必须全部仍在
+========================================================================
+  data/.secret_key                                     存在 OK
+  data/.storage-write-test                             存在 OK
+  data/imports.db                                      存在 OK
+  data/imports.db.bak_20260916_before_qa5cleanup       存在 OK
+  data/linked_sources                                  存在 OK
+  data/task_sources                                    存在 OK
+  server.py                                            存在 OK
+
+========================================================================
+结果：入回收站 0 项 / 失败 18 项
+========================================================================
+
+data/ 目录剩余内容：
+  .secret_key                                               44.0B
+  .storage-write-test                                       19.0B
+  imports.db                                                 2.9M
+  imports.db.bak_20260916_before_qa5cleanup                592.0K
+  linked_sources                                            22.0M
+  task_sources                                              47.5M

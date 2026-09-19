@@ -296,7 +296,7 @@ async function chooseOriginalSourceFile() {
       taskPath.dispatchEvent(new Event("change", { bubbles: true }));
     }
     restoreTaskSource(source.sourcePath);
-    setStatus(`已关联本机原文件：${file.name}。⚠️ 请立即点击「保存为任务」重新保存，新路径才会生效（只点关联不保存，任务仍会用旧的一次性副本路径，定时执行会报错）。保存后只要路径和文件名不变，本机更新会自动同步到服务器，请保持本页面打开。`, "error");
+    setStatus(`已关联本机原文件：${file.name}。⚠️ 请立即点击「保存为任务」重新保存，新路径才会生效（只点关联不保存，任务仍会用旧的一次性副本路径，定时执行会报错）。注意：页面打开时的自动同步只在本页面开着时才生效，无人值守的定时执行不会自动刷新服务器副本；如果源文件是别的系统更新出来的，请把「文件路径」直接填成这个文件的真实路径再保存，定时任务才每次都能读到最新的文件。`, "error");
   } catch (error) {
     setStatus(`上传源文件失败：${error.message}`, "error");
   }
@@ -565,6 +565,19 @@ function ensureImportTaskPanel() {
       setImportEditorVisible(false);
       loadImportTaskJobs().catch((error) => setStatus(error.message, "error"));
     });
+    // P0-3：只要用户「主动编辑」过路径框，就以手填值为最终依据。
+    // 必须清掉可能残留的旧关联路径 selectedTaskSourcePath —— buildFormData() 的取值顺序是
+    // `selectedTaskSourcePath || 输入框`，不清就会把用户刚填的真实路径静默丢弃，
+    // 任务继续指向旧的 linked_sources 副本（定时执行读到的还是老数据）。
+    // 只监听 input（用户键入才触发）；「关联本机原文件」是程序赋值 + 手动派发 change 事件，
+    // 不会触发 input，因此该流程不受影响。
+    const taskPathInput = document.querySelector("#importTaskPath");
+    if (taskPathInput) {
+      taskPathInput.addEventListener("input", () => {
+        selectedTaskSourcePath = "";
+        taskPathInput.classList.remove("invalid-path");
+      });
+    }
   }
 }
 
@@ -713,7 +726,10 @@ function openSelectedImportTask() {
   applyImportTaskConfig(step.config || {});
   restoreTaskSource(step.config?.path || "");
   syncImportTaskEditor(job);
-  setStatus(`已打开导入任务：${job.name}${step.config?.path ? `，定时执行路径：${step.config.path}` : ""}`, "success");
+  // 提示里给出「实际会被读取」的路径（执行端取 path，回退 sourcePath），
+  // 用户才能一眼核对该任务当前指向哪个文件，而不是只看任务名。
+  const effectivePath = step.config?.path || step.config?.sourcePath || "";
+  setStatus(`已打开导入任务：${job.name}${effectivePath ? `，定时执行路径：${effectivePath}` : ""}`, "success");
 }
 
 async function deleteSelectedImportTask() {

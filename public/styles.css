@@ -5084,6 +5084,28 @@ th {
   white-space: nowrap;
 }
 
+/* M12-001 多结果集预览：每个查询结果是一块，块之间必须有可见分隔。
+   2026-09-19 补齐 —— 此前 export.js 只设了 class，全仓 0 条对应样式，
+   多个结果集在同一个滚动区里连成一片、看不出边界。 */
+.preview-block {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: white;
+  margin-bottom: 10px;
+}
+
+.preview-block:last-child {
+  margin-bottom: 0;
+}
+
+.preview-block-head {
+  padding: 6px 10px;
+  background: #f2f2f2;
+  border-bottom: 1px solid #ccc;
+  color: #333;
+  white-space: nowrap;
+}
+
 .app-workspace .export-dock .logs {
   height: 100%;
   max-height: none;

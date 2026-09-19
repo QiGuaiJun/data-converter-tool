@@ -1,0 +1,78 @@
+{
+  "generatedAt": "2026-09-19 03:37:40",
+  "base": "http://127.0.0.1:51979",
+  "pageErrors": [],
+  "consoleErrors": [],
+  "aggregate": {
+    "pass": 13,
+    "fail": 0,
+    "total": 13
+  },
+  "results": [
+    {
+      "id": "M1-007",
+      "result": "PASS",
+      "detail": "初始=15 名称筛\"连接B\"=5 库名筛\"dc_p2_test\"=15 无匹配关键词=1(空态可能占 1 行) 清空复位=15"
+    },
+    {
+      "id": "M1-008",
+      "result": "PASS",
+      "detail": "选项=[{\"v\":\"all\",\"t\":\"全部类型\"},{\"v\":\"mysql\",\"t\":\"MySQL\"},{\"v\":\"postgresql\",\"t\":\"PostgreSQL\"},{\"v\":\"sqlserver\",\"t\":\"SQL Server\"},{\"v\":\"oracle\",\"t\":\"Oracle\"},{\"v\":\"sqlite\",\"t\":\"SQLite\"},{\"v\":\"clickhouse\",\"t\":\"ClickHouse\"}] 筛 mysql=15(应=15) 筛 postgresql=1(空态可能占 1 行) 复位(all)=15"
+    },
+    {
+      "id": "M1-009",
+      "result": "PASS",
+      "detail": "刷新后状态列=\"1 M1-连接A MySQL 127.0.0.1:3306 dc_p2_test root 已连接 2026-09-19 11:36:50 2 M1-连接B MySQL 127.0.0.1:3306 dc_p2_test root 已连接 2026-09-19 11:36:50 \""
+    },
+    {
+      "id": "M1-010",
+      "result": "PASS",
+      "detail": "type password -> text -> password"
+    },
+    {
+      "id": "M1-011",
+      "result": "PASS",
+      "detail": "下拉项=[\"MySQL / MariaDB\",\"PostgreSQL\",\"SQL Server\",\"Oracle\",\"SQLite\",\"ClickHouse\"] 选=PostgreSQL 告警可见=true 文案=\"该数据库类型功能待开发中，当前仅支持 MySQL\""
+    },
+    {
+      "id": "M2-008",
+      "result": "PASS",
+      "detail": "dirInput 含 webkitdirectory=true；recursiveDir「遍历子目录」=true"
+    },
+    {
+      "id": "M2-063",
+      "result": "PASS",
+      "detail": "列表项=1 双击打开后 tableName 回填=\"export_people\""
+    },
+    {
+      "id": "M2-065",
+      "result": "PASS",
+      "detail": "清草稿后点「新增导入」→ tableName=\"\"（期望空串）编辑器可见=true"
+    },
+    {
+      "id": "M2-064",
+      "result": "PASS",
+      "detail": "按钮文案=\"保存修改\" 出现「完整路径」告警=true｜片段=\"点续传 xml/json表示一个表行的标签： Excel密码： 定时任务必须填写完整路径，不能只填写文件名：relative_only_name.csv。例如：D:\\\\data\\\\relati\""
+    },
+    {
+      "id": "M3-007",
+      "result": "PASS",
+      "detail": ".sql 载入 → exportSql=\"select name, amount from export_people order by name;\""
+    },
+    {
+      "id": "M3-005",
+      "result": "PASS",
+      "detail": "预览元数据=\"m3_query · 3 行 · 2 列\" 结果=\"name amount Alice 10 Bob 20 Carol 30\""
+    },
+    {
+      "id": "M3-045",
+      "result": "PASS",
+      "detail": "结果元数据=\"1 个文件 · 3 行 · 13 ms\" 含文件名=true 链接数=1 区域=\"ui_replay_export.xlsx 成功 D:\\\\ProjectDevelopment\\\\data-converter-tool\\\\acceptance\\\\replay-20260\""
+    },
+    {
+      "id": "M3-043",
+      "result": "PASS",
+      "detail": "按钮文案=\"保存为新任务\" 状态栏=\"请填写任务名称。\" 命中报错=true"
+    }
+  ]
+}

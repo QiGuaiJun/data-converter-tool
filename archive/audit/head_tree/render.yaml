@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: data-converter-tool
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATA_DIR
+        value: /app/persistent/data
+      - key: UPLOADS_DIR
+        value: /app/persistent/uploads
+      - key: EXPORTS_DIR
+        value: /app/persistent/exports
+      - key: ADMIN_USER
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: data-converter-storage
+      mountPath: /app/persistent
+      sizeGB: 1
+

@@ -1,0 +1,109 @@
+{
+  "generatedAt": "2026-09-19T04:20:25.557Z",
+  "base": "http://127.0.0.1:51983",
+  "pageErrors": [],
+  "consoleErrors": [],
+  "aggregate": {
+    "pass": 18,
+    "fail": 0,
+    "total": 19
+  },
+  "results": [
+    {
+      "id": "M4-010",
+      "result": "PASS",
+      "detail": "选中已保存查询 → 名称=\"UI查询A\" SQL=\"SELECT 42 AS answer\"（期望 名称=UI查询A、SQL 含 42）"
+    },
+    {
+      "id": "M4-012",
+      "result": "PASS",
+      "detail": "转到导出 → 落页 http://127.0.0.1:51983/export.html；#exportSql=\"SELECT 7 AS n\" #exportFileName=\"UI导出来源\" body.export-task-editor=true（编辑态已展开）"
+    },
+    {
+      "id": "M6-001",
+      "result": "PASS",
+      "detail": "后端 /api/jobs 含全部 4 个=true；前端列表=[UI多步作业, 查询：UI查询A]（单步导入/导出资产与「 - 自动作业」载体应缺席，UI多步作业应在）"
+    },
+    {
+      "id": "M6-002",
+      "result": "PASS",
+      "detail": "步骤类型=[import,export,query]；导入任务下拉=[UI单步导入任务]（应含 UI单步导入任务、不含多步作业）；提示=\"\""
+    },
+    {
+      "id": "M6-003",
+      "result": "PASS",
+      "detail": "导出下拉=[UI单步导出任务]；查询下拉=[UI查询A]（应按类型互斥）"
+    },
+    {
+      "id": "M6-005",
+      "result": "PASS",
+      "detail": "添加两步=[UI查询A , UI单步导入任务]；↓ 后顺序=[UI单步导入任务 , UI查询A]（应互换）；↑ 复位=true；<< 后剩余=1（期望 1）"
+    },
+    {
+      "id": "M6-004",
+      "result": "PASS",
+      "detail": "添加步骤后改动源任务配置：源任务 tableName=ui_copy_after（已改为 after）；新建作业内步骤快照 tableName=ui_copy_before（期望仍是 before，证明深拷贝脱钩）"
+    },
+    {
+      "id": "M7-002",
+      "result": "PASS",
+      "detail": "各类型步骤选择器加载对应可用任务：import:UI单步导入任务UI深拷贝作业 ｜ export:UI单步导出任务 ｜ query:查询：UI查询AUI查询A ｜ job:UI多步作业"
+    },
+    {
+      "id": "NEW-UI-01",
+      "result": "FINDING",
+      "kind": "FINDING",
+      "detail": "public/schedule.js:257 空态模板为 `暂无${typeText(type)}作业，请先在${typeText(type)}页面保存作业`，而 typeText(\"job\")=\"作业\" → 作业类型下实测渲染为「暂无作业作业，请先在作业页面保存作业」（「作业」重复）。属低危文案问题，不影响功能。"
+    },
+    {
+      "id": "M7-003",
+      "result": "PASS",
+      "detail": "同步类型 disabled=true（期望 true）、尝试点击后 checked=false（期望 false）"
+    },
+    {
+      "id": "M7-006",
+      "result": "PASS",
+      "detail": "助手弹窗打开=true；初始面板 interval显/fixed隐=true/true；切 fixed 后=false/false；点「设置」后关闭=true；ruleSummary \"每 1 小时轮询\" → \"每周第 1 天 09:00:00\""
+    },
+    {
+      "id": "M7-017",
+      "result": "PASS",
+      "detail": "#emailOnFail disabled=true（期望 true，功能待支持）"
+    },
+    {
+      "id": "M7-014",
+      "result": "PASS",
+      "detail": "选中调度后点「查看日志」→ 弹窗打开=true，内容=\"暂无定时任务运行日志任务执行后会在这里统一显示成功或失败信息。\""
+    },
+    {
+      "id": "M7-019",
+      "result": "PASS",
+      "detail": "#lastRefreshTime \"刷新时间 · 12:20:13\" → \"刷新时间 · 12:20:15\"（格式应为「刷新时间 · HH:MM:SS」，1s 自动刷新）"
+    },
+    {
+      "id": "M8-001",
+      "result": "PASS",
+      "detail": "/sync.html HTTP=200 含标题「同步」=true 含占位文案=true；版本号=\"数据导表工具 v1.4.0\""
+    },
+    {
+      "id": "M8-002",
+      "result": "PASS",
+      "detail": "/api.html HTTP=200 含标题「API」=true 含占位文案=true；版本号=\"数据导表工具 v1.4.0\""
+    },
+    {
+      "id": "M8-003",
+      "result": "PASS",
+      "detail": "/docs.html HTTP=200 含标题「操作手册」=true 含占位文案=true；版本号=\"v1.4.0\""
+    },
+    {
+      "id": "M8-004",
+      "result": "PASS",
+      "detail": "/feedback.html HTTP=200 含标题「咨询建议反馈」=true 含占位文案=true；版本号=\"数据导表工具 v1.4.0\""
+    },
+    {
+      "id": "M8-005",
+      "result": "PASS",
+      "detail": "/api/meta.appVersion=1.4.0；sync 页侧边栏=\"数据导表工具 v1.4.0\"；docs 页侧边栏=\"v1.4.0\"（均应含版本号）"
+    }
+  ]
+}

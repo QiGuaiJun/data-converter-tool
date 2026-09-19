@@ -1,0 +1,733 @@
+/* ============================================================
+   connections.css —— 「新建连接」页面专属样式（2026-09-11 重设计）
+   仅作用于本页面（全部选择器带 conn- 前缀或 .conn-workspace 作用域），
+   不修改全局 styles.css。组件皮肤（按钮/输入框）沿用项目全局样式，
+   这里只做布局、卡片、表格、说明卡等页面级样式与少量尺寸收敛。
+   ============================================================ */
+
+:root {
+  --conn-primary: #0b66bd;
+  --conn-primary-hover: #0d78d8;
+  --conn-primary-light: #e3f0fc;
+  --conn-text: #111;
+  --conn-text-secondary: #667085;
+  --conn-text-tertiary: #9aa3af;
+  --conn-border: rgba(214, 226, 243, 0.92);
+  --conn-divider: rgba(206, 222, 242, 0.72);
+  --conn-danger: #d3364a;
+  --conn-danger-text: #b3261e;
+  --conn-warning-bg: #fdf6e6;
+  --conn-warning-border: #e6c887;
+  --conn-warning-text: #8a5a00;
+  --conn-success-text: #08773a;
+  --conn-success-bg: #e8f8ef;
+  --conn-warn-strong-bg: #fdf3e0;
+  --conn-radius: 16px;        /* 卡片圆角：对齐导入模块 .left-pane / .right-pane */
+  --conn-radius-ctl: 10px;    /* 控件圆角：对齐全局 input / select */
+  --conn-ctl-h: 30px;
+  --conn-field-gap: 10px;
+  /* 毛玻璃卡片令牌：与 styles.css 末尾的壁纸设计系统保持一致 */
+  --conn-glass-bg: rgba(255, 255, 255, 0.62);
+  --conn-glass-border: rgba(214, 226, 243, 0.92);
+  --conn-glass-shadow: 0 4px 14px rgba(81, 119, 171, 0.08);
+  --conn-glass-blur: blur(8px);
+}
+
+.hidden { display: none !important; }
+
+/* ---------- 布局：锁定壳层高度（仅本页面生效） ----------
+   styles.css 里 .desktop-shell 只有 min-height:100vh，高度不定，
+   grid 的 1fr 行会按内容撑高，导致整页随列表行数增长而滚动。
+   本页面把壳层钉在视口高度，让 minmax(0,1fr) 行真正受约束；
+   剩余空间分配与溢出兜底见下方 workspace / conn-shell / 矮屏媒体查询。 */
+html,
+body { height: 100%; }
+body { overflow: hidden; }
+.desktop-shell { height: 100vh; }
+
+/* ---------- workspace：默认不滚动；内容实在装不下时纵向滚动兜底 ---------- */
+.app-workspace.conn-workspace {
+  display: block;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 与 styles.css 的 .app-workspace 一致（近透明）：壁纸透出，卡片才呈毛玻璃 */
+  background: rgba(244, 248, 255, 0.03);
+}
+
+.conn-shell {
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  max-width: 1680px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 16px 14px;
+  /* 不能用 overflow:hidden：矮屏压缩时子项需要能撑出/滚动，否则会被裁掉 */
+  overflow: visible;
+}
+
+/* ---------- 页面主标题：视觉隐藏（2026-09-12） ----------
+   原 .conn-page-head 标题块（h1 + 副标题）恒占 43px 高 + 一个 flex gap，
+   是 900 / 620 高度档出现纵向滚动的主因，已从 HTML 移除。
+   现用视觉隐藏方式保留 h1：不参与视觉布局（position:absolute 脱离 flex 流），
+   但无障碍读屏仍可获取页面主标题，且 #pageTitle 节点仍可被 setEditMode() 写入。 */
+.conn-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- 卡片 ---------- */
+.conn-card {
+  /* 毛玻璃卡：半透明白 + 背景模糊 + 16px 圆角 + 柔和投影，
+     与导入模块 .left-pane / .right-pane 同一套皮肤；每张卡独立成块。 */
+  background: var(--conn-glass-bg);
+  border: 1px solid var(--conn-glass-border);
+  border-radius: var(--conn-radius);
+  box-shadow: var(--conn-glass-shadow);
+  backdrop-filter: var(--conn-glass-blur);
+  -webkit-backdrop-filter: var(--conn-glass-blur);
+  padding: 12px 16px 14px;
+  min-width: 0;
+}
+
+.conn-card-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--conn-text);
+  line-height: 1.4;
+}
+/* 卡片头：标题 + 右侧操作按钮同一行（2026-09-12，替代卡片底部的独立按钮行） */
+.conn-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 0 0 8px;
+}
+.conn-card-head .conn-card-title { margin: 0; }
+.conn-title-icon { color: var(--conn-primary); }
+
+/* ---------- 表单区：一张「连接配置」卡片，内部两小节并排 ---------- */
+.conn-layout {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(336px, 372px);
+  gap: 14px;
+  align-items: start;
+}
+
+.conn-config-card { padding-bottom: 12px; }
+
+.conn-config-grid { display: grid; grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr); }
+.conn-group { min-width: 0; padding-right: 20px; }
+.conn-group + .conn-group { padding-right: 0; padding-left: 20px; border-left: 1px solid var(--conn-divider); }
+
+.conn-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4e5969;
+  line-height: 1.4;
+}
+.conn-group-title::before {
+  content: "";
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--conn-primary);
+  opacity: .75;
+}
+
+.conn-fields { display: grid; gap: var(--conn-field-gap); }
+.conn-field { min-width: 0; }
+
+.conn-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12.5px;
+  color: var(--conn-text);
+  line-height: 17px;
+}
+.conn-req { color: var(--conn-danger); margin-left: 2px; }
+
+/* 输入控件：沿用项目原生控件风格，仅做页面级尺寸/圆角收敛 */
+.conn-input {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--conn-ctl-h);
+  height: var(--conn-ctl-h);
+  padding: 0 10px;
+  border: 1px solid #dbe6f3;
+  border-radius: var(--conn-radius-ctl);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--conn-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.conn-input::placeholder { color: var(--conn-text-tertiary); }
+.conn-input:hover { border-color: #9bc8ff; }
+.conn-input:focus { border-color: #9bc8ff; box-shadow: 0 0 0 4px rgba(90, 156, 255, .13); background: #fff; }
+.conn-input[disabled] { background: rgba(240, 244, 250, .8); color: #a8b0ba; border-color: #e2e9f3; cursor: not-allowed; }
+.conn-input[type="number"]::-webkit-outer-spin-button,
+.conn-input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.conn-input[type="number"] { -moz-appearance: textfield; }
+
+.conn-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%238c8c8c' stroke-width='1.5'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+
+.conn-input-row { display: flex; align-items: center; gap: 8px; }
+.conn-input-row .conn-input { flex: 1 1 auto; }
+.conn-help-icon {
+  width: 17px; height: 17px;
+  padding: 0;
+  min-height: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%;
+  background: transparent;
+  color: var(--conn-text-tertiary);
+}
+.conn-help-icon:hover { color: var(--conn-primary); }
+
+/* 自定义下拉（数据库类型，带彩色图标） */
+.conn-db-select { position: relative; }
+.conn-db-trigger {
+  width: 100%;
+  min-height: var(--conn-ctl-h);
+  height: var(--conn-ctl-h);
+  padding: 0 28px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #dbe6f3;
+  border-radius: var(--conn-radius-ctl);
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  color: var(--conn-text);
+  text-align: left;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.conn-db-trigger:hover { border-color: #9bc8ff; }
+.conn-db-trigger:focus,
+.conn-db-select.open .conn-db-trigger { border-color: #9bc8ff; box-shadow: 0 0 0 4px rgba(90, 156, 255, .13); }
+.conn-db-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-db-trigger .conn-chev { color: #8c8c8c; transition: transform .2s; }
+.conn-db-select.open .conn-db-trigger .conn-chev { transform: rotate(180deg); }
+
+.conn-db-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  max-height: 246px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid var(--conn-glass-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(81, 119, 171, .16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.conn-db-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.conn-db-option:hover { background: #eef5ff; }
+.conn-db-option[aria-selected="true"] { background: var(--conn-primary-light); color: var(--conn-primary); font-weight: 600; }
+.conn-db-option-check { margin-left: auto; color: var(--conn-primary); }
+
+/* 数字输入自定义上下箭头 */
+.conn-input-wrap { position: relative; display: flex; align-items: center; }
+.conn-has-spinner .conn-input { padding-right: 28px; }
+.conn-spinner {
+  position: absolute;
+  right: 1px; top: 1px; bottom: 1px;
+  width: 20px;
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  border-left: 1px solid var(--conn-divider);
+  border-radius: 0 9px 9px 0;
+  overflow: hidden;
+}
+.conn-spinner button {
+  border: 0; padding: 0; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  color: #8c8c8c;
+}
+.conn-spinner button:hover { background: #eef3fa; color: var(--conn-primary); }
+.conn-spinner button:first-child { border-bottom: 1px solid var(--conn-divider); }
+
+/* 密码眼睛 */
+.conn-has-suffix .conn-input { padding-right: 32px; }
+.conn-suffix-btn {
+  position: absolute;
+  right: 3px; top: 50%;
+  transform: translateY(-50%);
+  width: 24px; height: 24px;
+  min-height: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 6px;
+  background: transparent;
+  color: var(--conn-text-tertiary);
+}
+.conn-suffix-btn:hover { background: #eef3fa; color: var(--conn-primary); }
+
+/* 错误态 */
+.conn-field.has-error .conn-input,
+.conn-field.has-error .conn-db-trigger { border-color: var(--conn-danger); }
+.conn-field.has-error .conn-input:focus,
+.conn-field.has-error .conn-db-trigger:focus { box-shadow: 0 0 0 2px rgba(211, 54, 74, .13); }
+.conn-field-error {
+  display: none;
+  margin: 4px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--conn-danger-text);
+}
+.conn-field.has-error .conn-field-error { display: block; }
+
+.conn-field-note { margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--conn-text-secondary); }
+
+/* 开关 */
+.conn-switch-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 2px; }
+.conn-switch-label { font-size: 12.5px; color: var(--conn-text); }
+.conn-switch { position: relative; display: inline-block; width: 36px; height: 18px; flex: 0 0 auto; cursor: pointer; }
+.conn-switch input { position: absolute; opacity: 0; width: 0; height: 0; min-height: 0; }
+.conn-switch-slider { position: absolute; inset: 0; background: #bfbfbf; border-radius: 18px; transition: background .2s; }
+.conn-switch-slider::before {
+  content: "";
+  position: absolute;
+  left: 2px; top: 2px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .2);
+  transition: transform .2s;
+}
+.conn-switch input:checked + .conn-switch-slider { background: var(--conn-primary); }
+.conn-switch input:checked + .conn-switch-slider::before { transform: translateX(18px); }
+
+/* 就地告警 */
+.conn-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--conn-warning-border);
+  border-radius: 10px;
+  background: var(--conn-warning-bg);
+  color: #6d4a07;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.conn-alert svg { margin-top: 2px; color: var(--conn-warning-text); flex: 0 0 auto; }
+
+/* 卡片底部按钮（沿用项目全局 .button / .primary 皮肤） */
+/* 按钮组：随标题行排布（2026-09-12 上移，不再占卡片底部一整行） */
+.conn-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.conn-actions .button { min-width: 78px; padding: 5px 14px; }
+
+/* ---------- 右栏：支持的数据库类型 + 连接说明 ---------- */
+.conn-side-col { display: grid; gap: 14px; align-content: start; min-width: 0; }
+
+.conn-db-type-list { display: grid; }
+.conn-db-type-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--conn-divider);
+  font-size: 12.5px;
+}
+.conn-db-type-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.conn-db-type-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conn-db-type-version { font-size: 11.5px; color: var(--conn-text-secondary); }
+
+/* 连接说明卡片 */
+.conn-guide-list { display: grid; gap: 5px; }
+.conn-guide-item { display: flex; gap: 8px; align-items: flex-start; }
+.conn-guide-icon {
+  width: 18px; height: 18px;
+  flex: 0 0 18px;
+  margin-top: 1px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px;
+  background: var(--conn-primary-light);
+  color: var(--conn-primary);
+}
+/* 说明条目：标题与描述同行（2026-09-12，纵向高度约减半） */
+.conn-guide-body { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.conn-guide-item-title { flex: 0 0 auto; white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--conn-text); line-height: 1.4; }
+.conn-guide-text { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 11.5px; line-height: 1.5; color: var(--conn-text-secondary); }
+.conn-guide-art { margin-top: 6px; overflow: hidden; }
+.conn-guide-art svg { width: 100%; height: auto; max-height: 64px; }
+
+/* ---------- 连接列表：固定剩余高度，容器内滚动 ---------- */
+.conn-list-card {
+  /* 可增长吸收剩余空间；可收缩但不低于 242px（标题栏 ≈60 + 表体 ≥180 + 边框）。
+     这样：① 大屏长列表时卡片被约束住，表格在卡片内滚动、表头 sticky 生效；
+     ② 矮屏时列表不会被压成 0，剩余空间不足由 .conn-workspace 纵向滚动兜底。 */
+  flex: 1 1 auto;
+  min-height: 242px;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.conn-list-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px 10px;
+}
+.conn-list-head h2 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.4; }
+.conn-list-sub { margin: 2px 0 0; font-size: 12px; color: var(--conn-text-secondary); }
+
+/* 「连接列表」标题行：标题 + 最后检测时间同一行 inline（不新增整行，避免矮屏挤压列表） */
+.conn-list-title-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.conn-probe-hint {
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--conn-text-tertiary);
+  white-space: nowrap;
+}
+
+.conn-list-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.conn-list-tools .conn-input { width: auto; }
+
+.conn-search-box { position: relative; display: flex; align-items: center; width: 240px; max-width: 100%; }
+.conn-search-box svg { position: absolute; left: 10px; color: var(--conn-text-tertiary); pointer-events: none; }
+.conn-search-box .conn-input { width: 100%; padding-left: 30px; }
+
+.conn-filter-select { width: 122px; }
+
+.conn-ghost-btn {
+  width: 30px; height: 30px;
+  min-height: 30px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid #d7e5f6;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #41566f;
+  transition: all .15s;
+}
+.conn-ghost-btn:hover { border-color: var(--conn-primary); color: var(--conn-primary); background: #fff; }
+.conn-ghost-btn.spinning svg { animation: conn-spin .7s linear; }
+@keyframes conn-spin { from { transform: rotate(0); } to { transform: rotate(360deg); } }
+
+/* 带文字的 ghost 按钮（「刷新状态」）：复用同一皮肤，只放宽宽度 */
+.conn-ghost-btn-text {
+  width: auto;
+  padding: 0 11px;
+  gap: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.conn-btn-new { height: 30px; padding: 3px 13px; gap: 6px; }
+
+/* 表体滚动容器：硬性下限 180px（约 3–4 行），任何视口都不得再被压小 */
+.conn-table-wrap {
+  flex: 1 1 auto;
+  min-height: 180px;
+  width: 100%;
+  overflow: auto;
+  /* 浅底衬：卡片本身是毛玻璃，表格区再垫一层近白半透明，
+     保证密集数字/地址在花哨壁纸上也清晰（沿用导入模块 .file-list 的做法） */
+  background: rgba(255, 255, 255, 0.45);
+}
+.conn-table-wrap::-webkit-scrollbar { width: 8px; height: 8px; }
+.conn-table-wrap::-webkit-scrollbar-thumb { background: rgba(150, 175, 205, 0.5); border-radius: 4px; }
+.conn-table-wrap::-webkit-scrollbar-track { background: transparent; }
+
+table.conn-table {
+  width: 100%;
+  min-width: 1000px;
+  border-collapse: collapse;
+  /* 透明：让列表卡片的毛玻璃透上来，整张卡才是一块玻璃而不是「玻璃+白纸」 */
+  background: transparent;
+  /* styles.css 里 table{overflow:hidden;border-radius:12px} 会让 <table> 自己
+     成为 th 的最近滚动容器，导致表头 sticky 失效（th 随内容滚走）。
+     这里在页面内覆盖为 visible，滚动容器交回 .conn-table-wrap。 */
+  overflow: visible;
+  border-radius: 0;
+}
+.conn-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 8px 12px;
+  /* 吸顶表头必须自带底色，否则滚动时行会从背后透出来；用半透明+模糊保持玻璃感 */
+  background: rgba(248, 251, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 0;
+  border-bottom: 1px solid var(--conn-divider);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--conn-text);
+  text-align: left;
+  white-space: nowrap;
+}
+.conn-table td {
+  padding: 9px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--conn-divider);
+  font-size: 12.5px;
+  color: var(--conn-text);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.conn-table tbody tr:hover { background: rgba(232, 243, 255, 0.72); }
+.conn-table tbody tr:last-child td { border-bottom: 0; }
+
+.conn-col-index { width: 48px; color: var(--conn-text-secondary); }
+.conn-col-name { min-width: 150px; }
+.conn-col-type { width: 132px; }
+.conn-col-host { width: 170px; }
+.conn-col-db { width: 140px; }
+.conn-col-user { width: 104px; }
+.conn-col-status { width: 104px; }
+.conn-col-time { width: 170px; color: #5c6673; }
+.conn-col-ops { width: 112px; }
+
+.conn-type-cell { display: inline-flex; align-items: center; gap: 8px; }
+.conn-mono { font-family: Consolas, "SFMono-Regular", Menlo, Monaco, "Courier New", monospace; }
+
+.conn-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 9px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  line-height: 17px;
+  white-space: nowrap;
+}
+.conn-pill-connected { background: var(--conn-success-bg); color: var(--conn-success-text); }
+.conn-pill-disconnected { background: var(--conn-warn-strong-bg); color: var(--conn-warning-text); }
+/* 探测中：中性灰 + 轻微呼吸，避免与「未连接」的橙黄混淆 */
+.conn-pill-checking {
+  background: #eef1f5;
+  color: #5c6673;
+  animation: conn-pill-pulse 1.2s ease-in-out infinite;
+}
+@keyframes conn-pill-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+/* 非 MySQL 类型：不探测，给中性灰结论 */
+.conn-pill-unsupported { background: #eef1f5; color: #5c6673; }
+
+.conn-ops { display: flex; align-items: center; gap: 4px; }
+.conn-op-btn {
+  width: 26px; height: 26px;
+  min-height: 26px;
+  padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 8px;
+  background: transparent;
+  color: var(--conn-primary);
+  transition: background .15s;
+}
+.conn-op-btn:hover { background: rgba(232, 241, 252, 0.9); }
+.conn-op-btn.conn-op-delete { color: var(--conn-danger); }
+.conn-op-btn.conn-op-delete:hover { background: rgba(253, 238, 238, 0.9); }
+
+.conn-empty-cell { padding: 32px 12px !important; text-align: center; color: var(--conn-text-secondary); }
+
+/* ---------- Toast ---------- */
+.conn-toast-stack {
+  position: fixed;
+  z-index: 200;
+  top: 88px;
+  left: calc(50% + 130px);
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  pointer-events: none;
+  max-width: 80vw;
+}
+.conn-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--conn-glass-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 28px rgba(81, 119, 171, .16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 13px;
+  color: var(--conn-text);
+  animation: conn-toast-in .22s ease-out;
+}
+.conn-toast svg { flex: 0 0 auto; }
+.conn-toast.success svg { color: var(--conn-success-text); }
+.conn-toast.error svg { color: var(--conn-danger); }
+.conn-toast.info svg { color: var(--conn-primary); }
+.conn-toast.warning svg { color: var(--conn-warning-text); }
+.conn-toast.leaving { animation: conn-toast-out .2s ease-in forwards; }
+@keyframes conn-toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes conn-toast-out { to { opacity: 0; transform: translateY(-8px); } }
+
+/* ---------- 删除二次确认弹窗 ---------- */
+.conn-modal-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.conn-modal {
+  width: min(400px, 100%);
+  padding: 18px 20px 16px;
+  border-radius: var(--conn-radius);
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--conn-glass-border);
+  box-shadow: 0 16px 46px rgba(81, 119, 171, .22);
+}
+.conn-modal h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+.conn-modal p { margin: 0; font-size: 13px; line-height: 1.7; color: #4e5969; }
+.conn-modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.conn-modal-actions .button { min-width: 72px; }
+.conn-btn-danger { background: var(--conn-danger) !important; border-color: var(--conn-danger) !important; color: #fff !important; }
+.conn-btn-danger:hover { background: #e04a5c !important; border-color: #e04a5c !important; }
+
+/* ---------- 矮屏适配：列表可见优先（表单区可内部滚动） ----------
+   大屏（≥1080）保持原型观感不动；屏幕变矮时先收紧纵向留白，
+   再让「连接配置」区让出空间，绝不允许把连接列表压没。 */
+@media (max-height: 940px) {
+  .conn-shell { gap: 8px; padding: 10px 16px 10px; }
+  .conn-card { padding: 10px 14px 10px; }
+  .conn-card-title { margin-bottom: 6px; }
+  .conn-card-head { margin-bottom: 6px; }
+  .conn-group-title { margin-bottom: 6px; }
+  .conn-fields { gap: 6px; }
+  .conn-field-label { margin-bottom: 2px; }
+  .conn-input,
+  .conn-select,
+  .conn-db-trigger { height: 28px; min-height: 28px; }
+  .conn-actions { margin-top: 8px; padding-top: 6px; }
+  .conn-guide-art svg { max-height: 36px; }
+  .conn-db-type-item { padding-top: 3px; padding-bottom: 3px; }
+  /* 右栏（说明区）在矮屏下进一步收紧：它是本页高度需求的瓶颈 */
+  .conn-side-col { gap: 10px; }
+  .conn-side-col .conn-card { padding: 10px 14px 8px; }
+  .conn-guide-list { gap: 3px; }
+  .conn-guide-item-title { line-height: 1.3; }
+  .conn-guide-text { line-height: 1.4; }
+  .conn-guide-art { margin-top: 4px; }
+  .conn-list-head { padding: 10px 16px 8px; }
+}
+
+@media (max-height: 860px) {
+  /* 空间不足：压缩「连接配置」区（两侧卡片内部滚动），换取列表完整可见 */
+  .conn-layout {
+    flex: 0 1 auto;
+    min-height: 300px;
+    align-items: stretch;
+  }
+  .conn-layout > * { min-height: 0; overflow: auto; }
+}
+
+/* 极矮窗口（笔记本 + 浏览器工具栏，内容高约 620px）：
+   标题块移除后再收紧一档留白与表单区下限，让「连接列表」完整可见、整页不出滚动条。
+   列表卡片 min-height:242px 是红线（标题栏 56 + 表体 ≥180 + 边框），不在此处放松。 */
+@media (max-height: 700px) {
+  .conn-shell { gap: 6px; padding: 8px 16px 8px; }
+  .conn-list-head { padding: 8px 16px 6px; }
+  .conn-layout { min-height: 286px; }
+}
+
+/* ---------- 响应式：窄屏恢复页面滚动，避免内容裁切 ---------- */
+@media (max-width: 1360px) {
+  .conn-layout { grid-template-columns: minmax(0, 1fr) minmax(300px, 336px); }
+  /* 右栏变窄 → 说明文字换行变多，再收一档间距，避免冒出内部滚动条 */
+  .conn-db-type-item { padding-top: 2px; padding-bottom: 2px; }
+  .conn-side-col { gap: 8px; }
+  .conn-guide-list { gap: 2px; }
+}
+
+@media (max-width: 1120px) {
+  .app-workspace.conn-workspace { display: block; overflow: auto; }
+  .conn-shell { overflow: visible; }
+  .conn-layout { grid-template-columns: minmax(0, 1fr); }
+  .conn-side-col { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .conn-list-card { min-height: 320px; }
+  .conn-config-grid { grid-template-columns: minmax(0, 1fr); }
+  .conn-group { padding-right: 0; }
+  .conn-group + .conn-group {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--conn-divider);
+    padding-top: 12px;
+    margin-top: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .conn-shell { padding: 10px 10px 12px; }
+  .conn-search-box { width: 200px; }
+}

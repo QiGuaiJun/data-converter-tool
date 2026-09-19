@@ -14,8 +14,10 @@
 """
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -28,6 +30,32 @@ os.environ["UPLOADS_DIR"] = str(Path(_tmp) / "uploads")
 os.environ["EXPORTS_DIR"] = str(Path(_tmp) / "exports")
 
 import server
+
+# sqlite3 连接作为 with 语句使用时只提交事务、不 close，句柄会一直占着临时库文件；
+# Windows 上这会挡住隔离目录的删除，把 %TEMP%/dc_test_* 越攒越多。这里记录句柄，
+# 进程退出时统一关闭再删目录，保证跑完 %TEMP% 零残留。
+_TRACKED_CONNECTIONS: list[object] = []
+_ORIGINAL_CONNECT_DB = server.connect_db
+
+
+def _tracking_connect_db():
+    conn = _ORIGINAL_CONNECT_DB()
+    _TRACKED_CONNECTIONS.append(conn)
+    return conn
+
+
+server.connect_db = _tracking_connect_db
+
+
+@atexit.register
+def _remove_isolated_tmp() -> None:
+    for conn in _TRACKED_CONNECTIONS:
+        try:
+            conn.close()
+        except Exception:  # pragma: no cover - 关闭失败不影响测试结论
+            pass
+    shutil.rmtree(_tmp, ignore_errors=True)
+
 
 
 def reset_tables() -> None:

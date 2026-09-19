@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>新建连接 - 数据导表工具</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css?v=20260714_sidebar_palette" />
+    <link rel="stylesheet" href="/connections.css?v=20260912_revert_fields" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item active" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node active" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+          <div class="sidebar-version" id="appVersion">数据导表工具</div>
+
+        </aside>
+        <section class="app-workspace conn-workspace">
+          <main class="conn-shell">
+            <!-- 原「新建数据库连接 + 说明」标题块已移除（2026-09-12）：该块恒占 43px 高 + 一个
+                 flex gap，是 900 / 620 高度档出现纵向滚动的主因。移除后内容整体上移，
+                 连接配置区与连接列表在常见笔记本窗口下不再需要滚动。
+                 保留一个视觉隐藏的 h1：① 无障碍仍有页面主标题；② id=pageTitle 仍存在，
+                 setEditMode() 的「新建/编辑数据库连接」文案切换不会因节点消失而报错。 -->
+            <h1 id="pageTitle" class="conn-visually-hidden">新建数据库连接</h1>
+
+            <form id="connectionForm" class="conn-layout" novalidate>
+              <!-- 「连接配置」合并卡片 -->
+              <section class="conn-card conn-config-card">
+                <!-- 标题 + 操作按钮同一行：按钮不再独占卡片底部一整行（2026-09-12） -->
+                <div class="conn-card-head">
+                  <h2 class="conn-card-title">
+                    <svg class="conn-title-icon" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                      <rect x="1" y="1" width="14" height="14" rx="3" fill="#0b66bd"/>
+                      <path d="M4.6 5.3h6.8M4.6 8h6.8M4.6 10.7h4" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>
+                    </svg>
+                    连接配置
+                  </h2>
+                  <div class="conn-actions">
+                    <button type="button" class="button" id="testConn">测试连接</button>
+                    <button type="submit" class="button primary" id="saveConn">保存</button>
+                  </div>
+                </div>
+
+                <div class="conn-config-grid">
+                  <!-- 小节：基本信息 -->
+                  <div class="conn-group">
+                    <h3 class="conn-group-title">基本信息</h3>
+                    <div class="conn-fields">
+                      <input id="connId" type="hidden" value="" />
+
+                      <div class="conn-field" data-field="connName">
+                        <label class="conn-field-label" for="connName">连接名称 <span class="conn-req">*</span></label>
+                        <input class="conn-input" id="connName" type="text" placeholder="如：生产环境-MySQL" autocomplete="off" />
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connDbType">
+                        <label class="conn-field-label" id="connDbTypeLabel">数据库类型 <span class="conn-req">*</span></label>
+                        <div class="conn-db-select" id="connDbSelect">
+                          <button type="button" class="conn-db-trigger" id="connDbTrigger" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="connDbTypeLabel">
+                            <span class="conn-db-value" id="connDbValue"></span>
+                            <svg class="conn-chev" viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                              <path d="M2.5 4.5 6 8l3.5-3.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                          </button>
+                          <ul class="conn-db-menu hidden" id="connDbMenu" role="listbox" aria-labelledby="connDbTypeLabel"></ul>
+                        </div>
+                        <div class="conn-alert hidden" id="connUnsupportedAlert" role="alert">
+                          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">
+                            <circle cx="8" cy="8" r="6.4"/>
+                            <path d="M8 4.6v4.2" stroke-linecap="round"/>
+                            <circle cx="8" cy="11.3" r=".85" fill="currentColor" stroke="none"/>
+                          </svg>
+                          <span id="connUnsupportedText">该数据库类型功能待开发中，当前仅支持 MySQL</span>
+                        </div>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connHost">
+                        <label class="conn-field-label" for="connHost">主机地址 <span class="conn-req">*</span></label>
+                        <input class="conn-input" id="connHost" type="text" placeholder="如：127.0.0.1 或 db.example.com" autocomplete="off" />
+                        <p class="conn-field-note hidden" data-local-note>本地文件数据库不需要</p>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connPort">
+                        <label class="conn-field-label" for="connPort">端口 <span class="conn-req">*</span></label>
+                        <div class="conn-input-wrap conn-has-spinner">
+                          <input class="conn-input" id="connPort" type="number" min="1" max="65535" value="3306" />
+                          <div class="conn-spinner" aria-hidden="true">
+                            <button type="button" class="conn-spin-up" data-target="connPort" data-step="1" tabindex="-1">
+                              <svg viewBox="0 0 10 6" width="10" height="6" fill="none" stroke="currentColor" stroke-width="1.3">
+                                <path d="M1 4.6 5 1.4l4 3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                              </svg>
+                            </button>
+                            <button type="button" class="conn-spin-down" data-target="connPort" data-step="-1" tabindex="-1">
+                              <svg viewBox="0 0 10 6" width="10" height="6" fill="none" stroke="currentColor" stroke-width="1.3">
+                                <path d="M1 1.4 5 4.6l4-3.2" stroke-linecap="round" stroke-linejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+                        <p class="conn-field-note hidden" data-local-note>本地文件数据库不需要</p>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connUser">
+                        <label class="conn-field-label" for="connUser">用户名 <span class="conn-req">*</span></label>
+                        <input class="conn-input" id="connUser" type="text" placeholder="如：root" autocomplete="off" />
+                        <p class="conn-field-note hidden" data-local-note>本地文件数据库不需要</p>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connPassword">
+                        <label class="conn-field-label" for="connPassword">密码 <span class="conn-req">*</span></label>
+                        <div class="conn-input-wrap conn-has-suffix">
+                          <input class="conn-input" id="connPassword" type="password" placeholder="请输入密码" autocomplete="new-password" />
+                          <button type="button" class="conn-suffix-btn" id="connTogglePwd" title="显示/隐藏密码" aria-label="显示密码">
+                            <span id="connPwdEye"></span>
+                          </button>
+                        </div>
+                        <p class="conn-field-note hidden" data-local-note>本地文件数据库不需要</p>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connDatabase">
+                        <label class="conn-field-label" for="connDatabase">数据库</label>
+                        <input class="conn-input" id="connDatabase" type="text" list="connDbList" placeholder="如：test_db（可选）" autocomplete="off" />
+                        <datalist id="connDbList"></datalist>
+                        <p class="conn-field-error"></p>
+                      </div>
+
+                      <div class="conn-field" data-field="connCharset">
+                        <label class="conn-field-label" for="connCharset">字符集</label>
+                        <select class="conn-input conn-select" id="connCharset">
+                          <option value="utf8mb4" selected>utf8mb4</option>
+                          <option value="utf8">utf8</option>
+                          <option value="gbk">gbk</option>
+                          <option value="latin1">latin1</option>
+                        </select>
+                        <p class="conn-field-error"></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 小节：常用参数（视觉展示，后端暂无对应字段，不随保存提交） -->
+                  <div class="conn-group">
+                    <h3 class="conn-group-title">常用参数</h3>
+                    <div class="conn-fields">
+                      <div class="conn-field">
+                        <label class="conn-field-label" for="connConnectTimeout">连接超时时间（秒）</label>
+                        <div class="conn-input-row">
+                          <input class="conn-input" id="connConnectTimeout" type="number" min="1" value="30" />
+                          <button type="button" class="conn-help-icon" title="建立数据库连接的最长等待时间，超过该时间视为连接失败">
+                            <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                              <circle cx="8" cy="8" r="6.6"/>
+                              <path d="M6.4 6.4a1.7 1.7 0 1 1 2.3 1.6c-.4.2-.7.5-.7.9v.3" stroke-linecap="round"/>
+                              <circle cx="8" cy="11.3" r=".75" fill="currentColor"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="conn-field">
+                        <label class="conn-field-label" for="connReadTimeout">读取超时时间（秒）</label>
+                        <div class="conn-input-row">
+                          <input class="conn-input" id="connReadTimeout" type="number" min="1" value="60" />
+                          <button type="button" class="conn-help-icon" title="单次查询读取数据的最长等待时间">
+                            <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                              <circle cx="8" cy="8" r="6.6"/>
+                              <path d="M6.4 6.4a1.7 1.7 0 1 1 2.3 1.6c-.4.2-.7.5-.7.9v.3" stroke-linecap="round"/>
+                              <circle cx="8" cy="11.3" r=".75" fill="currentColor"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="conn-field">
+                        <label class="conn-field-label" for="connTimezone">时区</label>
+                        <select class="conn-input conn-select" id="connTimezone">
+                          <option value="system" selected>系统默认</option>
+                          <option value="Asia/Shanghai">Asia/Shanghai</option>
+                          <option value="UTC">UTC</option>
+                          <option value="Asia/Tokyo">Asia/Tokyo</option>
+                          <option value="America/New_York">America/New_York</option>
+                        </select>
+                      </div>
+
+                      <div class="conn-field">
+                        <label class="conn-field-label" for="connPoolSize">连接池大小</label>
+                        <input class="conn-input" id="connPoolSize" type="number" min="1" value="5" />
+                      </div>
+
+                      <div class="conn-field">
+                        <label class="conn-field-label" for="connMaxOverflow">最大溢出连接数</label>
+                        <div class="conn-input-row">
+                          <input class="conn-input" id="connMaxOverflow" type="number" min="0" value="10" />
+                          <button type="button" class="conn-help-icon" title="连接池耗尽时允许额外创建的连接数量上限">
+                            <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+                              <circle cx="8" cy="8" r="6.6"/>
+                              <path d="M6.4 6.4a1.7 1.7 0 1 1 2.3 1.6c-.4.2-.7.5-.7.9v.3" stroke-linecap="round"/>
+                              <circle cx="8" cy="11.3" r=".75" fill="currentColor"/>
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="conn-field">
+                        <div class="conn-switch-field">
+                          <div>
+                            <div class="conn-switch-label">自动提交</div>
+                            <p class="conn-field-note" style="margin-top:1px">每次执行完成后自动提交</p>
+                          </div>
+                          <label class="conn-switch">
+                            <input type="checkbox" id="connAutoCommit" checked />
+                            <span class="conn-switch-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </section>
+
+              <!-- 右栏 -->
+              <div class="conn-side-col">
+                <section class="conn-card">
+                  <h2 class="conn-card-title">支持的数据库类型</h2>
+                  <div class="conn-db-type-list" id="connDbTypeList"></div>
+                </section>
+
+                <section class="conn-card conn-guide-card">
+                  <h2 class="conn-card-title" id="connGuideTitle">MySQL 连接说明</h2>
+                  <div class="conn-guide-list" id="connGuideList"></div>
+                </section>
+              </div>
+            </form>
+
+            <!-- 连接列表 -->
+            <section class="conn-card conn-list-card">
+              <div class="conn-list-head">
+                <div>
+                  <div class="conn-list-title-row">
+                    <h2>连接列表</h2>
+                    <span class="conn-probe-hint" id="connProbeHint" role="status" aria-live="polite"></span>
+                  </div>
+                  <p class="conn-list-sub">信息清晰，操作便捷</p>
+                </div>
+                <div class="conn-list-tools">
+                  <div class="conn-search-box">
+                    <input class="conn-input" id="connListSearch" type="text" placeholder="搜索连接名称、主机或备注" autocomplete="off" />
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                      <circle cx="7.2" cy="7.2" r="4.6"/>
+                      <path d="M10.6 10.6 14 14" stroke-linecap="round"/>
+                    </svg>
+                  </div>
+                  <select class="conn-input conn-select conn-filter-select" id="connListTypeFilter"></select>
+                  <!-- 「刷新状态」= 重新拉取列表 + 重新探测一轮（原纯图标「刷新列表」按钮已合并至此） -->
+                  <button type="button" class="conn-ghost-btn conn-ghost-btn-text" id="connStatusRefreshBtn" title="重新拉取列表并重新检测所有连接状态" aria-label="刷新状态">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true">
+                      <path d="M13.5 8a5.5 5.5 0 1 1-1.7-4" stroke-linecap="round"/>
+                      <path d="M13.9 2.4v3.3h-3.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <span>刷新状态</span>
+                  </button>
+                  <button type="button" class="button primary conn-btn-new" id="connNewBtn">
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                      <path d="M8 3.2v9.6M3.2 8h9.6" stroke-linecap="round"/>
+                    </svg>
+                    新建连接
+                  </button>
+                </div>
+              </div>
+
+              <div class="conn-table-wrap" id="connTableWrap">
+                <table class="conn-table">
+                  <thead>
+                    <tr>
+                      <th class="conn-col-index"></th>
+                      <th>连接名称</th>
+                      <th class="conn-col-type">类型</th>
+                      <th class="conn-col-host">主机地址</th>
+                      <th class="conn-col-db">数据库</th>
+                      <th class="conn-col-user">用户名</th>
+                      <th class="conn-col-status">状态</th>
+                      <th class="conn-col-time">更新时间</th>
+                      <th class="conn-col-ops">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody id="connTbody"></tbody>
+                </table>
+              </div>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+    <!-- Toast 容器 -->
+    <div class="conn-toast-stack" id="connToastStack" aria-live="polite"></div>
+
+    <!-- 删除二次确认弹窗 -->
+    <div class="conn-modal-mask hidden" id="connConfirmMask">
+      <div class="conn-modal" role="dialog" aria-modal="true" aria-labelledby="connConfirmTitle">
+        <h3 id="connConfirmTitle">删除连接</h3>
+        <p id="connConfirmText">确定要删除该连接吗？删除后不可恢复。</p>
+        <div class="conn-modal-actions">
+          <button type="button" class="button" id="connConfirmCancel">取消</button>
+          <button type="button" class="button conn-btn-danger" id="connConfirmOk">删除</button>
+        </div>
+      </div>
+    </div>
+    <script src="/connections.js?v=20260912_revert_fields"></script>
+    <script src="/version.js?v=20260910_app_version"></script>
+
+  </body>
+</html>

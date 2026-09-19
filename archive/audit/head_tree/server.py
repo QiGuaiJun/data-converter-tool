@@ -1,0 +1,4846 @@
+from __future__ import annotations
+
+import csv
+import base64
+import datetime as dt
+import hmac
+import json
+import mimetypes
+import os
+import re
+import sqlite3
+import tempfile
+import threading
+import time
+import uuid
+import xml.etree.ElementTree as ET
+import zipfile
+from collections.abc import Iterable, Iterator
+from contextlib import nullcontext
+from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+from itertools import chain
+from io import BytesIO
+from http import HTTPStatus
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, quote, urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import msoffcrypto
+import pymysql
+import xlrd
+from cryptography.fernet import Fernet
+from dbfread import DBF
+from openpyxl import Workbook, load_workbook
+from openpyxl.cell import WriteOnlyCell
+from openpyxl.styles import Border, Font, Protection, Side
+from openpyxl.utils import get_column_letter
+from pypinyin import Style, lazy_pinyin
+from xml.sax.saxutils import escape as xml_escape
+
+
+ROOT = Path(__file__).resolve().parent
+PUBLIC = ROOT / "public"
+
+# Python 3.12 起 sqlite3 内置 datetime/date 默认适配器已弃用（每次写入都会告警），
+# 按官方文档推荐显式注册替代：datetime→"YYYY-MM-DD HH:MM:SS"，date→"YYYY-MM-DD"。
+# 这同时服务于 dateColumns（dt.date）与导入时间列（dt.datetime）两条写入路径。
+sqlite3.register_adapter(dt.datetime, lambda value: value.isoformat(sep=" ", timespec="seconds"))
+sqlite3.register_adapter(dt.date, lambda value: value.isoformat())
+
+
+def env_path(name: str, fallback: Path) -> Path:
+    raw_value = os.environ.get(name, "").strip()
+    volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+    if raw_value:
+        path = Path(raw_value)
+        if volume_mount and not path.is_absolute():
+            return (Path(volume_mount) / path).resolve()
+        return path.resolve()
+    if volume_mount:
+        return (Path(volume_mount) / fallback.name).resolve()
+    return fallback.resolve()
+
+
+DATA = env_path("DATA_DIR", ROOT / "data")
+UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
+EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
+# 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
+APP_VERSION = "1.4.0"
+TASK_SOURCES = DATA / "task_sources"
+LINKED_SOURCES = DATA / "linked_sources"
+DB_PATH = DATA / "imports.db"
+# Stored connection passwords / snapshots are Fernet-encrypted and prefixed.
+# SECRET_KEY_FILE is generated on first run and stored inside DATA so it stays
+# with the database (incl. Railway volume) while remaining OUTSIDE the backup
+# zip produced by scripts/create_data_backup.py (that archive only packs
+# data/imports.db, never the whole data directory).
+FERNET_PREFIX = "fernet:"
+LEGACY_B64_PREFIX = "b64:"
+PASSWORD_PREFIX = FERNET_PREFIX
+SECRET_KEY_FILE = DATA / ".secret_key"
+
+# Directories whose files may be served by /api/export/download (P2-14).
+DOWNLOAD_ALLOWED_ROOTS = (EXPORTS, UPLOADS, TASK_SOURCES)
+
+MAX_PREVIEW_ROWS = 20
+EXPORT_FETCH_SIZE = 5000
+SUPPORTED_EXTENSIONS = {".csv", ".txt", ".xlsx", ".xlsm", ".xls", ".json", ".xml", ".dbf"}
+
+
+@dataclass
+class UploadedFile:
+    filename: str
+    path: Path
+
+
+@dataclass
+class TabularData:
+    columns: list[str]
+    rows: list[list[str]]
+    sheets: list[str]
+    selected_sheet: str
+
+
+def ensure_dirs() -> None:
+    DATA.mkdir(parents=True, exist_ok=True)
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    EXPORTS.mkdir(parents=True, exist_ok=True)
+    TASK_SOURCES.mkdir(parents=True, exist_ok=True)
+    LINKED_SOURCES.mkdir(parents=True, exist_ok=True)
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    existing = [row["name"] for row in conn.execute(f"pragma table_info({table})").fetchall()]
+    if column not in existing:
+        conn.execute(f"alter table {table} add column {column} {ddl}")
+
+
+def connect_db() -> sqlite3.Connection:
+    ensure_dirs()
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("pragma busy_timeout = 30000")
+    conn.execute(
+        """
+        create table if not exists _import_logs (
+            id text primary key,
+            created_at text not null,
+            file_name text not null,
+            table_name text not null,
+            mode text not null,
+            rows_read integer not null default 0,
+            rows_written integer not null,
+            rows_updated integer not null default 0,
+            rows_skipped integer not null default 0,
+            status text not null,
+            message text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _import_checkpoints (
+            key text primary key,
+            updated_at text not null,
+            rows_done integer not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _db_connections (
+            id text primary key,
+            name text not null,
+            db_type text not null,
+            host text not null,
+            port integer not null,
+            user_name text not null,
+            password text not null default '',
+            db_name text not null default '',
+            charset text not null default 'utf8mb4',
+            ssl_enabled integer not null default 0,
+            ssl_ca text not null default '',
+            ssl_cert text not null default '',
+            ssl_key text not null default '',
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _jobs (
+            id text primary key,
+            name text not null,
+            enabled integer not null default 1,
+            steps_json text not null default '[]',
+            guard_json text not null default '{}',
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
+    _ensure_column(conn, "_jobs", "guard_json", "text not null default '{}'")
+    conn.execute(
+        """
+        create table if not exists _schedules (
+            id text primary key,
+            name text not null,
+            job_id text not null,
+            enabled integer not null default 0,
+            rule_json text not null default '{}',
+            start_at text not null default '',
+            end_at text not null default '',
+            next_run_at text not null default '',
+            last_run_at text not null default '',
+            last_status text not null default '',
+            log_retention_days integer not null default 3,
+            email_on_fail integer not null default 0,
+            running integer not null default 0,
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _job_runs (
+            id text primary key,
+            job_id text not null,
+            schedule_id text not null default '',
+            job_name text not null,
+            started_at text not null,
+            ended_at text not null default '',
+            elapsed_ms integer not null default 0,
+            status text not null,
+            message text not null default ''
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _job_run_steps (
+            id text primary key,
+            run_id text not null,
+            step_index integer not null,
+            step_name text not null,
+            step_type text not null,
+            started_at text not null,
+            ended_at text not null default '',
+            elapsed_ms integer not null default 0,
+            status text not null,
+            message text not null default ''
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _saved_queries (
+            id text primary key,
+            name text not null,
+            connection_id text not null default '',
+            sql_text text not null,
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
+    for column, ddl in {
+        "rows_read": "integer not null default 0",
+        "rows_updated": "integer not null default 0",
+        "rows_skipped": "integer not null default 0",
+    }.items():
+        existing = [row["name"] for row in conn.execute("pragma table_info(_import_logs)").fetchall()]
+        if column not in existing:
+            conn.execute(f"alter table _import_logs add column {column} {ddl}")
+    conn.execute(
+        """
+        create table if not exists _job_file_guards (
+            job_id text not null,
+            step_index integer not null,
+            fingerprint text not null,
+            source_text text not null,
+            updated_at text not null,
+            primary key (job_id, step_index)
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _import_file_fingerprints (
+            file_key text primary key,
+            fingerprint text not null,
+            table_name text not null default '',
+            updated_at text not null
+        )
+        """
+    )
+    _migrate_legacy_secrets_once(conn)
+    return conn
+
+
+# ---------------------------------------------------------------------------
+# Secret encryption (P1-4)
+# Stored secrets are Fernet-encrypted with a master key that comes from either
+# the DC_MASTER_KEY environment variable or an auto-generated local key file.
+# ---------------------------------------------------------------------------
+
+# RLock (reentrant): _get_fernet() acquires this lock and may call
+# _load_or_create_secret_key(), which acquires the same lock again when the key
+# file must be generated on first startup. A plain Lock() would deadlock there.
+_SECRET_KEY_LOCK = threading.RLock()
+_FERNET_INSTANCE: Fernet | None = None
+_MIGRATION_LOCK = threading.Lock()
+_MIGRATION_DONE = False
+
+
+def _load_or_create_secret_key() -> bytes:
+    """Return the Fernet master key (base64 text bytes).
+
+    Precedence: DC_MASTER_KEY env var > local key file (auto-generated).
+    Unattended startup is preserved: when no key file exists the server simply
+    generates one next to the database.
+    """
+    env_key = os.environ.get("DC_MASTER_KEY", "").strip()
+    if env_key:
+        return env_key.encode("ascii")
+
+    def _read_existing() -> bytes:
+        try:
+            data = SECRET_KEY_FILE.read_bytes().strip()
+            if data:
+                return data
+        except OSError:
+            pass
+        return b""
+
+    existing = _read_existing()
+    if existing:
+        return existing
+    with _SECRET_KEY_LOCK:
+        existing = _read_existing()
+        if existing:
+            return existing
+        DATA.mkdir(parents=True, exist_ok=True)
+        generated = Fernet.generate_key()
+        try:
+            SECRET_KEY_FILE.write_bytes(generated)
+        except OSError:
+            raise RuntimeError(f"无法创建密钥文件 {SECRET_KEY_FILE}，请设置 DC_MASTER_KEY 环境变量。")
+        try:
+            os.chmod(SECRET_KEY_FILE, 0o600)
+        except OSError:
+            pass  # Windows: chmod is best-effort.
+        return generated
+
+
+def _get_fernet() -> Fernet:
+    global _FERNET_INSTANCE
+    if _FERNET_INSTANCE is None:
+        with _SECRET_KEY_LOCK:
+            if _FERNET_INSTANCE is None:
+                _FERNET_INSTANCE = Fernet(_load_or_create_secret_key())
+    return _FERNET_INSTANCE
+
+
+def encode_secret(value: str) -> str:
+    if not value:
+        return ""
+    token = _get_fernet().encrypt(value.encode("utf-8")).decode("ascii")
+    return FERNET_PREFIX + token
+
+
+def decode_secret(value: str) -> str:
+    if not value:
+        return ""
+    if value.startswith(FERNET_PREFIX):
+        try:
+            return _get_fernet().decrypt(value[len(FERNET_PREFIX) :].encode("ascii")).decode("utf-8")
+        except Exception:
+            return ""
+    if value.startswith(LEGACY_B64_PREFIX):
+        # Legacy base64 secrets still decrypt fine (read compatibility). They are
+        # upgraded to fernet: by the startup/script migration.
+        try:
+            return base64.b64decode(value[len(LEGACY_B64_PREFIX) :]).decode("utf-8")
+        except Exception:
+            return ""
+    return value
+
+
+def _is_legacy_b64(value: object) -> bool:
+    return isinstance(value, str) and value.startswith(LEGACY_B64_PREFIX)
+
+
+def _decode_legacy_b64(value: str) -> str:
+    return base64.b64decode(value[len(LEGACY_B64_PREFIX) :]).decode("utf-8")
+
+
+def migrate_legacy_secrets(conn: sqlite3.Connection) -> dict[str, int]:
+    """Rewrite legacy 'b64:' secrets to Fernet. Idempotent - safe to re-run.
+
+    Covers the _db_connections.password column and the dbPasswordSecret
+    snapshots embedded in _jobs.steps_json. Returns {'connections', 'job_snapshots'}.
+    """
+    counts = {"connections": 0, "job_snapshots": 0, "errors": 0}
+    try:
+        rows = conn.execute("select id, password from _db_connections").fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    for row in rows:
+        stored = row[1] or ""
+        if not _is_legacy_b64(stored):
+            continue
+        try:
+            conn.execute(
+                "update _db_connections set password = ? where id = ?",
+                (encode_secret(_decode_legacy_b64(stored)), row[0]),
+            )
+            counts["connections"] += 1
+        except Exception:
+            counts["errors"] += 1
+    try:
+        job_rows = conn.execute("select id, steps_json from _jobs").fetchall()
+    except sqlite3.OperationalError:
+        job_rows = []
+    for row in job_rows:
+        try:
+            steps = json.loads(row[1] or "[]")
+        except Exception:
+            continue
+        if not isinstance(steps, list):
+            continue
+        changed = False
+        for step in steps:
+            config = step.get("config") if isinstance(step, dict) else None
+            if not isinstance(config, dict):
+                continue
+            secret = config.get("dbPasswordSecret")
+            if not _is_legacy_b64(secret):
+                continue
+            try:
+                config["dbPasswordSecret"] = encode_secret(_decode_legacy_b64(secret))
+                changed = True
+            except Exception:
+                counts["errors"] += 1
+        if changed:
+            conn.execute(
+                "update _jobs set steps_json = ? where id = ?",
+                (json.dumps(steps, ensure_ascii=False), row[0]),
+            )
+            counts["job_snapshots"] += 1
+    conn.commit()
+    return counts
+
+
+def _migrate_legacy_secrets_once(conn: sqlite3.Connection) -> None:
+    """Runs the lightweight startup migration at most once per process.
+
+    Never raises so a migration failure cannot block serving requests.
+    """
+    global _MIGRATION_DONE
+    if _MIGRATION_DONE:
+        return
+    with _MIGRATION_LOCK:
+        if _MIGRATION_DONE:
+            return
+        try:
+            migrate_legacy_secrets(conn)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"WARNING: password-encryption migration skipped: {exc}", flush=True)
+            return
+        _MIGRATION_DONE = True
+
+
+def normalize_connection_payload(payload: dict[str, object]) -> dict[str, object]:
+    db_type = str(payload.get("dbType") or payload.get("targetDbType") or "mysql").strip().lower()
+    if db_type != "mysql":
+        raise ValueError("当前连接模块先支持 MySQL，其他数据库会在后续模块开放。")
+    host = str(payload.get("host") or payload.get("dbHost") or "").strip()
+    user = str(payload.get("user") or payload.get("dbUser") or "").strip()
+    if not host:
+        raise ValueError("请填写主机。")
+    if not user:
+        raise ValueError("请填写用户名。")
+    name = str(payload.get("name") or payload.get("connectionName") or "").strip()
+    database = str(payload.get("database") or payload.get("dbName") or "").strip()
+    if not name:
+        name = f"MySQL - {host}{('/' + database) if database else ''}"
+    return {
+        "id": str(payload.get("id") or uuid.uuid4().hex),
+        "name": name,
+        "db_type": db_type,
+        "host": host,
+        "port": int(payload.get("port") or payload.get("dbPort") or 3306),
+        "user_name": user,
+        "password": str(payload.get("password") or payload.get("dbPassword") or ""),
+        "db_name": database,
+        "charset": str(payload.get("charset") or payload.get("dbCharset") or "utf8mb4").strip() or "utf8mb4",
+        "ssl_enabled": 1 if payload.get("sslEnabled") in (True, "true", "1", 1, "on") else 0,
+        "ssl_ca": str(payload.get("sslCa") or ""),
+        "ssl_cert": str(payload.get("sslCert") or ""),
+        "ssl_key": str(payload.get("sslKey") or ""),
+    }
+
+
+def connection_public(row: sqlite3.Row, include_password: bool = False) -> dict[str, object]:
+    item = {
+        "id": row["id"],
+        "name": row["name"],
+        "dbType": row["db_type"],
+        "host": row["host"],
+        "port": row["port"],
+        "user": row["user_name"],
+        "database": row["db_name"],
+        "charset": row["charset"],
+        "sslEnabled": bool(row["ssl_enabled"]),
+        "sslCa": row["ssl_ca"],
+        "sslCert": row["ssl_cert"],
+        "sslKey": row["ssl_key"],
+        "hasPassword": bool(row["password"]),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+    if include_password:
+        item["password"] = decode_secret(row["password"])
+    return item
+
+
+def load_saved_connection(connection_id: str) -> dict[str, object]:
+    if not connection_id:
+        return {}
+    with connect_db() as conn:
+        row = conn.execute("select * from _db_connections where id = ?", (connection_id,)).fetchone()
+    if not row:
+        raise ValueError("选择的数据库连接不存在，请重新选择。")
+    item = connection_public(row, include_password=True)
+    return {
+        "targetDbType": item["dbType"],
+        "dbHost": item["host"],
+        "dbPort": str(item["port"]),
+        "dbUser": item["user"],
+        "dbPassword": item.get("password", ""),
+        "dbName": item["database"],
+        "dbCharset": item["charset"],
+        "sslEnabled": "true" if item["sslEnabled"] else "false",
+        "sslCa": item["sslCa"],
+        "sslCert": item["sslCert"],
+        "sslKey": item["sslKey"],
+    }
+
+
+def resolve_connection_fields(fields: dict[str, str]) -> dict[str, str]:
+    if fields.get("targetDbType", "").strip().lower() == "sqlite":
+        merged = dict(fields)
+        merged["connectionId"] = ""
+        return merged
+    connection_id = fields.get("connectionId", "").strip()
+    if fields.get("dbPasswordSecret") and not fields.get("dbPassword"):
+        fields = dict(fields)
+        fields["dbPassword"] = decode_secret(fields.get("dbPasswordSecret", ""))
+    if not connection_id:
+        return fields
+    try:
+        saved = load_saved_connection(connection_id)
+    except ValueError:
+        has_snapshot = any(fields.get(key, "").strip() for key in ["dbHost", "dbName", "dbUser"])
+        if has_snapshot:
+            merged = dict(fields)
+            merged["connectionId"] = ""
+            return merged
+        raise
+    merged = dict(fields)
+    merged.update({key: str(value) for key, value in saved.items()})
+    return merged
+
+
+def has_direct_connection_fields(fields: dict[str, str]) -> bool:
+    return bool(fields.get("dbHost", "").strip() and fields.get("dbName", "").strip())
+
+
+def friendly_export_error(exc: Exception, fields: dict[str, str]) -> str:
+    message = str(exc)
+    if target_db_type(fields) == "sqlite" and "no such table" in message.lower():
+        return f"{message}。当前导出任务使用的是本地 SQLite，未连接到业务数据库；请先在“新建连接”保存 MySQL 连接，并打开导出任务重新保存。"
+    if "选择的数据库连接不存在" in message:
+        return "导出任务保存的数据库连接不存在；请先在“新建连接”保存连接，然后打开导出任务重新保存。"
+    return message
+
+
+def attach_connection_snapshot(config: dict[str, object]) -> dict[str, object]:
+    connection_id = str(config.get("connectionId") or "").strip()
+    if not connection_id:
+        return config
+    try:
+        saved = load_saved_connection(connection_id)
+    except ValueError:
+        return config
+    snapshot = dict(config)
+    password = str(saved.pop("dbPassword", "") or "")
+    snapshot.update(saved)
+    if password:
+        snapshot["dbPasswordSecret"] = encode_secret(password)
+        snapshot.pop("dbPassword", None)
+    return snapshot
+
+
+def target_db_type(fields: dict[str, str]) -> str:
+    fields = resolve_connection_fields(fields)
+    return fields.get("targetDbType", "sqlite").strip().lower() or "sqlite"
+
+
+def connect_target_db(fields: dict[str, str]):
+    fields = resolve_connection_fields(fields)
+    if target_db_type(fields) == "mysql":
+        ssl_config = None
+        if parse_bool(fields, "sslEnabled", False):
+            ssl_config = {}
+            if fields.get("sslCa"):
+                ssl_config["ca"] = fields["sslCa"]
+            if fields.get("sslCert"):
+                ssl_config["cert"] = fields["sslCert"]
+            if fields.get("sslKey"):
+                ssl_config["key"] = fields["sslKey"]
+        return pymysql.connect(
+            host=fields.get("dbHost", "127.0.0.1"),
+            port=parse_int(fields, "dbPort", 3306),
+            user=fields.get("dbUser", ""),
+            password=fields.get("dbPassword", ""),
+            database=fields.get("dbName", ""),
+            charset=fields.get("dbCharset", "utf8mb4") or "utf8mb4",
+            autocommit=fields.get("commitMode") == "auto",
+            local_infile=fields.get("writeMode") == "load",
+            ssl=ssl_config,
+        )
+    return connect_db()
+
+
+def db_placeholder(fields: dict[str, str]) -> str:
+    return "%s" if target_db_type(fields) == "mysql" else "?"
+
+
+def db_quote(name: str, fields: dict[str, str]) -> str:
+    if target_db_type(fields) == "mysql":
+        return "`" + name.replace("`", "``") + "`"
+    return '"' + name.replace('"', '""') + '"'
+
+
+def db_now_sql(fields: dict[str, str]) -> str:
+    return "now()" if target_db_type(fields) == "mysql" else "datetime('now', 'localtime')"
+
+
+def fetch_all_dicts(cursor) -> list[dict[str, object]]:
+    columns = [desc[0] for desc in cursor.description or []]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def mysql_connection_args(config: dict[str, object], include_database: bool = True) -> dict[str, object]:
+    args: dict[str, object] = {
+        "host": str(config.get("host") or config.get("dbHost") or "127.0.0.1"),
+        "port": int(config.get("port") or config.get("dbPort") or 3306),
+        "user": str(config.get("user") or config.get("user_name") or config.get("dbUser") or ""),
+        "password": str(config.get("password") or config.get("dbPassword") or ""),
+        "charset": str(config.get("charset") or config.get("dbCharset") or "utf8mb4") or "utf8mb4",
+        "connect_timeout": 6,
+        "read_timeout": 10,
+        "write_timeout": 10,
+        "local_infile": config.get("writeMode") == "load",
+        "autocommit": True,
+    }
+    database = str(config.get("database") or config.get("dbName") or config.get("db_name") or "").strip()
+    if include_database and database:
+        args["database"] = database
+    ssl_enabled = config.get("sslEnabled") in (True, "true", "1", 1, "on")
+    if ssl_enabled:
+        ssl_config = {}
+        for source, target in (("sslCa", "ca"), ("sslCert", "cert"), ("sslKey", "key")):
+            value = str(config.get(source) or "").strip()
+            if value:
+                ssl_config[target] = value
+        args["ssl"] = ssl_config
+    return args
+
+
+# MySQL 系统库：出现在「show databases」结果里但对用户业务无意义，
+# 连接表单的数据库下拉统一过滤掉（用户显式选中的库除外，见 test_mysql_connection）。
+MYSQL_SYSTEM_DATABASES = {"information_schema", "performance_schema", "mysql", "sys"}
+
+
+def test_mysql_connection(config: dict[str, object]) -> dict[str, object]:
+    normalized = normalize_connection_payload(config)
+    with pymysql.connect(**mysql_connection_args(normalized, include_database=False)) as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("select version()")
+            version = cursor.fetchone()[0]
+            cursor.execute("show databases")
+            databases = [row[0] for row in cursor.fetchall()]
+    # P3-19：过滤系统库，避免下拉被 information_schema/performance_schema 等占满。
+    databases = [name for name in databases if name.lower() not in MYSQL_SYSTEM_DATABASES]
+    selected_db = str(normalized.get("db_name") or "")
+    if selected_db:
+        with pymysql.connect(**mysql_connection_args(normalized, include_database=True)) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("select database()")
+                cursor.fetchone()
+        if selected_db not in databases:
+            databases.insert(0, selected_db)
+    return {"version": version, "databases": databases}
+
+
+def checkpoint_key(uploaded: UploadedFile, table_name: str, fields: dict[str, str]) -> str:
+    stat = uploaded.path.stat()
+    return f"{uploaded.filename}|{stat.st_size}|{int(stat.st_mtime)}|{target_db_type(fields)}|{table_name}|{fields.get('importMode', 'append')}"
+
+
+def get_checkpoint(key: str) -> int:
+    with connect_db() as conn:
+        row = conn.execute("select rows_done from _import_checkpoints where key = ?", (key,)).fetchone()
+        return int(row["rows_done"]) if row else 0
+
+
+def set_checkpoint(key: str, rows_done: int) -> None:
+    with connect_db() as conn:
+        conn.execute(
+            """
+            insert into _import_checkpoints (key, updated_at, rows_done)
+            values (?, datetime('now', 'localtime'), ?)
+            on conflict(key) do update set updated_at = excluded.updated_at, rows_done = excluded.rows_done
+            """,
+            (key, rows_done),
+        )
+
+
+def clear_checkpoint(key: str) -> None:
+    with connect_db() as conn:
+        conn.execute("delete from _import_checkpoints where key = ?", (key,))
+
+
+def json_response(handler: SimpleHTTPRequestHandler, payload: object, status: int = 200) -> None:
+    body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", "application/json; charset=utf-8")
+    handler.send_header("Content-Length", str(len(body)))
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def error_response(handler: SimpleHTTPRequestHandler, message: str, status: int = 400) -> None:
+    json_response(handler, {"ok": False, "error": message}, status)
+
+
+def parse_bool(fields: dict[str, str], name: str, default: bool = False) -> bool:
+    value = fields.get(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
+
+
+def parse_int(fields: dict[str, str], name: str, default: int = 0) -> int:
+    value = fields.get(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} 必须是整数。") from exc
+
+
+def split_values(value: str) -> list[str]:
+    return [item.strip() for item in re.split(r"[,，\n]", value or "") if item.strip()]
+
+
+def decode_escaped(value: str) -> str:
+    if not value:
+        return ""
+    return value.encode("utf-8").decode("unicode_escape")
+
+
+def sanitize_identifier(value: str, fallback: str) -> str:
+    text = (value or "").strip()
+    text = re.sub(r"[^\w\u4e00-\u9fff]+", "_", text, flags=re.UNICODE)
+    text = re.sub(r"_+", "_", text).strip("_")
+    if not text:
+        text = fallback
+    if text[0].isdigit():
+        text = f"t_{text}"
+    return text[:60]
+
+
+def to_pinyin_initials(value: str) -> str:
+    return "".join(lazy_pinyin(value, style=Style.FIRST_LETTER))
+
+
+def unique_names(names: list[str]) -> list[str]:
+    counts: dict[str, int] = {}
+    result: list[str] = []
+    for index, name in enumerate(names, start=1):
+        base = sanitize_identifier(name, f"column_{index}")
+        count = counts.get(base, 0)
+        counts[base] = count + 1
+        result.append(base if count == 0 else f"{base}_{count + 1}")
+    return result
+
+
+def cell_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, dt.datetime):
+        return value.isoformat(sep=" ", timespec="seconds")
+    if isinstance(value, dt.date):
+        return value.isoformat()
+    if isinstance(value, float):
+        # 整数形态的 float 转 int：避免 str() 用科学计数法（如 1.2345e+17）导致
+        # 大整数被误判为 text 且呈现精度异常（P2-6）。仅在能安全装入 bigint 时转，
+        # 更大的数保留 float 走 double（配合 infer_column_types 的科学计数法正则）。
+        if value.is_integer() and abs(value) < 2**63:
+            return str(int(value))
+    return str(value)
+
+
+def trim_trailing_blanks(row: list[str]) -> list[str]:
+    end = len(row)
+    while end > 0 and row[end - 1].strip() == "":
+        end -= 1
+    return row[:end]
+
+
+def read_csv_rows(path: Path, encoding_option: str, delimiter: str, line_delimiter: str = "") -> list[list[str]]:
+    encodings = ["utf-8-sig", "utf-8", "gbk", "gb18030"] if encoding_option == "auto" else [encoding_option]
+    last_error: Exception | None = None
+    for encoding in encodings:
+        try:
+            with path.open("r", encoding=encoding, newline="") as file:
+                content = file.read()
+                sample = content[:4096]
+                source_lines = content.split(line_delimiter) if line_delimiter else content.splitlines()
+                if delimiter:
+                    dialect = csv.excel
+                    dialect.delimiter = delimiter
+                else:
+                    try:
+                        dialect = csv.Sniffer().sniff(sample)
+                        # Sniffer 在单列/无分隔符数据下会把换行符(\r/\n)或普通字母数字
+                        # 误判为分隔符，导致 csv.reader 报 bad delimiter value 或错误拆列。
+                        # 这类分隔符不可靠，降级为默认逗号（单列数据按整行一列读取）。
+                        sep = getattr(dialect, "delimiter", "")
+                        if not sep or sep in ("\r", "\n") or sep.isalnum():
+                            dialect = csv.excel
+                    except (csv.Error, ValueError):
+                        dialect = csv.excel
+                return [[cell_to_text(cell) for cell in row] for row in csv.reader(source_lines, dialect)]
+        except UnicodeDecodeError as exc:
+            last_error = exc
+    raise ValueError(f"无法识别 CSV/TXT 编码：{last_error}")
+
+
+def read_excel_rows(path: Path, fields: dict[str, str]) -> tuple[list[list[str]], list[str], str]:
+    source = path
+    decrypted: BytesIO | None = None
+    password = fields.get("excelPassword", "").strip()
+    if password:
+        decrypted = BytesIO()
+        with path.open("rb") as file:
+            office_file = msoffcrypto.OfficeFile(file)
+            office_file.load_key(password=password)
+            office_file.decrypt(decrypted)
+        decrypted.seek(0)
+        source = decrypted  # type: ignore[assignment]
+    workbook = load_workbook(source, read_only=True, data_only=True)
+    sheet_names = workbook.sheetnames
+    if not sheet_names:
+        workbook.close()
+        raise ValueError("Excel 文件没有工作表。")
+
+    mode = fields.get("sheetFilterMode", "name")
+    requested = fields.get("sheetName", "").strip()
+    selected = sheet_names[0]
+    if requested:
+        if mode == "index":
+            index = int(requested) - 1
+            if index < 0 or index >= len(sheet_names):
+                workbook.close()
+                raise ValueError("指定的 Sheet 序号不存在。")
+            selected = sheet_names[index]
+        elif requested in sheet_names:
+            selected = requested
+        else:
+            workbook.close()
+            raise ValueError("指定的 Sheet 名称不存在。")
+
+    sheet = workbook[selected]
+    rows = [[cell_to_text(cell) for cell in row] for row in sheet.iter_rows(values_only=True)]
+    workbook.close()
+    return rows, sheet_names, selected
+
+
+def read_xls_rows(path: Path, fields: dict[str, str]) -> tuple[list[list[str]], list[str], str]:
+    workbook = xlrd.open_workbook(path)
+    sheet_names = workbook.sheet_names()
+    if not sheet_names:
+        raise ValueError("Excel 文件没有工作表。")
+    mode = fields.get("sheetFilterMode", "name")
+    requested = fields.get("sheetName", "").strip()
+    selected = sheet_names[0]
+    if requested:
+        if mode == "index":
+            index = int(requested) - 1
+            if index < 0 or index >= len(sheet_names):
+                raise ValueError("指定的 Sheet 序号不存在。")
+            selected = sheet_names[index]
+        elif requested in sheet_names:
+            selected = requested
+        else:
+            raise ValueError("指定的 Sheet 名称不存在。")
+    sheet = workbook.sheet_by_name(selected)
+    rows = [[cell_to_text(sheet.cell_value(row, col)) for col in range(sheet.ncols)] for row in range(sheet.nrows)]
+    return rows, sheet_names, selected
+
+
+def read_dbf_rows(path: Path, fields: dict[str, str]) -> list[list[str]]:
+    encoding = fields.get("encoding", "auto")
+    kwargs = {} if encoding == "auto" else {"encoding": encoding}
+    table = DBF(str(path), load=True, char_decode_errors="ignore", **kwargs)
+    columns = list(table.field_names)
+    rows = [columns]
+    for record in table:
+        rows.append([cell_to_text(record.get(column, "")) for column in columns])
+    return rows
+
+
+def flatten_object(data: dict[str, object], prefix: str = "") -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in data.items():
+        name = f"{prefix}_{key}" if prefix else str(key)
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                result[f"{name}_{child_key}"] = child_value
+        elif isinstance(value, list):
+            result[name] = json.dumps(value, ensure_ascii=False)
+        else:
+            result[name] = value
+    return result
+
+
+def read_json_rows(path: Path, row_tag: str = "") -> list[list[str]]:
+    data = json.loads(path.read_text(encoding="utf-8-sig"))
+    if isinstance(data, dict):
+        data = data.get(row_tag) if row_tag and row_tag in data else next((v for v in data.values() if isinstance(v, list)), [data])
+    if not isinstance(data, list):
+        raise ValueError("JSON 需要是对象数组，或包含对象数组的根对象。")
+    flattened = [flatten_object(item) for item in data if isinstance(item, dict)]
+    keys: list[str] = []
+    for item in flattened:
+        if isinstance(item, dict):
+            for key in item.keys():
+                if key not in keys:
+                    keys.append(str(key))
+    if not keys:
+        raise ValueError("JSON 中没有可导入的对象行。")
+    rows = [keys]
+    for item in flattened:
+        if isinstance(item, dict):
+            rows.append([cell_to_text(item.get(key, "")) for key in keys])
+    return rows
+
+
+def read_xml_rows(path: Path, row_tag: str) -> list[list[str]]:
+    root = ET.parse(path).getroot()
+    elements = root.findall(f".//{row_tag}") if row_tag else list(root)
+    if not elements:
+        raise ValueError("XML 中没有可导入的行节点。")
+    flattened_rows: list[dict[str, object]] = []
+    for element in elements:
+        row: dict[str, object] = {}
+        for child in list(element):
+            if list(child):
+                for grandchild in list(child):
+                    row[f"{child.tag}_{grandchild.tag}"] = grandchild.text or ""
+            else:
+                row[child.tag] = child.text or ""
+        flattened_rows.append(row)
+    keys: list[str] = []
+    for row in flattened_rows:
+        for key in row.keys():
+            if key not in keys:
+                keys.append(key)
+    if not keys:
+        raise ValueError("XML 行节点中没有字段。")
+    rows = [keys]
+    for row in flattened_rows:
+        rows.append([cell_to_text(row.get(key, "")) for key in keys])
+    return rows
+
+
+def make_tabular(raw_rows: list[list[str]], fields: dict[str, str], sheets: list[str] | None = None, selected_sheet: str = "") -> TabularData:
+    delete_empty_rows = parse_bool(fields, "deleteEmptyRows", True)
+    rows = [trim_trailing_blanks(row) for row in raw_rows]
+    if delete_empty_rows:
+        rows = [row for row in rows if any(cell.strip() for cell in row)]
+    if not rows:
+        raise ValueError("文件中没有可导入的数据。")
+
+    header_row = max(parse_int(fields, "headerRow", 1), 1)
+    header_index = header_row - 1
+    if header_index >= len(rows):
+        raise ValueError("表头所在行号超出文件行数。")
+
+    has_header = parse_bool(fields, "hasHeader", True)
+    width = max(len(row) for row in rows)
+    rows = [row + [""] * (width - len(row)) for row in rows]
+    if has_header:
+        columns = unique_names(rows[header_index])
+        default_data_start = header_row + 1
+    else:
+        columns = [f"column_{index}" for index in range(1, width + 1)]
+        default_data_start = header_row
+
+    data_start = parse_int(fields, "dataStartRow", default_data_start) or default_data_start
+    data_rows = rows[max(data_start - 1, 0) :]
+    skip_tail = max(parse_int(fields, "skipTailRows", 0), 0)
+    if skip_tail:
+        data_rows = data_rows[:-skip_tail] if skip_tail < len(data_rows) else []
+    import_count = parse_int(fields, "importRowCount", 0)
+    if import_count > 0:
+        data_rows = data_rows[:import_count]
+
+    columns, data_rows = apply_column_filter(columns, data_rows, fields.get("columnFilter", ""))
+    return TabularData(columns=columns, rows=data_rows, sheets=sheets or [], selected_sheet=selected_sheet)
+
+
+def apply_column_filter(columns: list[str], rows: list[list[str]], filter_value: str) -> tuple[list[str], list[list[str]]]:
+    filters = split_values(filter_value)
+    if not filters:
+        return columns, rows
+    indexes: list[int] = []
+    for item in filters:
+        if item.isdigit():
+            index = int(item) - 1
+            if 0 <= index < len(columns):
+                indexes.append(index)
+        elif item in columns:
+            indexes.append(columns.index(item))
+    if not indexes:
+        raise ValueError("指定导入列没有匹配到任何字段。")
+    return [columns[i] for i in indexes], [[row[i] if i < len(row) else "" for i in indexes] for row in rows]
+
+
+def read_tabular_file(path: Path, fields: dict[str, str]) -> TabularData:
+    suffix = path.suffix.lower()
+    if suffix in {".csv", ".txt"}:
+        rows = read_csv_rows(path, fields.get("encoding", "auto"), fields.get("delimiter", ""), decode_escaped(fields.get("lineDelimiter", "")))
+        return make_tabular(rows, fields)
+    if suffix in {".xlsx", ".xlsm"}:
+        rows, sheets, selected = read_excel_rows(path, fields)
+        return make_tabular(rows, fields, sheets, selected)
+    if suffix == ".xls":
+        rows, sheets, selected = read_xls_rows(path, fields)
+        return make_tabular(rows, fields, sheets, selected)
+    if suffix == ".json":
+        rows = read_json_rows(path, fields.get("rowTag", ""))
+        with_header = dict(fields)
+        with_header["hasHeader"] = "true"
+        return make_tabular(rows, with_header)
+    if suffix == ".xml":
+        rows = read_xml_rows(path, fields.get("rowTag", ""))
+        with_header = dict(fields)
+        with_header["hasHeader"] = "true"
+        return make_tabular(rows, with_header)
+    if suffix == ".dbf":
+        rows = read_dbf_rows(path, fields)
+        with_header = dict(fields)
+        with_header["hasHeader"] = "true"
+        return make_tabular(rows, with_header)
+    supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+    raise ValueError(f"暂不支持 {suffix or '未知'} 文件。当前支持：{supported}")
+
+
+def read_tabular_tasks(path: Path, fields: dict[str, str]) -> list[TabularData]:
+    suffix = path.suffix.lower()
+    if fields.get("sheetMode", "specified") != "all" or suffix not in {".xlsx", ".xlsm", ".xls"}:
+        return [read_tabular_file(path, fields)]
+    if suffix == ".xls":
+        names = xlrd.open_workbook(path).sheet_names()
+    else:
+        workbook = load_workbook(path, read_only=True, data_only=True)
+        names = workbook.sheetnames
+        workbook.close()
+    tasks: list[TabularData] = []
+    for name in names:
+        per_sheet = dict(fields)
+        per_sheet["sheetFilterMode"] = "name"
+        per_sheet["sheetName"] = name
+        tasks.append(read_tabular_file(path, per_sheet))
+    return tasks
+
+def transform_field_name(name: str, fields: dict[str, str], fallback: str) -> str:
+    value = name.strip() or fallback
+    if parse_bool(fields, "fieldPinyin", False):
+        value = to_pinyin_initials(value)
+    replace_from = fields.get("fieldReplaceFrom", "")
+    replace_to = fields.get("fieldReplaceTo", "_")
+    if replace_from == "symbol":
+        value = re.sub(r"[^\w\u4e00-\u9fff]+", replace_to, value, flags=re.UNICODE)
+    elif replace_from == "space":
+        value = value.replace(" ", replace_to)
+    field_case = fields.get("fieldCase", "lower")
+    if field_case == "upper":
+        value = value.upper()
+    elif field_case == "lower":
+        value = value.lower()
+    return sanitize_identifier(value, fallback)
+
+
+def parse_mapping(raw_value: str | None, source_columns: list[str]) -> list[dict[str, object]]:
+    if not raw_value:
+        return [
+            {"sourceIndex": index, "source": column, "target": column, "enabled": True, "defaultValue": "", "matchKey": index == 0}
+            for index, column in enumerate(source_columns)
+        ]
+    payload = json.loads(raw_value)
+    if not isinstance(payload, list):
+        raise ValueError("字段映射必须是数组。")
+    if not payload:
+        return [
+            {"sourceIndex": index, "source": column, "target": column, "enabled": True, "defaultValue": "", "matchKey": index == 0}
+            for index, column in enumerate(source_columns)
+        ]
+    mapping: list[dict[str, object]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            continue
+        source_index = int(item.get("sourceIndex", -1))
+        if source_index < 0 or source_index >= len(source_columns):
+            continue
+        mapping.append(
+            {
+                "sourceIndex": source_index,
+                "source": source_columns[source_index],
+                "target": str(item.get("target") or source_columns[source_index]),
+                "enabled": bool(item.get("enabled", True)),
+                "defaultValue": str(item.get("defaultValue") or ""),
+                "matchKey": bool(item.get("matchKey", index == 0)),
+            }
+        )
+    return mapping
+
+
+def column_indexes(columns: list[str], selector: str) -> list[int]:
+    indexes: list[int] = []
+    lower_map = {column.lower(): index for index, column in enumerate(columns)}
+    for item in split_values(selector):
+        if item.isdigit():
+            index = int(item) - 1
+            if 0 <= index < len(columns):
+                indexes.append(index)
+        elif item in columns:
+            indexes.append(columns.index(item))
+        elif item.lower() in lower_map:
+            indexes.append(lower_map[item.lower()])
+    return indexes
+
+
+def parse_date_column_formats(columns: list[str], selector: str) -> dict[int, str]:
+    result: dict[int, str] = {}
+    lower_map = {column.lower(): index for index, column in enumerate(columns)}
+    for item in split_values(selector):
+        if ":" in item:
+            key, fmt = item.split(":", 1)
+        elif "=" in item:
+            key, fmt = item.split("=", 1)
+        else:
+            continue
+        key = key.strip()
+        fmt = fmt.strip()
+        index = None
+        if key.isdigit():
+            candidate = int(key) - 1
+            if 0 <= candidate < len(columns):
+                index = candidate
+        elif key in columns:
+            index = columns.index(key)
+        elif key.lower() in lower_map:
+            index = lower_map[key.lower()]
+        if index is not None and fmt:
+            result[index] = fmt
+    return result
+
+
+def apply_cleaning(columns: list[str], rows: list[list[str]], fields: dict[str, str]) -> tuple[list[str], list[list[str]], int]:
+    trim_values = parse_bool(fields, "trimValues", True)
+    empty_as_null = parse_bool(fields, "emptyAsNull", False)
+    zero_for_number = parse_bool(fields, "zeroForNumber", False)
+    replace_blank_with = fields.get("replaceBlankWith", "")
+    remove_text = fields.get("removeText", "")
+    replace_text_from = fields.get("replaceTextFrom", "")
+    replace_text_to = fields.get("replaceTextTo", "")
+    blank_values = set(split_values(fields.get("blankCellValues", "")))
+    fill_down_indexes = column_indexes(columns, fields.get("fillDownColumns", ""))
+    dedupe_indexes = column_indexes(columns, fields.get("dedupeColumns", ""))
+    date_formats = parse_date_column_formats(columns, fields.get("dateColumns", ""))
+
+    cleaned: list[list[str | None]] = []
+    previous: dict[int, str] = {}
+    skipped = 0
+    seen: set[tuple[str, ...]] = set()
+
+    for row in rows:
+        values: list[str | None] = []
+        for index, raw in enumerate(row):
+            value = raw or ""
+            if trim_values:
+                value = value.strip()
+            if value in blank_values:
+                value = ""
+            if remove_text:
+                value = value.replace(remove_text, "")
+            if replace_text_from:
+                value = value.replace(replace_text_from, replace_text_to)
+            if value == "" and index in fill_down_indexes and index in previous:
+                value = previous[index]
+            if value:
+                previous[index] = value
+            if value == "" and replace_blank_with:
+                value = replace_blank_with
+            if value == "" and zero_for_number:
+                value = "0"
+            if value and index in date_formats:
+                try:
+                    value = dt.datetime.strptime(value, date_formats[index]).isoformat(sep=" ", timespec="seconds")
+                except ValueError as exc:
+                    raise ValueError(f"日期列 {columns[index]} 的值 {value} 不符合格式 {date_formats[index]}") from exc
+            values.append(None if empty_as_null and value == "" else value)
+
+        if dedupe_indexes:
+            key = tuple("" if values[i] is None else str(values[i]) for i in dedupe_indexes)
+            if key in seen:
+                skipped += 1
+                continue
+            seen.add(key)
+        cleaned.append(values)
+
+    return columns, cleaned, skipped
+
+
+def build_target_data(tabular: TabularData, fields: dict[str, str], file_name: str) -> tuple[list[str], list[list[object]], list[str], int]:
+    mapping = [item for item in parse_mapping(fields.get("mapping"), tabular.columns) if item.get("enabled")]
+    if not mapping:
+        raise ValueError("至少需要启用一个字段。")
+
+    raw_columns = [str(item["target"]) for item in mapping]
+    raw_rows = []
+    for row in tabular.rows:
+        values = []
+        for item in mapping:
+            source_index = int(item["sourceIndex"])
+            value = row[source_index] if source_index < len(row) else ""
+            if value == "" and (parse_bool(fields, "defaultForEmpty", False) or item.get("defaultValue")):
+                value = str(item.get("defaultValue") or "")
+            values.append(value)
+        raw_rows.append(values)
+
+    transformed_columns = unique_names([transform_field_name(name, fields, f"column_{i + 1}") for i, name in enumerate(raw_columns)])
+    transformed_columns, cleaned_rows, skipped = apply_cleaning(transformed_columns, raw_rows, fields)
+
+    match_keys = [
+        transformed_columns[index]
+        for index, item in enumerate(mapping)
+        if index < len(transformed_columns) and item.get("matchKey")
+    ]
+    if not match_keys and transformed_columns:
+        match_keys = [transformed_columns[0]]
+
+    final_columns = list(transformed_columns)
+    final_rows: list[list[object]] = [list(row) for row in cleaned_rows]
+
+    pk_column = ""
+    pk_auto = False
+    auto_pk_field = fields.get("autoPkField", "").strip()
+    if auto_pk_field:
+        column = transform_field_name(auto_pk_field, fields, "id")
+        if column in transformed_columns:
+            # 自动主键复用了源文件里已存在的列：不新增同名列，只把它标记为主键列。
+            pk_column = column
+        else:
+            # 源文件里没有该列：新增自增主键列（值 = 行号 1,2,3...）。
+            final_columns.insert(0, column)
+            for index, row in enumerate(final_rows, start=1):
+                row.insert(0, index)
+            pk_column = column
+            pk_auto = True
+    # 通过内部键把主键信息传递到建表 / 写入流程（不影响对外的 fields 语义）。
+    fields["_primaryKeyColumn"] = pk_column
+    fields["_primaryKeyAuto"] = "true" if pk_auto else "false"
+
+    extras: list[tuple[str, object]] = []
+    if fields.get("importTimeField", "").strip():
+        # 写入 datetime 对象（而非 ISO 字符串）：MySQL 端据此推断为 datetime 列类型，
+        # 值由驱动原生绑定；SQLite 端经上方显式适配器落为 "YYYY-MM-DD HH:MM:SS" 文本。
+        # 截掉微秒，保证 LOAD DATA 文本路径与 DATETIME(0) 列兼容。
+        extras.append((transform_field_name(fields["importTimeField"], fields, "imported_at"), dt.datetime.now().replace(microsecond=0)))
+    if fields.get("sheetNameField", "").strip():
+        extras.append((transform_field_name(fields["sheetNameField"], fields, "sheet_name"), tabular.selected_sheet or Path(file_name).stem))
+    if fields.get("fixedValueField", "").strip():
+        extras.append((transform_field_name(fields["fixedValueField"], fields, "fixed_value"), fields.get("fixedValue", "")))
+
+    for column, value in extras:
+        final_columns.append(column)
+        for row in final_rows:
+            row.append(value)
+
+    return final_columns, final_rows, match_keys, skipped
+
+
+def normalize_target_name(uploaded: UploadedFile, tabular: TabularData, fields: dict[str, str]) -> str:
+    if fields.get("tableName"):
+        base = fields["tableName"]
+    elif fields.get("tableNameRule") == "sheet" and tabular.selected_sheet:
+        base = tabular.selected_sheet
+    else:
+        base = Path(uploaded.filename).stem
+
+    regex = fields.get("tableRegex", "").strip()
+    if regex:
+        match = re.search(regex, base)
+        if match:
+            base = match.group(1) if match.groups() else match.group(0)
+
+    if parse_bool(fields, "symbolToUnderscore", False):
+        base = re.sub(r"[^\w\u4e00-\u9fff]+", "_", base, flags=re.UNICODE)
+    if parse_bool(fields, "tablePinyin", False):
+        base = to_pinyin_initials(base)
+
+    value = f"{fields.get('tablePrefix', '')}{base}{fields.get('tableSuffix', '')}"
+    target_case = fields.get("tableCase", "lower")
+    if target_case == "upper":
+        value = value.upper()
+    elif target_case == "lower":
+        value = value.lower()
+    return sanitize_identifier(value, "import_table")
+
+
+def quote_identifier(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+def existing_columns(conn: sqlite3.Connection, table_name: str) -> list[str]:
+    rows = conn.execute(f"pragma table_info({quote_identifier(table_name)})").fetchall()
+    return [row["name"] for row in rows]
+
+
+def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    return (
+        conn.execute(
+            "select 1 from sqlite_master where type = 'table' and name = ? limit 1",
+            (table_name,),
+        ).fetchone()
+        is not None
+    )
+
+
+def target_table_exists(conn, table_name: str, fields: dict[str, str]) -> bool:
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "select 1 from information_schema.tables where table_schema = database() and table_name = %s limit 1",
+                (table_name,),
+            )
+            return cursor.fetchone() is not None
+    return table_exists(conn, table_name)
+
+
+def target_existing_columns(conn, table_name: str, fields: dict[str, str]) -> list[str]:
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select column_name from information_schema.columns
+                where table_schema = database() and table_name = %s
+                order by ordinal_position
+                """,
+                (table_name,),
+            )
+            return [row[0] for row in cursor.fetchall()]
+    return existing_columns(conn, table_name)
+
+
+def target_row_count(conn, table_name: str, fields: dict[str, str]) -> int:
+    table = db_quote(table_name, fields)
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(f"select count(*) from {table}")
+            row = cursor.fetchone()
+    else:
+        row = conn.execute(f"select count(*) from {table}").fetchone()
+    return int(row[0] if row else 0)
+
+
+DATE_TEXT_PATTERN = re.compile(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?")
+DATE_PARSE_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%Y-%m-%d",
+    "%Y/%m/%d %H:%M:%S",
+    "%Y/%m/%d %H:%M",
+    "%Y/%m/%d",
+)
+
+
+def parse_date_text(value: str) -> dt.datetime | None:
+    text = value.strip()
+    if len(text) < 8 or not DATE_TEXT_PATTERN.fullmatch(text):
+        return None
+    normalized = text.replace("T", " ")
+    for fmt in DATE_PARSE_FORMATS:
+        try:
+            return dt.datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def convert_date_columns(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> list[list[object]]:
+    """目标为 MySQL 且开启类型自动识别时，把整列均为日期形态的文本还原为 date/datetime 对象，
+    使建表类型与入库值都是真正的日期类型，而不是 text 字符串。
+    用户通过 columnTypeOverrides 覆盖为 date/datetime 的列也会被尽力转换为日期对象。"""
+    if target_db_type(fields) == "sqlite" or not rows or not columns:
+        return rows
+    converted = [list(row) for row in rows]
+    if fields.get("typeMode", "auto") != "text":
+        for index in range(len(columns)):
+            col_values = [row[index] for row in converted if index < len(row) and row[index] not in (None, "")]
+            if not col_values:
+                continue
+            parsed = [parse_date_text(value) if isinstance(value, str) else None for value in col_values]
+            if any(item is None for item in parsed):
+                continue
+            has_time = any(item.hour or item.minute or item.second for item in parsed)
+            for row in converted:
+                if index < len(row) and row[index] not in (None, ""):
+                    value = parse_date_text(row[index])
+                    row[index] = value if has_time else value.date()
+    # 用户覆盖为 date/datetime 的列：把文本解析为日期对象，解析失败保持原值（交由数据库校验）。
+    overrides = parse_column_type_overrides(fields)
+    for column, override_type in overrides.items():
+        if override_type not in {"date", "datetime"} or column not in columns:
+            continue
+        index = columns.index(column)
+        for row in converted:
+            if index >= len(row) or row[index] in (None, ""):
+                continue
+            value = row[index]
+            if isinstance(value, str):
+                parsed = parse_date_text(value)
+                if parsed is not None:
+                    row[index] = parsed if override_type == "datetime" else parsed.date()
+    return converted
+
+
+def infer_column_types(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> dict[str, str]:
+    db_type = target_db_type(fields)
+    text_type = "text" if db_type == "sqlite" else "text"
+    int_type = "integer" if db_type == "sqlite" else "bigint"
+    real_type = "real" if db_type == "sqlite" else "double"
+    if fields.get("typeMode", "auto") == "text":
+        types = {column: text_type for column in columns}
+    else:
+        types: dict[str, str] = {}
+        for index, column in enumerate(columns):
+            values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
+            if values and all(isinstance(value, dt.date) for value in values):
+                if db_type == "sqlite":
+                    types[column] = text_type
+                elif any(isinstance(value, dt.datetime) for value in values):
+                    types[column] = "datetime"
+                else:
+                    types[column] = "date"
+            elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
+                types[column] = int_type
+            elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", str(value)) for value in values):
+                types[column] = real_type
+            else:
+                types[column] = text_type
+    # 用户手动指定的类型优先于自动识别结果（含 typeMode=text 的整表文本兜底）。
+    overrides = parse_column_type_overrides(fields)
+    for column, type_name in overrides.items():
+        if column in types:
+            normalized = normalize_type_override(type_name, db_type)
+            if normalized:
+                types[column] = normalized
+    return types
+
+
+VALID_TYPE_OVERRIDES = {"text", "integer", "bigint", "real", "double", "date", "datetime"}
+
+
+def normalize_type_override(type_name: str, db_type: str) -> str:
+    """把用户指定的类型名归一化为当前目标库可用的列类型；非法类型返回空字符串。"""
+    value = (type_name or "").strip().lower()
+    if value not in VALID_TYPE_OVERRIDES:
+        return ""
+    if db_type == "sqlite":
+        return {"bigint": "integer", "double": "real", "date": "text", "datetime": "text"}.get(value, value)
+    return {"integer": "bigint", "real": "double"}.get(value, value)
+
+
+def parse_column_type_overrides(fields: dict[str, str]) -> dict[str, str]:
+    """解析 columnTypeOverrides（JSON 字符串形如 {"编号":"bigint"}），非法值忽略。
+
+    前端按“目标字段名”传键，这里用与 build_target_data 相同的 transform_field_name
+    把键归一化为最终列名，保证大小写/符号替换/拼音转换后仍能匹配到目标列。"""
+    raw_value = (fields.get("columnTypeOverrides") or "").strip()
+    if not raw_value:
+        return {}
+    try:
+        payload = json.loads(raw_value)
+    except (ValueError, TypeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    entries: list[tuple[str, str]] = []
+    for key, value in payload.items():
+        if not isinstance(key, str) or not isinstance(value, str) or not value.strip():
+            continue
+        column = transform_field_name(key, fields, key)
+        if column:
+            entries.append((column, value.strip().lower()))
+    # 与 build_target_data 的 unique_names 去重对齐：多个源列变换后同名时，
+    # 覆盖键也按相同顺序去重为 xxx / xxx_2，避免第二个同名列的类型覆盖丢失。
+    final_names = unique_names([name for name, _ in entries])
+    return {name: type_name for (_, type_name), name in zip(entries, final_names)}
+
+
+def primary_key_column(fields: dict[str, str]) -> str:
+    """返回导入配置声明的主键列名；未配置自动主键时返回空字符串。"""
+    return (fields.get("_primaryKeyColumn") or "").strip()
+
+
+def auto_pk_column(fields: dict[str, str]) -> str:
+    """返回自动生成的自增主键列名；仅当该主键为新增合成列时返回，否则返回空字符串。"""
+    if parse_bool(fields, "_primaryKeyAuto", False):
+        return (fields.get("_primaryKeyColumn") or "").strip()
+    return ""
+
+
+def detect_type_warnings(columns: list[str], rows: list[list[object]], column_types: dict[str, str]) -> list[dict[str, str]]:
+    """对推断为 text、但列内同时混有可解析数字/日期与不可解析文本的列给出预警。"""
+    warnings: list[dict[str, str]] = []
+    for index, column in enumerate(columns):
+        if column_types.get(column) != "text":
+            continue
+        values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
+        if not values:
+            continue
+        numeric_like = 0
+        date_like = 0
+        unparseable = 0
+        for value in values:
+            text = str(value).strip()
+            if re.fullmatch(r"[-+]?\d+", text) or re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", text):
+                numeric_like += 1
+            elif parse_date_text(text):
+                date_like += 1
+            else:
+                unparseable += 1
+        if unparseable > 0 and (numeric_like > 0 or date_like > 0):
+            warnings.append({"column": column, "reason": "该列含混合类型值，已按文本处理"})
+    return warnings
+
+
+def target_create_or_expand_table(conn, table_name: str, columns: list[str], rows: list[list[object]], rebuild: bool, allow_expand: bool, fields: dict[str, str]) -> None:
+    table = db_quote(table_name, fields)
+    column_types = infer_column_types(columns, rows, fields)
+    pk_column = primary_key_column(fields)
+    pk_auto = bool(auto_pk_column(fields))
+    if rebuild:
+        with conn.cursor() if target_db_type(fields) == "mysql" else nullcontext(conn) as cursor:
+            cursor.execute(f"drop table if exists {table}")
+    definitions_list: list[str] = []
+    for column in columns:
+        definition = f"{db_quote(column, fields)} {column_types[column]}"
+        if column == pk_column:
+            definition += " PRIMARY KEY"
+            if target_db_type(fields) == "mysql" and pk_auto and column_types[column] in {"bigint", "integer"}:
+                definition += " AUTO_INCREMENT"
+        definitions_list.append(definition)
+    definitions = ", ".join(definitions_list)
+    sql = f"create table if not exists {table} ({definitions})"
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(sql)
+    else:
+        conn.execute(sql)
+    existing = target_existing_columns(conn, table_name, fields)
+    missing = [column for column in columns if column not in existing]
+    if missing and not allow_expand:
+        raise ValueError(f"目标表缺少字段：{', '.join(missing)}")
+    for column in missing:
+        sql = f"alter table {table} add column {db_quote(column, fields)} {column_types[column]}"
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(sql)
+        else:
+            conn.execute(sql)
+
+
+def target_insert_rows(conn, table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str], progress=None) -> int:
+    if not rows:
+        return 0
+    table = db_quote(table_name, fields)
+    # 合成自增主键由数据库自动生成，写入时排除该列，避免更新/追加时行号与已有主键冲突。
+    auto_pk = auto_pk_column(fields)
+    insert_columns = [column for column in columns if column != auto_pk]
+    pk_index = columns.index(auto_pk) if auto_pk in columns else -1
+
+    def project(row: list[object]) -> list[object]:
+        values = [value for index, value in enumerate(row) if index != pk_index] if pk_index >= 0 else list(row)
+        return values[: len(insert_columns)]
+
+    quoted_columns = ", ".join(db_quote(column, fields) for column in insert_columns)
+    placeholders = ", ".join(db_placeholder(fields) for _ in insert_columns)
+    sql = f"insert into {table} ({quoted_columns}) values ({placeholders})"
+    batch_size = max(parse_int(fields, "batchRows", 0), 0)
+    batches = [rows] if batch_size <= 0 else [rows[index : index + batch_size] for index in range(0, len(rows), batch_size)]
+    total = 0
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            for batch in batches:
+                cursor.executemany(sql, [project(row) for row in batch])
+                total += len(batch)
+                if progress:
+                    progress(total)
+                if fields.get("commitMode") == "batch":
+                    conn.commit()
+    else:
+        for batch in batches:
+            conn.executemany(sql, [project(row) for row in batch])
+            total += len(batch)
+            if progress:
+                progress(total)
+            if fields.get("commitMode") == "batch":
+                conn.commit()
+    return total
+
+
+def target_insert_rows_parallel(table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str], progress=None) -> int:
+    if not rows:
+        return 0
+    workers = max(parse_int(fields, "parallelWorkers", 4), 2)
+    batch_size = max(parse_int(fields, "batchRows", 1000), 1)
+    chunks = [rows[index : index + batch_size] for index in range(0, len(rows), batch_size)]
+    completed = 0
+
+    def write_chunk(chunk: list[list[object]]) -> int:
+        conn = connect_target_db(fields)
+        try:
+            target_insert_rows(conn, table_name, columns, chunk, {**fields, "writeMode": "fast"}, None)
+            if target_db_type(fields) != "mysql" or fields.get("commitMode") != "auto":
+                conn.commit()
+            return len(chunk)
+        finally:
+            conn.close()
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for count in executor.map(write_chunk, chunks):
+            completed += count
+            if progress:
+                progress(completed)
+    return completed
+
+
+def mysql_load_rows(conn, table_name: str, columns: list[str], rows: list[list[object]], fields: dict[str, str], progress=None) -> int:
+    if target_db_type(fields) != "mysql" or not rows:
+        return 0
+    # 合成自增主键由数据库自动生成，LOAD DATA 时同样排除该列。
+    auto_pk = auto_pk_column(fields)
+    load_columns = [column for column in columns if column != auto_pk]
+    pk_index = columns.index(auto_pk) if auto_pk in columns else -1
+    fd, temp_name = tempfile.mkstemp(prefix="codex_load_", suffix=".tsv")
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        with temp_path.open("w", encoding="utf-8", newline="") as file:
+            writer = csv.writer(file, delimiter="\t", lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
+            for row in rows:
+                values = [value for index, value in enumerate(row) if index != pk_index] if pk_index >= 0 else list(row)
+                writer.writerow(["\\N" if value is None else value for value in values[: len(load_columns)]])
+        sql = (
+            f"load data local infile {db_placeholder(fields)} into table {db_quote(table_name, fields)} "
+            "character set utf8mb4 fields terminated by '\\t' optionally enclosed by '\"' "
+            "lines terminated by '\\n' "
+            f"({', '.join(db_quote(column, fields) for column in load_columns)})"
+        )
+        with conn.cursor() as cursor:
+            cursor.execute(sql, (str(temp_path).replace("\\", "/"),))
+        if progress:
+            progress(len(rows))
+        return len(rows)
+    finally:
+        temp_path.unlink(missing_ok=True)
+
+
+def target_update_rows(conn, table_name: str, columns: list[str], rows: list[list[object]], match_keys: list[str], fields: dict[str, str]) -> tuple[int, int]:
+    if not match_keys:
+        raise ValueError("更新模式需要至少一个匹配键。")
+    key_indexes = [columns.index(key) for key in match_keys if key in columns]
+    if not key_indexes:
+        raise ValueError("匹配键不在导入字段中。")
+    auto_pk = auto_pk_column(fields)
+    update_columns = [column for column in columns if column not in match_keys and column != auto_pk]
+    inserted = 0
+    updated = 0
+    table = db_quote(table_name, fields)
+    for row in rows:
+        where = " and ".join(f"{db_quote(columns[index], fields)} <=> {db_placeholder(fields)}" if target_db_type(fields) == "mysql" else f"{db_quote(columns[index], fields)} is {db_placeholder(fields)}" for index in key_indexes)
+        key_values = [row[index] for index in key_indexes]
+        select_sql = f"select 1 from {table} where {where} limit 1"
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(select_sql, key_values)
+                exists = cursor.fetchone()
+        else:
+            exists = conn.execute(select_sql, key_values).fetchone()
+        if exists:
+            if update_columns:
+                assignments = ", ".join(f"{db_quote(column, fields)} = {db_placeholder(fields)}" for column in update_columns)
+                values = [row[columns.index(column)] for column in update_columns] + key_values
+                update_sql = f"update {table} set {assignments} where {where}"
+                if target_db_type(fields) == "mysql":
+                    with conn.cursor() as cursor:
+                        cursor.execute(update_sql, values)
+                else:
+                    conn.execute(update_sql, values)
+            updated += 1
+        else:
+            target_insert_rows(conn, table_name, columns, [row], fields)
+            inserted += 1
+    return inserted, updated
+
+
+def target_execute_sql_batch(conn, sql_text: str, label: str, fields: dict[str, str]) -> None:
+    sql_text = (sql_text or "").strip()
+    if not sql_text:
+        return
+    try:
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                for statement in [part.strip() for part in sql_text.split(";") if part.strip()]:
+                    cursor.execute(statement)
+        else:
+            conn.executescript(sql_text)
+    except Exception as exc:
+        raise ValueError(f"{label} 执行失败：{exc}") from exc
+
+
+def target_export_query_to_excel(conn, sql_text: str, output_name: str, fields: dict[str, str]) -> str:
+    sql_text = (sql_text or "").strip()
+    if not sql_text:
+        return ""
+    requested = Path(output_name.strip() or f"query_result_{int(time.time())}.xlsx").name
+    output = export_target_path(Path(requested).stem, "xlsx", fields)
+    workbook = Workbook()
+    sheet = workbook.active
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(sql_text)
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description or []]
+        if columns:
+            sheet.append(columns)
+            for row in rows:
+                sheet.append(list(row))
+    else:
+        rows = conn.execute(sql_text).fetchall()
+        if rows:
+            columns = rows[0].keys()
+            sheet.append(list(columns))
+            for row in rows:
+                sheet.append([row[column] for column in columns])
+    workbook.save(output)
+    return str(output)
+
+
+def create_or_expand_table(conn: sqlite3.Connection, table_name: str, columns: list[str], rebuild: bool, allow_expand: bool) -> None:
+    table = quote_identifier(table_name)
+    if rebuild:
+        conn.execute(f"drop table if exists {table}")
+    definitions = ", ".join(f"{quote_identifier(column)} text" for column in columns)
+    conn.execute(f"create table if not exists {table} ({definitions})")
+    existing = existing_columns(conn, table_name)
+    missing = [column for column in columns if column not in existing]
+    if missing and not allow_expand:
+        raise ValueError(f"目标表缺少字段：{', '.join(missing)}")
+    for column in missing:
+        conn.execute(f"alter table {table} add column {quote_identifier(column)} text")
+
+
+def insert_rows(conn: sqlite3.Connection, table_name: str, columns: list[str], rows: list[list[object]]) -> int:
+    if not rows:
+        return 0
+    table = quote_identifier(table_name)
+    quoted_columns = ", ".join(quote_identifier(column) for column in columns)
+    placeholders = ", ".join("?" for _ in columns)
+    sql = f"insert into {table} ({quoted_columns}) values ({placeholders})"
+    conn.executemany(sql, [row[: len(columns)] for row in rows])
+    return len(rows)
+
+
+def update_rows(conn: sqlite3.Connection, table_name: str, columns: list[str], rows: list[list[object]], match_keys: list[str]) -> tuple[int, int]:
+    if not match_keys:
+        raise ValueError("更新模式需要至少一个匹配键。")
+    key_indexes = [columns.index(key) for key in match_keys if key in columns]
+    if not key_indexes:
+        raise ValueError("匹配键不在导入字段中。")
+
+    update_columns = [column for column in columns if column not in match_keys]
+    updated = 0
+    inserted = 0
+    table = quote_identifier(table_name)
+
+    for row in rows:
+        where = " and ".join(f"{quote_identifier(columns[index])} is ?" for index in key_indexes)
+        key_values = [row[index] for index in key_indexes]
+        exists = conn.execute(f"select 1 from {table} where {where} limit 1", key_values).fetchone()
+        if exists:
+            if update_columns:
+                assignments = ", ".join(f"{quote_identifier(column)} = ?" for column in update_columns)
+                values = [row[columns.index(column)] for column in update_columns] + key_values
+                conn.execute(f"update {table} set {assignments} where {where}", values)
+            updated += 1
+        else:
+            insert_rows(conn, table_name, columns, [row])
+            inserted += 1
+    return inserted, updated
+
+
+def execute_sql_batch(conn: sqlite3.Connection, sql_text: str, label: str) -> None:
+    sql_text = (sql_text or "").strip()
+    if not sql_text:
+        return
+    try:
+        conn.executescript(sql_text)
+    except sqlite3.Error as exc:
+        raise ValueError(f"{label} 执行失败：{exc}") from exc
+
+
+def export_query_to_excel(conn: sqlite3.Connection, sql_text: str, output_name: str) -> str:
+    sql_text = (sql_text or "").strip()
+    if not sql_text:
+        return ""
+    output = EXPORTS / (output_name.strip() or f"query_result_{int(time.time())}.xlsx")
+    if output.suffix.lower() != ".xlsx":
+        output = output.with_suffix(".xlsx")
+    rows = conn.execute(sql_text).fetchall()
+    workbook = Workbook()
+    sheet = workbook.active
+    if rows:
+        columns = rows[0].keys()
+        sheet.append(list(columns))
+        for row in rows:
+            sheet.append([row[column] for column in columns])
+    workbook.save(output)
+    return str(output)
+
+
+def safe_file_stem(value: str, fallback: str = "export") -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", (value or "").strip())
+    stem = re.sub(r"\s+", " ", stem).strip(" ._")
+    return (stem or fallback)[:120]
+
+
+def safe_sheet_name(value: str, fallback: str = "Sheet1") -> str:
+    name = re.sub(r"[:\\/?*\[\]]+", "_", (value or "").strip())
+    return (name or fallback)[:31]
+
+
+def export_sources(fields: dict[str, str]) -> list[dict[str, object]]:
+    conn = connect_target_db(fields)
+    try:
+        if target_db_type(fields) == "mysql":
+            result: list[dict[str, object]] = []
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    select table_name, table_type, table_comment, table_rows
+                    from information_schema.tables
+                    where table_schema = database()
+                    order by table_name
+                    """
+                )
+                for row in cursor.fetchall():
+                    name = str(row[0])
+                    table_type = str(row[1] or "")
+                    comment = str(row[2] or "")
+                    estimated = int(row[3] or 0)
+                    count = estimated
+                    approximate = False
+                    # P2-7：information_schema 的行数是 InnoDB 估算值（如 2 万行显示
+                    # 20,137）。估算 ≤ 10 万的表用 count(*) 取精确值；更大的表保留
+                    # 估算值并标注 rowsApproximate，由前端显示"约 N 行"。
+                    if table_type.upper() != "BASE TABLE":
+                        result.append(
+                            {"name": name, "type": table_type, "comment": comment, "rows": count, "rowsApproximate": False}
+                        )
+                        continue
+                    if estimated <= 100_000:
+                        try:
+                            cursor.execute(f"select count(*) from {db_quote(name, fields)}")
+                            count = int(list(cursor.fetchone())[0])
+                        except Exception:
+                            count = estimated
+                            approximate = True
+                    else:
+                        approximate = True
+                    result.append(
+                        {"name": name, "type": table_type, "comment": comment, "rows": count, "rowsApproximate": approximate}
+                    )
+            return result
+        rows = conn.execute(
+            """
+            select name, type
+            from sqlite_master
+            where type in ('table', 'view') and name not like 'sqlite_%' and name not like '\\_%' escape '\\'
+            order by name
+            """
+        ).fetchall()
+        result = []
+        for row in rows:
+            count = 0
+            try:
+                count = conn.execute(f"select count(*) from {db_quote(row['name'], fields)}").fetchone()[0]
+            except Exception:
+                count = 0
+            result.append({"name": row["name"], "type": row["type"], "comment": "", "rows": count, "rowsApproximate": False})
+        return result
+    finally:
+        conn.close()
+
+
+def target_table_names(fields: dict[str, str]) -> list[str]:
+    conn = connect_target_db(fields)
+    try:
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute("show full tables")
+                rows = cursor.fetchall()
+            names: list[str] = []
+            for row in rows:
+                if len(row) > 1 and str(row[1]).upper() != "BASE TABLE":
+                    continue
+                names.append(str(row[0]))
+            return names
+        rows = conn.execute(
+            """
+            select name
+            from sqlite_master
+            where type = 'table' and name not like 'sqlite_%' and name not like '\\_%' escape '\\'
+            order by name
+            """
+        ).fetchall()
+        return [str(row["name"]) for row in rows]
+    finally:
+        conn.close()
+
+
+def target_table_details(fields: dict[str, str], table_name: str) -> dict[str, object]:
+    table_name = table_name.strip()
+    if not table_name:
+        raise ValueError("请选择要查看的表。")
+    conn = connect_target_db(fields)
+    try:
+        columns: list[dict[str, object]] = []
+        ddl = ""
+        table_type = "TABLE"
+        comment = ""
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    select table_type, table_comment
+                    from information_schema.tables
+                    where table_schema = database() and table_name = %s
+                    """,
+                    (table_name,),
+                )
+                table_row = cursor.fetchone()
+                if not table_row:
+                    raise ValueError("目标表不存在或当前账号无权访问。")
+                table_type = str(table_row[0] or "TABLE")
+                comment = str(table_row[1] or "")
+                cursor.execute(
+                    """
+                    select ordinal_position, column_name, column_type, is_nullable,
+                           column_default, column_key, extra, column_comment
+                    from information_schema.columns
+                    where table_schema = database() and table_name = %s
+                    order by ordinal_position
+                    """,
+                    (table_name,),
+                )
+                columns = [
+                    {
+                        "position": row[0],
+                        "name": row[1],
+                        "type": row[2],
+                        "nullable": row[3] == "YES",
+                        "default": cell_to_text(row[4]),
+                        "key": row[5] or "",
+                        "extra": row[6] or "",
+                        "comment": row[7] or "",
+                    }
+                    for row in cursor.fetchall()
+                ]
+                cursor.execute(f"show create {'view' if table_type == 'VIEW' else 'table'} {db_quote(table_name, fields)}")
+                create_row = cursor.fetchone()
+                ddl = str(create_row[1] if create_row and len(create_row) > 1 else "")
+                cursor.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+                preview_columns = [str(item[0]) for item in cursor.description or []]
+                preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        else:
+            exists = conn.execute("select type, sql from sqlite_master where name = ? and type in ('table', 'view')", (table_name,)).fetchone()
+            if not exists:
+                raise ValueError("目标表不存在。")
+            table_type = str(exists["type"] or "table").upper()
+            ddl = str(exists["sql"] or "")
+            for row in conn.execute(f"pragma table_info({db_quote(table_name, fields)})").fetchall():
+                columns.append({"position": row["cid"] + 1, "name": row["name"], "type": row["type"], "nullable": not bool(row["notnull"]), "default": cell_to_text(row["dflt_value"]), "key": "PRI" if row["pk"] else "", "extra": "", "comment": ""})
+            cursor = conn.execute(f"select * from {db_quote(table_name, fields)} limit 100")
+            preview_columns = [str(item[0]) for item in cursor.description or []]
+            preview_rows = [[cell_to_text(cell) for cell in row] for row in cursor.fetchall()]
+        return {"name": table_name, "type": table_type, "comment": comment, "columns": columns, "ddl": ddl, "previewColumns": preview_columns, "previewRows": preview_rows}
+    finally:
+        conn.close()
+
+
+def export_split_list(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return split_values(str(value or ""))
+
+
+def export_field_list(value: object) -> list[str]:
+    return export_split_list(value)
+
+
+def export_query_from_item(item: dict[str, object], fields: dict[str, str]) -> tuple[str, str]:
+    item_type = str(item.get("type") or "table")
+    if item_type == "query":
+        sql = str(item.get("sql") or "").strip()
+        if not sql:
+            raise ValueError("查询 SQL 不能为空。")
+        return sql, str(item.get("name") or "query")
+    table_name = str(item.get("table") or item.get("name") or "").strip()
+    if not table_name:
+        raise ValueError("请选择要导出的表。")
+    selected_fields = export_field_list(fields.get("exportFields", ""))
+    columns_sql = ", ".join(db_quote(column, fields) for column in selected_fields) if selected_fields else "*"
+    sql = f"select {columns_sql} from {db_quote(table_name, fields)}"
+    where = str(fields.get("whereClause") or "").strip()
+    if where:
+        sql += " where " + re.sub(r"^\s*where\s+", "", where, flags=re.I)
+    return sql, table_name
+
+
+def fetch_export_rows(conn, sql: str, fields: dict[str, str], limit: int = 0) -> tuple[list[str], list[list[object]]]:
+    query = sql.strip().rstrip(";")
+    if limit > 0:
+        if target_db_type(fields) == "mysql":
+            query = f"select * from ({query}) export_preview limit {limit}"
+        else:
+            query = f"select * from ({query}) limit {limit}"
+    if target_db_type(fields) == "mysql":
+        with conn.cursor() as cursor:
+            cursor.execute(query)
+            columns = [desc[0] for desc in cursor.description or []]
+            rows = [list(row) for row in cursor.fetchall()]
+        return columns, rows
+    cursor = conn.execute(query)
+    columns = [desc[0] for desc in cursor.description or []]
+    return columns, [list(row) for row in cursor.fetchall()]
+
+
+def export_row_batches(conn, sql: str, fields: dict[str, str], fetch_size: int = EXPORT_FETCH_SIZE) -> Iterator[tuple[list[str], list[list[object]]]]:
+    query = sql.strip().rstrip(";")
+    if target_db_type(fields) == "mysql":
+        cursor = conn.cursor(pymysql.cursors.SSCursor)
+        try:
+            cursor.execute(query)
+            columns = [desc[0] for desc in cursor.description or []]
+            while True:
+                batch = cursor.fetchmany(fetch_size)
+                if not batch:
+                    break
+                yield columns, [list(row) for row in batch]
+        finally:
+            cursor.close()
+        return
+
+    cursor = conn.execute(query)
+    columns = [desc[0] for desc in cursor.description or []]
+    while True:
+        batch = cursor.fetchmany(fetch_size)
+        if not batch:
+            break
+        yield columns, [list(row) for row in batch]
+
+
+def add_export_time_column(columns: list[str], rows: list[list[object]], field_name: str) -> tuple[list[str], list[list[object]]]:
+    field_name = (field_name or "").strip()
+    if not field_name:
+        return columns, rows
+    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return columns + [field_name], [row + [now] for row in rows]
+
+
+def add_export_time_to_batch(rows: list[list[object]], field_name: str, now: str) -> list[list[object]]:
+    if not field_name:
+        return rows
+    return [row + [now] for row in rows]
+
+
+def split_rows_by_batch(rows: list[list[object]], fields: dict[str, str]) -> list[tuple[str, list[list[object]]]]:
+    """按 batchRows 把行拆成多块，返回 [(文件名后缀, 行块)]。
+
+    开启 splitByBatch 且 batchRows>0 时：拆成 _001/_002/...（仅一块时不加后缀），
+    所有行都会导出，不再截断。未开启时返回单块、无后缀。
+    """
+    batch_rows = int(fields.get("batchRows") or 0)
+    if not parse_bool(fields, "splitByBatch", False) or batch_rows <= 0:
+        return [("", rows)]
+    chunks = [rows[start:start + batch_rows] for start in range(0, len(rows), batch_rows)]
+    if not chunks:
+        chunks = [[]]
+    if len(chunks) == 1:
+        return [("", chunks[0])]
+    return [(f"_{index + 1:03d}", chunk) for index, chunk in enumerate(chunks)]
+
+
+def rows_to_dicts(columns: list[str], rows: list[list[object]]) -> list[dict[str, object]]:
+    return [{column: row[index] if index < len(row) else None for index, column in enumerate(columns)} for row in rows]
+
+
+def row_to_dict(columns: list[str], row: list[object]) -> dict[str, object]:
+    return {column: row[index] if index < len(row) else None for index, column in enumerate(columns)}
+
+
+def export_target_path(base_name: str, extension: str, fields: dict[str, str]) -> Path:
+    extension = extension.lower().lstrip(".") or "xlsx"
+    if extension == "xls":
+        raise ValueError("当前版本不支持 .xls 导出，请选择 .xlsx。")
+    if extension == "dbf":
+        raise ValueError("当前版本暂不支持 DBF 导出。")
+    prefix = safe_file_stem(str(fields.get("filePrefix") or ""), "")
+    suffix = safe_file_stem(str(fields.get("fileSuffix") or ""), "")
+    name = safe_file_stem(f"{prefix}{base_name}{suffix}", "export")
+    target_mode = str(fields.get("exportTargetMode") or "folder").strip().lower()
+    if target_mode == "folder":
+        folder_value = str(fields.get("exportFolder") or "").strip()
+        if folder_value:
+            folder = Path(folder_value).expanduser()
+            if not folder.is_absolute():
+                raise ValueError(f"目标文件夹必须是完整路径，当前保存的是：{folder_value}")
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise ValueError(f"无法创建目标文件夹：{folder}（{exc}）") from exc
+            if not folder.is_dir():
+                raise ValueError(f"目标文件夹不是目录：{folder}")
+            return folder / f"{name}.{extension}"
+    elif target_mode == "file":
+        file_value = str(fields.get("outputName") or "").strip()
+        if file_value:
+            output = Path(file_value).expanduser()
+            if output.is_absolute():
+                if not output.parent.exists() or not output.parent.is_dir():
+                    raise ValueError(f"目标文件所在文件夹不存在：{output.parent}")
+                return output.with_suffix(f".{extension}")
+    return EXPORTS / f"{name}.{extension}"
+
+
+def native_pick_path(mode: str, initial: str = "", extension: str = "", suggest: str = "") -> str:
+    """弹 Windows 原生对话框选目录/文件，返回绝对路径；用户取消返回空串。
+
+    为什么要放在服务端：浏览器出于安全永远不把绝对路径交给页面
+    （showDirectoryPicker 只给 handle.name，界面上那句"已选择文件夹：xxx"就是这么来的），
+    而本工具的服务端与浏览器同机运行，只有服务端弹原生对话框才能拿到 D:\\导出 这样的完整路径。
+    好处是路径能直接存进任务配置，由服务端落盘，定时任务（无浏览器）同样生效。
+
+    只依赖标准库 ctypes —— 本项目 venv 不含 tkinter，也无法保证目标机装有 PowerShell 模块。
+    """
+    if os.name != "nt":
+        raise NotImplementedError("服务端不是 Windows，无法打开系统选择框。")
+
+    import ctypes
+    from ctypes import wintypes
+
+    mode = (mode or "folder").strip().lower()
+    max_path = 260
+
+    def resolve_initial_dir(value: str) -> str:
+        if not value:
+            return ""
+        candidate = Path(value).expanduser()
+        probe = candidate if candidate.is_dir() else candidate.parent
+        return str(probe) if probe.is_dir() else ""
+
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    ole32 = ctypes.WinDLL("ole32", use_last_error=True)
+    ole32.CoInitialize.argtypes = [ctypes.c_void_p]
+    ole32.CoInitialize.restype = ctypes.c_long
+    ole32.CoUninitialize.argtypes = []
+    ole32.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+
+    # SHBrowseForFolderW / GetSaveFileNameW 要求调用线程处于 STA；HTTP 处理线程每次都是新建的，
+    # 所以这里自行初始化。返回 0(S_OK) 或 1(S_FALSE，本线程此前已初始化) 都要配对 CoUninitialize。
+    com_initialized = ole32.CoInitialize(None) in (0, 1)
+    try:
+        if mode == "folder":
+
+            class BROWSEINFOW(ctypes.Structure):
+                _fields_ = [
+                    ("hwndOwner", wintypes.HWND),
+                    ("pidlRoot", ctypes.c_void_p),
+                    ("pszDisplayName", ctypes.c_void_p),
+                    ("lpszTitle", wintypes.LPCWSTR),
+                    ("ulFlags", ctypes.c_uint),
+                    ("lpfn", ctypes.c_void_p),
+                    ("lParam", ctypes.c_void_p),
+                    ("iImage", ctypes.c_int),
+                ]
+
+            shell32.SHBrowseForFolderW.argtypes = [ctypes.POINTER(BROWSEINFOW)]
+            shell32.SHBrowseForFolderW.restype = ctypes.c_void_p
+            shell32.SHGetPathFromIDListW.argtypes = [ctypes.c_void_p, wintypes.LPWSTR]
+            shell32.SHGetPathFromIDListW.restype = wintypes.BOOL
+
+            display = ctypes.create_unicode_buffer(max_path)
+            info = BROWSEINFOW()
+            info.hwndOwner = None
+            info.pidlRoot = None
+            info.pszDisplayName = ctypes.addressof(display)
+            info.lpszTitle = "选择导出文件夹（选择后会显示完整路径）"
+            # RETURNONLYFSDIRS | EDITBOX | NEWDIALOGSTYLE：新版对话框，带可直接粘贴路径的输入框。
+            info.ulFlags = 0x0001 | 0x0010 | 0x0040
+            pidl = shell32.SHBrowseForFolderW(ctypes.byref(info))
+            if not pidl:
+                return ""
+            try:
+                buffer = ctypes.create_unicode_buffer(max_path)
+                if not shell32.SHGetPathFromIDListW(pidl, buffer):
+                    return ""
+                return buffer.value
+            finally:
+                ole32.CoTaskMemFree(pidl)
+
+        if mode == "file":
+
+            class OPENFILENAMEW(ctypes.Structure):
+                _fields_ = [
+                    ("lStructSize", wintypes.DWORD),
+                    ("hwndOwner", wintypes.HWND),
+                    ("hInstance", wintypes.HINSTANCE),
+                    ("lpstrFilter", wintypes.LPCWSTR),
+                    ("lpstrCustomFilter", ctypes.c_void_p),
+                    ("nMaxCustFilter", wintypes.DWORD),
+                    ("nFilterIndex", wintypes.DWORD),
+                    ("lpstrFile", ctypes.c_void_p),
+                    ("nMaxFile", wintypes.DWORD),
+                    ("lpstrFileTitle", ctypes.c_void_p),
+                    ("nMaxFileTitle", wintypes.DWORD),
+                    ("lpstrInitialDir", wintypes.LPCWSTR),
+                    ("lpstrTitle", wintypes.LPCWSTR),
+                    ("Flags", wintypes.DWORD),
+                    ("nFileOffset", wintypes.WORD),
+                    ("nFileExtension", wintypes.WORD),
+                    ("lpstrDefExt", wintypes.LPCWSTR),
+                    ("lCustData", ctypes.c_void_p),
+                    ("lpfnHook", ctypes.c_void_p),
+                    ("lpTemplateName", ctypes.c_void_p),
+                    ("pvReserved", ctypes.c_void_p),
+                    ("dwReserved", wintypes.DWORD),
+                    ("FlagsEx", wintypes.DWORD),
+                ]
+
+            ext = (extension or "xlsx").lower().lstrip(".") or "xlsx"
+            default_name = (suggest or "export").strip() or "export"
+            if not default_name.lower().endswith(f".{ext}"):
+                default_name = f"{default_name}.{ext}"
+            # lpstrFile 由系统回写，必须给足缓冲：这里传 buffer 地址，不能传 Python 字符串。
+            file_buffer = ctypes.create_unicode_buffer(default_name, max_path)
+            info = OPENFILENAMEW()
+            info.lStructSize = ctypes.sizeof(OPENFILENAMEW)
+            info.hwndOwner = None
+            info.hInstance = None
+            # 过滤器串以双 NUL 结束（片段自带一个，ctypes 再补一个）。
+            info.lpstrFilter = f"{ext.upper()} 文件 (*.{ext})\0*.{ext}\0所有文件 (*.*)\0*.*\0"
+            info.lpstrCustomFilter = None
+            info.nFilterIndex = 1
+            info.lpstrFile = ctypes.addressof(file_buffer)
+            info.nMaxFile = max_path
+            info.lpstrFileTitle = None
+            info.nMaxFileTitle = 0
+            info.lpstrInitialDir = resolve_initial_dir(initial) or None
+            info.lpstrTitle = "选择导出文件保存位置"
+            # OVERWRITEPROMPT | HIDEREADONLY | NOCHANGEDIR | EXPLORER
+            info.Flags = 0x00000002 | 0x00000004 | 0x00000008 | 0x00080000
+            info.lpstrDefExt = ext
+            info.lCustData = None
+            info.lpfnHook = None
+            info.lpTemplateName = None
+            info.pvReserved = None
+            info.dwReserved = 0
+            info.FlagsEx = 0
+
+            comdlg32 = ctypes.WinDLL("comdlg32", use_last_error=True)
+            comdlg32.GetSaveFileNameW.argtypes = [ctypes.POINTER(OPENFILENAMEW)]
+            comdlg32.GetSaveFileNameW.restype = wintypes.BOOL
+            if not comdlg32.GetSaveFileNameW(ctypes.byref(info)):
+                return ""
+            return file_buffer.value
+
+        raise ValueError(f"不支持的选择类型：{mode}")
+    finally:
+        if com_initialized:
+            ole32.CoUninitialize()
+
+
+def write_rows_to_sheet(sheet, columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> None:
+    header_mode = str(fields.get("headerMode") or "field").lower()
+    include_header = header_mode != "none"
+    if include_header:
+        sheet.append(columns)
+    for row in rows:
+        sheet.append(row)
+
+    row_height = float(fields.get("rowHeight") or 0)
+    if row_height > 0:
+        for row_idx in range(1, sheet.max_row + 1):
+            sheet.row_dimensions[row_idx].height = row_height
+    col_width = float(fields.get("columnWidth") or 0)
+    if col_width > 0:
+        for col_idx in range(1, sheet.max_column + 1):
+            sheet.column_dimensions[get_column_letter(col_idx)].width = col_width
+
+    font_name = str(fields.get("fontName") or "").strip()
+    font_size = float(fields.get("fontSize") or 0)
+    font = Font(name=font_name or None, size=font_size or None)
+    border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+    add_border = parse_bool(fields, "addBorder", False)
+    for row in sheet.iter_rows():
+        for cell in row:
+            if font_name or font_size:
+                cell.font = font
+            if add_border:
+                cell.border = border
+
+    if parse_bool(fields, "lockHeader", False) and include_header:
+        sheet.protection.sheet = True
+        for cell in sheet[1]:
+            cell.protection = Protection(locked=True)
+    locked_columns = export_split_list(fields.get("lockedColumns", ""))
+    if locked_columns:
+        sheet.protection.sheet = True
+        column_indexes = {name: index + 1 for index, name in enumerate(columns)}
+        for name in locked_columns:
+            col_idx = column_indexes.get(name)
+            if col_idx:
+                for row_idx in range(1, sheet.max_row + 1):
+                    sheet.cell(row=row_idx, column=col_idx).protection = Protection(locked=True)
+
+
+def write_export_file(path: Path, columns: list[str], rows: list[list[object]], fields: dict[str, str], sheet_name: str) -> None:
+    EXPORTS.mkdir(parents=True, exist_ok=True)
+    extension = path.suffix.lower()
+    if extension == ".xlsx":
+        mode = str(fields.get("exportMode") or "workbook")
+        if path.exists() and mode in {"sheet", "data"}:
+            workbook = load_workbook(path)
+            if sheet_name in workbook.sheetnames:
+                del workbook[sheet_name]
+            sheet = workbook.create_sheet(sheet_name)
+        else:
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = sheet_name
+        write_rows_to_sheet(sheet, columns, rows, fields)
+        workbook.save(path)
+        return
+    if extension in {".csv", ".txt"}:
+        delimiter = decode_escaped(fields.get("delimiter") or ("," if extension == ".csv" else "\t"))
+        line_delimiter = decode_escaped(fields.get("lineDelimiter") or "\n")
+        encoding = fields.get("encoding") or "utf-8"
+        with path.open("w", encoding=encoding, newline="") as handle:
+            writer = csv.writer(handle, delimiter=delimiter, lineterminator=line_delimiter)
+            if str(fields.get("headerMode") or "field") != "none":
+                writer.writerow(columns)
+            writer.writerows(rows)
+        return
+    if extension == ".json":
+        path.write_text(json.dumps(rows_to_dicts(columns, rows), ensure_ascii=False, indent=2, default=cell_to_text), encoding="utf-8")
+        return
+    if extension == ".xml":
+        root = ET.Element("rows")
+        for row in rows_to_dicts(columns, rows):
+            node = ET.SubElement(root, "row")
+            for key, value in row.items():
+                child = ET.SubElement(node, sanitize_identifier(key, "field"))
+                child.text = cell_to_text(value)
+        ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)
+        return
+    raise ValueError(f"不支持的导出格式：{extension}")
+
+
+def styled_write_only_row(sheet, values: list[object], fields: dict[str, str], header: bool = False) -> None:
+    font_name = str(fields.get("fontName") or "").strip()
+    font_size = float(fields.get("fontSize") or 0)
+    add_border = parse_bool(fields, "addBorder", False)
+    if not (font_name or font_size or add_border or header):
+        sheet.append(values)
+        return
+
+    font = Font(name=font_name or None, size=font_size or None, bold=header)
+    border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+    cells = []
+    for value in values:
+        cell = WriteOnlyCell(sheet, value=value)
+        if font_name or font_size or header:
+            cell.font = font
+        if add_border:
+            cell.border = border
+        cells.append(cell)
+    sheet.append(cells)
+
+
+def write_export_file_streaming(
+    path: Path,
+    columns: list[str],
+    batches: Iterable[list[list[object]]],
+    fields: dict[str, str],
+    sheet_name: str,
+) -> int:
+    EXPORTS.mkdir(parents=True, exist_ok=True)
+    extension = path.suffix.lower()
+    header_mode = str(fields.get("headerMode") or "field").lower()
+    include_header = header_mode != "none"
+    rows_written = 0
+
+    if extension == ".xlsx":
+        workbook = Workbook(write_only=True)
+        sheet = workbook.create_sheet(sheet_name)
+        row_height = float(fields.get("rowHeight") or 0)
+        if row_height > 0:
+            sheet.sheet_format.defaultRowHeight = row_height
+        col_width = float(fields.get("columnWidth") or 0)
+        if col_width > 0:
+            for col_idx in range(1, len(columns) + 1):
+                sheet.column_dimensions[get_column_letter(col_idx)].width = col_width
+        if include_header:
+            styled_write_only_row(sheet, columns, fields, header=True)
+        for batch in batches:
+            for row in batch:
+                styled_write_only_row(sheet, row, fields)
+                rows_written += 1
+        workbook.save(path)
+        return rows_written
+
+    if extension in {".csv", ".txt"}:
+        delimiter = decode_escaped(fields.get("delimiter") or ("," if extension == ".csv" else "\t"))
+        line_delimiter = decode_escaped(fields.get("lineDelimiter") or "\n")
+        encoding = fields.get("encoding") or "utf-8"
+        with path.open("w", encoding=encoding, newline="") as handle:
+            writer = csv.writer(handle, delimiter=delimiter, lineterminator=line_delimiter)
+            if include_header:
+                writer.writerow(columns)
+            for batch in batches:
+                writer.writerows(batch)
+                rows_written += len(batch)
+        return rows_written
+
+    if extension == ".json":
+        with path.open("w", encoding="utf-8") as handle:
+            handle.write("[\n")
+            first = True
+            for batch in batches:
+                for row in batch:
+                    if not first:
+                        handle.write(",\n")
+                    handle.write(json.dumps(row_to_dict(columns, row), ensure_ascii=False, default=cell_to_text))
+                    first = False
+                    rows_written += 1
+            handle.write("\n]\n")
+        return rows_written
+
+    if extension == ".xml":
+        with path.open("w", encoding="utf-8") as handle:
+            handle.write('<?xml version="1.0" encoding="utf-8"?>\n<rows>\n')
+            safe_columns = [sanitize_identifier(column, "field") for column in columns]
+            for batch in batches:
+                for row in batch:
+                    handle.write("  <row>\n")
+                    for index, column in enumerate(safe_columns):
+                        value = cell_to_text(row[index] if index < len(row) else "")
+                        handle.write(f"    <{column}>{xml_escape(value)}</{column}>\n")
+                    handle.write("  </row>\n")
+                    rows_written += 1
+            handle.write("</rows>\n")
+        return rows_written
+
+    raise ValueError(f"不支持的导出格式：{extension}")
+
+
+def group_rows_by_field(columns: list[str], rows: list[list[object]], split_field: str) -> dict[str, list[list[object]]]:
+    if not split_field:
+        return {"": rows}
+    if split_field not in columns:
+        raise ValueError(f"拆分字段不存在：{split_field}")
+    index = columns.index(split_field)
+    groups: dict[str, list[list[object]]] = {}
+    for row in rows:
+        key = safe_file_stem(cell_to_text(row[index] if index < len(row) else ""), "empty")
+        groups.setdefault(key, []).append(row)
+    return groups
+
+
+def run_export_job(payload: dict[str, object]) -> dict[str, object]:
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+    if fields.get("targetDbType") != "sqlite" and not fields.get("connectionId") and not has_direct_connection_fields(fields):
+        raise ValueError("请选择数据库连接，或重新打开导出任务后保存一次连接配置。")
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        single = {"type": payload.get("sourceType") or "table", "name": payload.get("table") or "query", "table": payload.get("table"), "sql": payload.get("sql")}
+        items = [single]
+    extension = str(payload.get("extension") or fields.get("extension") or "xlsx").lower().lstrip(".")
+    if extension not in {"xlsx", "csv", "txt", "json", "xml"}:
+        raise ValueError("当前仅支持 xlsx、csv、txt、json、xml 导出。")
+
+    if parse_bool(fields, "clearLogBeforeExport", False):
+        (EXPORTS / "export.log").write_text("", encoding="utf-8")
+
+    conn = connect_target_db(fields)
+    started = time.time()
+    written_files: list[str] = []
+    total_rows = 0
+
+    # P2-13：勾选"表注释作为文件名"且未手动指定文件名时，读取各表注释，
+    # 导出文件名优先使用表注释（经 safe_file_stem 清洗非法字符，前后缀仍生效）。
+    comment_names: dict[str, str] = {}
+    if (
+        parse_bool(fields, "commentAsFileName", False)
+        and target_db_type(fields) == "mysql"
+        and not str(fields.get("exportFileName") or "").strip()
+        and not str(fields.get("outputName") or "").strip()
+    ):
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "select table_name, table_comment from information_schema.tables where table_schema = database()"
+                )
+                comment_names = {str(row[0]): str(row[1] or "").strip() for row in cursor.fetchall()}
+        except Exception:
+            comment_names = {}
+
+    def resolve_base_name(item: dict[str, object], source_name: str) -> str:
+        explicit = str(fields.get("exportFileName") or fields.get("outputName") or "").strip()
+        if explicit:
+            return explicit
+        if str(item.get("type") or "") == "table":
+            comment_base = comment_names.get(str(item.get("table") or item.get("name") or ""))
+            if comment_base:
+                return comment_base
+        return source_name
+
+    try:
+        target_execute_sql_batch(conn, str(payload.get("beforeSql") or ""), "导出开始前 SQL", fields)
+        split_field = str(fields.get("splitField") or "").strip()
+        split_by_batch = parse_bool(fields, "splitByBatch", False) and int(fields.get("batchRows") or 0) > 0
+        can_stream = not split_field and not split_by_batch and str(fields.get("exportMode") or "workbook") == "workbook"
+
+        if can_stream and extension == "xlsx" and len(items) > 1:
+            workbook = Workbook(write_only=True)
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                sql, source_name = export_query_from_item(item, fields)
+                sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
+                sheet = workbook.create_sheet(sheet_name)
+                row_count = 0
+                export_time_field = str(fields.get("exportTimeField") or "").strip()
+                export_time_value = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                batch_limit = int(fields.get("batchRows") or 0) if parse_bool(fields, "splitByBatch", False) else 0
+                for columns, batch in export_row_batches(conn, sql, fields):
+                    if export_time_field and export_time_field not in columns:
+                        columns = columns + [export_time_field]
+                    if row_count == 0 and str(fields.get("headerMode") or "field") != "none":
+                        styled_write_only_row(sheet, columns, fields, header=True)
+                    batch = add_export_time_to_batch(batch, export_time_field, export_time_value)
+                    if batch_limit:
+                        batch = batch[: max(0, batch_limit - row_count)]
+                    for row in batch:
+                        styled_write_only_row(sheet, row, fields)
+                    row_count += len(batch)
+                    if batch_limit and row_count >= batch_limit:
+                        break
+                if parse_bool(fields, "skipEmptyTable", False) and row_count == 0:
+                    continue
+                total_rows += row_count
+            path = export_target_path(str(fields.get("exportFileName") or fields.get("outputName") or "export"), "xlsx", fields)
+            workbook.save(path)
+            written_files.append(str(path))
+        else:
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                sql, source_name = export_query_from_item(item, fields)
+                sheet_name = safe_sheet_name(str(fields.get("sheetName") or source_name or "Sheet1"))
+                base_name = resolve_base_name(item, source_name)
+                path = export_target_path(base_name, extension, fields)
+
+                if can_stream:
+                    first_columns: list[str] = []
+                    export_time_field = str(fields.get("exportTimeField") or "").strip()
+                    export_time_value = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    batch_limit = int(fields.get("batchRows") or 0) if parse_bool(fields, "splitByBatch", False) else 0
+                    rows_seen = 0
+
+                    def streaming_batches() -> Iterator[list[list[object]]]:
+                        nonlocal first_columns, rows_seen
+                        for columns, batch in export_row_batches(conn, sql, fields):
+                            if export_time_field and export_time_field not in columns:
+                                columns = columns + [export_time_field]
+                            if not first_columns:
+                                first_columns = columns
+                            batch = add_export_time_to_batch(batch, export_time_field, export_time_value)
+                            if batch_limit:
+                                batch = batch[: max(0, batch_limit - rows_seen)]
+                            rows_seen += len(batch)
+                            if batch:
+                                yield batch
+                            if batch_limit and rows_seen >= batch_limit:
+                                break
+
+                    buffered_batches = streaming_batches()
+                    try:
+                        first_batch = next(buffered_batches)
+                    except StopIteration:
+                        if parse_bool(fields, "skipEmptyTable", False):
+                            continue
+                        first_columns = []
+                        first_batch = []
+                    row_count = write_export_file_streaming(path, first_columns, chain([first_batch], buffered_batches), fields, sheet_name)
+                    written_files.append(str(path))
+                    total_rows += row_count
+                else:
+                    columns, rows = fetch_export_rows(conn, sql, fields)
+                    columns, rows = add_export_time_column(columns, rows, str(fields.get("exportTimeField") or ""))
+                    if parse_bool(fields, "skipEmptyTable", False) and not rows:
+                        continue
+                    groups = group_rows_by_field(columns, rows, split_field)
+                    for group_name, group_rows in groups.items():
+                        group_base_name = base_name
+                        if group_name:
+                            group_base_name = f"{group_base_name}_{group_name}"
+                        for chunk_suffix, chunk_rows in split_rows_by_batch(group_rows, fields):
+                            chunk_path = export_target_path(f"{group_base_name}{chunk_suffix}", extension, fields)
+                            write_export_file(chunk_path, columns, chunk_rows, fields, sheet_name)
+                            written_files.append(str(chunk_path))
+                            total_rows += len(chunk_rows)
+        target_execute_sql_batch(conn, str(payload.get("afterSql") or ""), "导出结束后 SQL", fields)
+        conn.commit()
+    finally:
+        conn.close()
+
+    return {
+        "files": written_files,
+        "rows": total_rows,
+        "elapsedMs": int((time.time() - started) * 1000),
+    }
+
+
+def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+    items = payload.get("items")
+    if isinstance(items, list) and items and isinstance(items[0], dict):
+        item = items[0]
+    else:
+        item = {"type": payload.get("sourceType") or "table", "name": payload.get("table") or "query", "table": payload.get("table"), "sql": payload.get("sql")}
+    sql, source_name = export_query_from_item(item, fields)
+    conn = connect_target_db(fields)
+    try:
+        columns, rows = fetch_export_rows(conn, sql, fields, MAX_PREVIEW_ROWS)
+    finally:
+        conn.close()
+    return {"sourceName": source_name, "columns": columns, "rows": [[cell_to_text(cell) for cell in row] for row in rows]}
+
+
+def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
+    sql = str(payload.get("sql") or "").strip().rstrip(";").strip()
+    if not sql:
+        raise ValueError("请输入要执行的 SQL。")
+    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", sql)
+    command = first_word.group(1).lower() if first_word else ""
+    if command not in {"select", "show", "describe", "desc", "explain", "with"}:
+        raise ValueError("查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。")
+    if ";" in sql:
+        raise ValueError("一次只能执行一条 SQL 查询。")
+
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+    started = time.time()
+    message = "查询执行成功。"
+    columns: list[str] = []
+    rows: list[list[str]] = []
+    truncated = False
+    conn = connect_target_db(fields)
+    try:
+        cursor = conn.cursor()
+        try:
+            cursor.execute(sql)
+            columns = [str(item[0]) for item in cursor.description or []]
+            raw_rows = cursor.fetchmany(1001) if cursor.description else []
+            truncated = len(raw_rows) > 1000
+            rows = [[cell_to_text(cell) for cell in row] for row in raw_rows[:1000]]
+        finally:
+            cursor.close()
+    finally:
+        conn.close()
+    elapsed_ms = int((time.time() - started) * 1000)
+    return {"columns": columns, "rows": rows, "rowCount": len(rows), "elapsedMs": elapsed_ms, "truncated": truncated, "message": message}
+
+
+def saved_query_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "connectionId": row["connection_id"],
+        "sql": row["sql_text"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+QUERY_BACKING_JOB_PREFIX = "查询："
+"""Job name prefix for jobs that act as schedule-time proxies for a saved query.
+
+Stored in _jobs so that the schedule module can pick them up via the existing
+/api/jobs + jobPrimaryType === 'query' path. step.config.queryId is the
+authoritative link to _saved_queries; the SQL is loaded at execution time so
+that editing the saved query automatically reflects in any scheduled job.
+"""
+
+
+def _sync_query_to_job(conn: sqlite3.Connection, query_id: str, query_name: str, connection_id: str) -> None:
+    """Upsert a proxy job into _jobs so the saved query shows up in the schedule UI.
+
+    The job name is deterministic (``f"{QUERY_BACKING_JOB_PREFIX}{query_name}"``) so
+    re-saving the same query updates the same job instead of creating a duplicate.
+    The job's single query step carries config.queryId + config.connectionId; the
+    SQL itself is *not* duplicated into steps_json (executor pulls from
+    _saved_queries at run time, giving a single source of truth).
+
+    Resave semantics for an existing job with the same name:
+      * If a step with matching queryId exists → refresh its config in place.
+      * Otherwise (same name, new queryId, e.g. user saved a fresh query under a
+        name that already had a backing job) → treat as overwrite: drop the
+        stale query step and append the new one, so the job never accumulates
+        dead references.
+    """
+    job_name = f"{QUERY_BACKING_JOB_PREFIX}{query_name}"
+    step = {
+        "id": uuid.uuid4().hex,
+        "type": "query",
+        "name": "执行查询",
+        "enabled": True,
+        "continueOnError": False,
+        "config": {
+            "queryId": query_id,
+            "connectionId": connection_id,
+            "targetDbType": "mysql",
+        },
+    }
+    now = now_text()
+    existing = conn.execute("select id, steps_json, created_at from _jobs where name = ?", (job_name,)).fetchone()
+    if existing:
+        job_id = existing["id"]
+        try:
+            steps = json.loads(existing["steps_json"] or "[]")
+        except (TypeError, ValueError):
+            steps = []
+        target = next(
+            (item for item in steps if item.get("type") == "query" and (item.get("config") or {}).get("queryId") == query_id),
+            None,
+        )
+        if target is not None:
+            # Same queryId being re-saved: refresh config, keep the step id stable.
+            target["config"] = dict(step["config"])
+            target.setdefault("name", step["name"])
+            target.setdefault("enabled", True)
+            target.setdefault("continueOnError", False)
+        else:
+            # Name collides with an existing proxy job but no matching step:
+            # the previous query must have been deleted or this is a deliberate
+            # overwrite under the same name. Replace any existing query step to
+            # avoid leaving dangling references.
+            steps = [item for item in steps if not (item.get("type") == "query" and (item.get("config") or {}).get("queryId"))]
+            steps.append(step)
+        conn.execute(
+            "update _jobs set steps_json = ?, updated_at = ? where id = ?",
+            (json.dumps(steps, ensure_ascii=False), now, job_id),
+        )
+    else:
+        conn.execute(
+            "insert into _jobs (id, name, enabled, steps_json, created_at, updated_at) values (?, ?, 1, ?, ?, ?)",
+            (uuid.uuid4().hex, job_name, json.dumps([step], ensure_ascii=False), now, now),
+        )
+
+
+def _delete_jobs_for_query(conn: sqlite3.Connection, query_id: str) -> int:
+    """Remove proxy jobs whose only/binding reference is to this queryId.
+
+    Returns the number of jobs deleted. A job is considered to "belong" to a query
+    when one of its query-type steps has config.queryId == query_id.
+    """
+    deleted = 0
+    rows = conn.execute("select id, steps_json from _jobs").fetchall()
+    for row in rows:
+        try:
+            steps = json.loads(row["steps_json"] or "[]")
+        except (TypeError, ValueError):
+            continue
+        if any(
+            step.get("type") == "query" and (step.get("config") or {}).get("queryId") == query_id
+            for step in steps
+        ):
+            conn.execute("delete from _jobs where id = ?", (row["id"],))
+            deleted += 1
+    return deleted
+
+
+def app_now() -> dt.datetime:
+    timezone_name = os.environ.get("APP_TIMEZONE", "Asia/Shanghai")
+    try:
+        return dt.datetime.now(ZoneInfo(timezone_name)).replace(tzinfo=None)
+    except ZoneInfoNotFoundError:
+        return dt.datetime.utcnow() + dt.timedelta(hours=8)
+
+
+def now_text() -> str:
+    return app_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def parse_datetime(value: str) -> dt.datetime | None:
+    value = (value or "").strip()
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M", "%Y-%m-%d"):
+        try:
+            parsed = dt.datetime.strptime(value, fmt)
+            if fmt == "%Y-%m-%d":
+                return parsed.replace(hour=0, minute=0, second=0)
+            return parsed
+        except ValueError:
+            continue
+    return None
+
+
+def row_to_job(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "enabled": bool(row["enabled"]),
+        "steps": json.loads(row["steps_json"] or "[]"),
+        "guard": json.loads(row["guard_json"] or "{}"),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def row_to_schedule(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "jobId": row["job_id"],
+        "enabled": bool(row["enabled"]),
+        "rule": json.loads(row["rule_json"] or "{}"),
+        "startAt": row["start_at"],
+        "endAt": row["end_at"],
+        "nextRunAt": row["next_run_at"],
+        "lastRunAt": row["last_run_at"],
+        "lastStatus": row["last_status"],
+        "logRetentionDays": row["log_retention_days"],
+        "emailOnFail": bool(row["email_on_fail"]),
+        "running": bool(row["running"]),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def normalize_steps(raw_steps: object) -> list[dict[str, object]]:
+    if not isinstance(raw_steps, list):
+        return []
+    steps: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_steps):
+        if not isinstance(raw, dict):
+            continue
+        step_type = str(raw.get("type") or "").strip().lower()
+        if step_type not in {"import", "export", "query", "job", "sync"}:
+            continue
+        steps.append(
+            {
+                "id": str(raw.get("id") or uuid.uuid4().hex),
+                "name": str(raw.get("name") or f"步骤 {index + 1}").strip() or f"步骤 {index + 1}",
+                "type": step_type,
+                "enabled": raw.get("enabled", True) not in (False, "false", "0", 0, "off"),
+                "continueOnError": raw.get("continueOnError", False) in (True, "true", "1", 1, "on"),
+                "config": attach_connection_snapshot(raw.get("config") if isinstance(raw.get("config"), dict) else {}),
+            }
+        )
+    return steps
+
+
+def save_job(payload: dict[str, object]) -> dict[str, object]:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("请填写作业名称。")
+    steps = normalize_steps(payload.get("steps"))
+    if not steps:
+        raise ValueError("请至少添加一个子任务。")
+    if any(step["type"] == "sync" for step in steps):
+        raise ValueError("同步模块尚未开放，暂不能保存同步子任务。")
+    job_id = str(payload.get("id") or uuid.uuid4().hex)
+    now = now_text()
+    guard = payload.get("guard") if isinstance(payload.get("guard"), dict) else {}
+    with connect_db() as conn:
+        old = conn.execute("select created_at from _jobs where id = ?", (job_id,)).fetchone()
+        conn.execute(
+            """
+            insert into _jobs (id, name, enabled, steps_json, guard_json, created_at, updated_at)
+            values (?, ?, ?, ?, ?, ?, ?)
+            on conflict(id) do update set
+                name = excluded.name,
+                enabled = excluded.enabled,
+                steps_json = excluded.steps_json,
+                guard_json = excluded.guard_json,
+                updated_at = excluded.updated_at
+            """,
+            (
+                job_id,
+                name,
+                1 if payload.get("enabled", True) not in (False, "false", "0", 0, "off") else 0,
+                json.dumps(steps, ensure_ascii=False),
+                json.dumps(guard, ensure_ascii=False),
+                old["created_at"] if old else now,
+                now,
+            ),
+        )
+        row = conn.execute("select * from _jobs where id = ?", (job_id,)).fetchone()
+    return row_to_job(row)
+
+
+def save_schedule(payload: dict[str, object]) -> dict[str, object]:
+    name = str(payload.get("name") or "").strip()
+    job_id = str(payload.get("jobId") or payload.get("job_id") or "").strip()
+    if not name:
+        raise ValueError("请填写任务名称。")
+    if not job_id:
+        raise ValueError("请选择作业。")
+    with connect_db() as conn:
+        if not conn.execute("select 1 from _jobs where id = ?", (job_id,)).fetchone():
+            raise ValueError("选择的作业不存在。")
+    rule = payload.get("rule") if isinstance(payload.get("rule"), dict) else {}
+    schedule_id = str(payload.get("id") or uuid.uuid4().hex)
+    start_at = str(payload.get("startAt") or payload.get("start_at") or "").replace("T", " ")
+    end_at = str(payload.get("endAt") or payload.get("end_at") or "").replace("T", " ")
+    retention = max(int(payload.get("logRetentionDays") or payload.get("log_retention_days") or 3), 1)
+    enabled = payload.get("enabled", False) in (True, "true", "1", 1, "on")
+    next_run = compute_next_run(rule, start_at, end_at, None) if enabled else ""
+    now = now_text()
+    with connect_db() as conn:
+        old = conn.execute("select created_at, last_run_at, last_status from _schedules where id = ?", (schedule_id,)).fetchone()
+        conn.execute(
+            """
+            insert into _schedules (
+                id, name, job_id, enabled, rule_json, start_at, end_at, next_run_at,
+                last_run_at, last_status, log_retention_days, email_on_fail, running, created_at, updated_at
+            )
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            on conflict(id) do update set
+                name = excluded.name,
+                job_id = excluded.job_id,
+                enabled = excluded.enabled,
+                rule_json = excluded.rule_json,
+                start_at = excluded.start_at,
+                end_at = excluded.end_at,
+                next_run_at = excluded.next_run_at,
+                log_retention_days = excluded.log_retention_days,
+                email_on_fail = excluded.email_on_fail,
+                updated_at = excluded.updated_at
+            """,
+            (
+                schedule_id,
+                name,
+                job_id,
+                1 if enabled else 0,
+                json.dumps(rule, ensure_ascii=False),
+                start_at,
+                end_at,
+                next_run,
+                old["last_run_at"] if old else "",
+                old["last_status"] if old else "",
+                retention,
+                1 if payload.get("emailOnFail") in (True, "true", "1", 1, "on") else 0,
+                old["created_at"] if old else now,
+                now,
+            ),
+        )
+        row = conn.execute("select * from _schedules where id = ?", (schedule_id,)).fetchone()
+    return row_to_schedule(row)
+
+
+def compute_next_run(rule: dict[str, object], start_at: str = "", end_at: str = "", last_run_at: str | None = None, from_time: dt.datetime | None = None) -> str:
+    base = from_time or app_now()
+    start = parse_datetime(start_at)
+    end = parse_datetime(end_at)
+    if start and base < start:
+        base = start
+    if end and base > end:
+        return ""
+    mode = str(rule.get("mode") or "once")
+    last = parse_datetime(last_run_at or "")
+    if mode == "once":
+        candidate = start or base
+        if last:
+            return ""
+    elif mode == "interval":
+        amount = max(int(rule.get("amount") or 1), 1)
+        unit = str(rule.get("unit") or "minutes")
+        seconds = {"seconds": 1, "minutes": 60, "hours": 3600, "days": 86400}.get(unit, 60) * amount
+        if last:
+            candidate = last + dt.timedelta(seconds=seconds)
+        elif start:
+            candidate = start
+        else:
+            candidate = base + dt.timedelta(seconds=seconds)
+        if candidate < base:
+            steps = int((base - candidate).total_seconds() // seconds) + 1
+            candidate += dt.timedelta(seconds=seconds * steps)
+    else:
+        time_text = str(rule.get("time") or "09:00:00")
+        parts = [int(part) for part in re.findall(r"\d+", time_text)[:3]]
+        while len(parts) < 3:
+            parts.append(0)
+        hour, minute, second = parts[:3]
+        if mode == "daily":
+            candidate = base.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            if candidate <= base:
+                candidate += dt.timedelta(days=1)
+        elif mode == "weekly":
+            weekday = int(rule.get("weekday") or 1)
+            weekday = max(1, min(7, weekday)) - 1
+            candidate = base.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            days = (weekday - candidate.weekday()) % 7
+            candidate += dt.timedelta(days=days)
+            if candidate <= base:
+                candidate += dt.timedelta(days=7)
+        elif mode == "monthly":
+            day = max(1, min(31, int(rule.get("day") or 1)))
+            year, month = base.year, base.month
+            while True:
+                max_day = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+                candidate = dt.datetime(year, month, min(day, max_day), hour, minute, second)
+                if candidate > base:
+                    break
+                month += 1
+                if month > 12:
+                    year += 1
+                    month = 1
+        elif mode == "yearly":
+            month = max(1, min(12, int(rule.get("month") or 1)))
+            day = max(1, min(31, int(rule.get("day") or 1)))
+            year = base.year
+            while True:
+                max_day = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+                candidate = dt.datetime(year, month, min(day, max_day), hour, minute, second)
+                if candidate > base:
+                    break
+                year += 1
+        else:
+            candidate = base
+    if end and candidate > end:
+        return ""
+    return candidate.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def collect_local_files(path_text: str) -> list[UploadedFile]:
+    path_text = path_text.strip().strip('"')
+    if not path_text:
+        raise ValueError("请填写导入文件或目录路径。")
+    path = Path(path_text)
+    if not path.exists():
+        raise ValueError(f"路径不存在：{path_text}")
+    if path.is_file():
+        return [UploadedFile(path.name, path)]
+    files = [UploadedFile(item.name, item) for item in sorted(path.iterdir()) if item.is_file() and item.suffix.lower() in SUPPORTED_EXTENSIONS]
+    if not files:
+        raise ValueError("目录中没有可导入的文件。")
+    return files
+
+
+def execute_query_step(config: dict[str, object]) -> dict[str, object]:
+    fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
+    query_id = str(config.get("queryId") or "").strip()
+    sql = str(config.get("sql") or "").strip()
+    # When the step carries a queryId, treat _saved_queries as the single source
+    # of truth: pull the latest SQL at execution time so editing a saved query
+    # automatically flows into scheduled runs. Falls back to config.sql when no
+    # queryId is set (legacy jobs.html-created query steps with inline SQL).
+    if query_id:
+        with connect_db() as conn:
+            row = conn.execute(
+                "select sql_text, connection_id from _saved_queries where id = ?",
+                (query_id,),
+            ).fetchone()
+        if not row:
+            raise ValueError(f"查询任务不存在或已被删除（queryId={query_id}）。请在「查询」页面重新保存，或在「作业」中重新配置查询步骤。")
+        sql = str(row["sql_text"] or "").strip()
+        if not sql:
+            raise ValueError("查询 SQL 不能为空。")
+        if not fields.get("connectionId") and row["connection_id"]:
+            fields["connectionId"] = str(row["connection_id"])
+    if not sql:
+        raise ValueError("查询 SQL 不能为空。")
+    conn = connect_target_db(fields)
+    try:
+        count = 0
+        for statement in [item.strip() for item in sql.split(";") if item.strip()]:
+            if target_db_type(fields) == "mysql":
+                with conn.cursor() as cursor:
+                    cursor.execute(statement)
+                    count += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else len(cursor.fetchall() if cursor.description else [])
+            else:
+                cursor = conn.execute(statement)
+                count += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else len(cursor.fetchall() if cursor.description else [])
+        if target_db_type(fields) != "mysql":
+            conn.commit()
+        return {"rows": count}
+    finally:
+        conn.close()
+
+
+def resolve_import_step_config(config: dict[str, object], visited: set[str] | None = None) -> dict[str, object]:
+    """产品建议 B：作业导入步骤若引用已保存的导入任务（config.importJobId），
+    加载该任务首个 import 步骤的完整配置执行，保证定时产出与手动导入逐格一致。
+
+    支持多层引用但用 visited 防循环；引用目标不存在或没有可用导入步骤时明确报错。
+    """
+    job_id = str(config.get("importJobId") or "").strip()
+    if not job_id:
+        return config
+    visited = visited or set()
+    if job_id in visited:
+        raise ValueError(f"导入任务引用存在循环，已停止：{job_id}")
+    visited = visited | {job_id}
+    with connect_db() as conn:
+        row = conn.execute("select * from _jobs where id = ?", (job_id,)).fetchone()
+    if not row:
+        raise ValueError("引用的导入任务不存在或已删除，请重新编辑作业。")
+    for step in json.loads(row["steps_json"] or "[]"):
+        if step.get("type") != "import":
+            continue
+        cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
+        resolved = dict(cfg)
+        if str(cfg.get("importJobId") or "").strip():
+            resolved = resolve_import_step_config(cfg, visited)
+        resolved.pop("importJobId", None)
+        return resolved
+    raise ValueError(f"导入任务“{row['name']}”中没有可用的导入步骤。")
+
+
+def execute_import_step(config: dict[str, object]) -> dict[str, object]:
+    fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
+    source_path = str(config.get("path") or config.get("sourcePath") or "")
+    source = Path(source_path).resolve()
+    managed_sources = TASK_SOURCES.resolve()
+    if source == managed_sources or managed_sources in source.parents:
+        raise ValueError(
+            "该导入任务的源文件仍是软件一次性副本（task_sources），定时/作业执行不读取它。"
+            "请打开这条导入任务，点击「关联本机原文件」选择电脑中的真实源文件，"
+            "然后必须重新点击「保存为任务」——只关联不保存，任务路径不会更新。"
+            "保存后引用该任务的作业会自动使用新路径，无需重新编辑作业。"
+        )
+    files = collect_local_files(source_path)
+    pending_before_sql = str(fields.get("beforeAllSql") or "").strip()
+    pending_after_sql = str(fields.get("afterAllSql") or "").strip()
+    sql_status = "无待执行 SQL"
+    if pending_before_sql:
+        conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(conn, pending_before_sql, "定时导入执行前 SQL", fields)
+            conn.commit()
+            sql_status = "执行前 SQL：已执行"
+        finally:
+            conn.close()
+    results, _, skipped_files = run_import_batch(files, fields, fail_fast=True)
+    if pending_after_sql:
+        conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(conn, pending_after_sql, "定时导入执行后 SQL", fields)
+            conn.commit()
+            sql_status = f"{sql_status}；执行后 SQL：已执行"
+        finally:
+            conn.close()
+    return {
+        "files": len(results),
+        "sourcePath": source_path,
+        "fileNames": [str(item["fileName"]) for item in results],
+        "tableNames": sorted({str(item["tableName"]) for item in results if item.get("tableName")}),
+        "rowsRead": sum(int(item["rowsRead"]) for item in results),
+        "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
+        "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
+        "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
+        "verifiedRows": {str(item["tableName"]): int(item.get("verifiedRows", 0)) for item in results if item.get("tableName")},
+        "skippedFiles": skipped_files,
+        "sqlStatus": sql_status,
+    }
+
+
+def _file_fingerprint(path_text: str) -> str:
+    """计算源文件/目录的指纹：文件数量 + 每个文件 (名称, 大小, mtime) 拼接哈希。
+
+    用于"文件无更新则跳过作业"守卫。不含内容级 hash（大文件性能考虑），
+    以 大小+mtime 变化作为"文件有更新"的可靠近似。
+    """
+    import hashlib
+    files = collect_local_files(path_text)
+    parts = [f"{len(files)}"]
+    for f in files:
+        st = f.path.stat()
+        parts.append(f"{f.filename}|{st.st_size}|{int(st.st_mtime)}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
+    """收集作业中启用了文件守卫的 import 步骤。
+
+    - 步骤 config.skipIfFileUnchanged 为真 → 该步骤启用文件守卫
+    - 作业 guard.type == "file_has_new" → 全部启用的 import 步骤都启用文件守卫
+    """
+    job_guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    force_all = str(job_guard.get("type") or "").strip().lower() == "file_has_new"
+    guards: dict[int, dict[str, str]] = {}
+    for index, step in enumerate(job["steps"]):
+        cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
+        flag = str(cfg.get("skipIfFileUnchanged") or "").strip().lower()
+        enabled_step = step.get("type") == "import" and step.get("enabled", True)
+        guarded = force_all or flag in {"true", "1", "yes", "on"}
+        if enabled_step and guarded:
+            path_text = str(cfg.get("path") or cfg.get("sourcePath") or "").strip()
+            if path_text:
+                guards[index] = {"source": path_text}
+    return guards
+
+
+def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -> tuple[bool, str]:
+    """作业级执行条件（日期类守卫）判定。
+
+    guard 结构（存 _jobs.guard_json）：
+      {"type": "file_has_new"}                                    —— 自动文件守卫（由 run_saved_job 指纹机制处理）
+      {"type": "date_match", "mode": "range", "start": "..", "end": ".."}   —— 该日期范围内每天执行
+      {"type": "date_match", "mode": "dates", "values": ["2026-09-01"]}     —— 仅指定日期执行
+      {"type": "date_match", "mode": "weekday", "values": [1,3,5]}          —— 仅周几(1=周一..7=周日)执行
+      {"type": "date_match", "mode": "monthday", "values": [1,15]}          —— 仅每月几号执行
+    返回 (ok, reason)：ok=False 表示本次不满足、应跳过整个作业。
+    """
+    guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    gtype = str(guard.get("type") or "").strip().lower()
+    if not gtype or gtype in {"", "none", "off"}:
+        return True, ""
+    if gtype == "file_has_new":
+        return True, ""
+    if gtype == "date_match":
+        now = now or dt.datetime.now()
+        mode = str(guard.get("mode") or "weekday").strip().lower()
+        today = now.strftime("%Y-%m-%d")
+        if mode == "range":
+            start = str(guard.get("start") or "").strip()[:10]
+            end = str(guard.get("end") or "").strip()[:10]
+            if not start or not end:
+                raise ValueError("作业执行条件：日期范围需填写开始与结束日期。")
+            if start > today or end < today:
+                return False, f"作业仅在 {start} ~ {end} 期间执行，今天 {today} 不在范围内，作业已跳过"
+            return True, "今天在作业执行日期范围内"
+        if mode == "dates":
+            values = [str(v).strip()[:10] for v in guard.get("values", []) if str(v or "").strip()]
+            if not values:
+                raise ValueError("作业执行条件：请至少选择一个执行日期。")
+            if today not in values:
+                return False, f"作业仅在 {values[0]} 等指定日期执行，今天 {today} 不在其中，作业已跳过"
+            return True, "今天为作业指定执行日期"
+        values = guard.get("values") if isinstance(guard.get("values"), list) else []
+        try:
+            nums = sorted({int(v) for v in values if str(v).strip().isdigit()})
+        except (TypeError, ValueError):
+            nums = []
+        if not nums:
+            return True, ""
+        if mode == "weekday":
+            today_wd = now.isoweekday()  # 1=周一 .. 7=周日
+            if today_wd not in nums:
+                names = {1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "日"}
+                label = "、".join(f"周{names.get(n, n)}" for n in nums)
+                return False, f"作业仅在 {label} 执行，今天不是执行日，作业已跳过"
+            return True, "今天为作业执行日"
+        if mode == "monthday":
+            today_md = now.day
+            if today_md not in nums:
+                return False, f"作业仅在每月 {nums} 号执行，今天 {today_md} 号不是执行日，作业已跳过"
+            return True, "今天为作业执行日"
+        return True, ""
+    raise ValueError(f"不支持的作业执行条件类型：{gtype}")
+
+
+def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None = None) -> dict[str, object]:
+    visited = visited or set()
+    if job_id in visited:
+        raise ValueError("检测到作业循环引用，已停止执行。")
+    visited.add(job_id)
+    with connect_db() as conn:
+        row = conn.execute("select * from _jobs where id = ?", (job_id,)).fetchone()
+    if not row:
+        raise ValueError("作业不存在。")
+    job = row_to_job(row)
+
+    # ---- 作业级执行条件（B/C 类守卫）：query_has_rows / date_match
+    #      不满足 → 整个作业标记"跳过"，不执行任何步骤 ----
+    guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
+    guard_reason = ""
+    guard_skip = False
+    if guard and str(guard.get("type") or "").strip().lower() not in {"", "none", "off"}:
+        try:
+            ok, reason = evaluate_job_guard(job)
+            if not ok:
+                guard_skip = True
+                guard_reason = reason
+        except Exception as exc:
+            # 条件评估异常（如查询连接失败）不静默——让作业失败以暴露配置问题
+            raise ValueError(f"作业执行条件评估失败：{exc}") from exc
+
+    # ---- 文件守卫：作业中任一启用了 skipIfFileUnchanged 的导入步骤，
+    #      若其源文件与上次成功执行时相比无变化 → 整个作业标记"跳过"，不执行任何步骤 ----
+    guards = _guard_summary(job)
+    if not guard_skip:
+        try:
+            for step_index, guard_item in guards.items():
+                current = _file_fingerprint(guard_item["source"])
+                with connect_db() as conn:
+                    prev = conn.execute(
+                        "select fingerprint from _job_file_guards where job_id = ? and step_index = ?",
+                        (job_id, step_index),
+                    ).fetchone()
+                if prev and prev["fingerprint"] == current:
+                    guard_skip = True
+                    guard_reason = f"源文件无更新（{guard_item['source']}），作业已跳过"
+                    break
+                guard_item["fingerprint"] = current
+        except Exception as exc:
+            # 指纹计算失败（如路径暂不可达）不阻塞作业，仅提示
+            guard_reason = ""
+
+    run_id = uuid.uuid4().hex
+    started = dt.datetime.now()
+    with connect_db() as conn:
+        conn.execute(
+            "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, status) values (?, ?, ?, ?, ?, ?)",
+            (run_id, job_id, schedule_id, str(job["name"]), started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
+        )
+
+    if guard_skip:
+        ended = dt.datetime.now()
+        message = f"作业跳过：{guard_reason}。"
+        with connect_db() as conn:
+            conn.execute(
+                "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+                (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - started).total_seconds() * 1000), "跳过", message, run_id),
+            )
+        return {"id": run_id, "jobId": job_id, "status": "跳过", "message": message}
+
+    status = "成功"
+    message = ""
+    completed_steps = 0
+    failed_steps = 0
+    skipped_steps = sum(1 for step in job["steps"] if not step.get("enabled", True))
+    last_error = ""
+    for index, step in enumerate(job["steps"], start=1):
+        if not step.get("enabled", True):
+            continue
+        step_id = uuid.uuid4().hex
+        step_started = dt.datetime.now()
+        step_status = "成功"
+        step_message = ""
+        should_stop = False
+        with connect_db() as conn:
+            conn.execute(
+                "insert into _job_run_steps (id, run_id, step_index, step_name, step_type, started_at, status) values (?, ?, ?, ?, ?, ?, ?)",
+                (step_id, run_id, index, str(step.get("name") or ""), str(step.get("type") or ""), step_started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
+            )
+        try:
+            step_type = str(step.get("type") or "")
+            config = step.get("config") if isinstance(step.get("config"), dict) else {}
+            if step_type == "import":
+                config = resolve_import_step_config(config)
+                result = execute_import_step(config)
+                step_message = (
+                    f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
+                    f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
+                    f"成功写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行；"
+                    f"数据库校验行数：{result['verifiedRows']}；{result['sqlStatus']}。"
+                )
+            elif step_type == "export":
+                try:
+                    result = run_export_job(config)
+                except Exception as exc:
+                    fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
+                    raise ValueError(friendly_export_error(exc, fields)) from exc
+                step_message = f"导出 {len(result['files'])} 个文件，{result['rows']} 行。"
+            elif step_type == "query":
+                result = execute_query_step(config)
+                step_message = f"SQL 执行完成，影响/读取 {result['rows']} 行。"
+            elif step_type == "job":
+                nested = str(config.get("jobId") or "")
+                nested_result = run_saved_job(nested, schedule_id, visited.copy())
+                if nested_result["status"] != "成功":
+                    raise ValueError(f"子作业执行失败：{nested_result['message']}")
+                step_message = f"子作业执行成功：{nested_result['message']}"
+            elif step_type == "sync":
+                raise ValueError("同步模块尚未开放。")
+            else:
+                raise ValueError("不支持的子任务类型。")
+        except Exception as exc:
+            step_status = "失败"
+            step_message = str(exc)
+            failed_steps += 1
+            status = "失败"
+            last_error = step_message
+            should_stop = not step.get("continueOnError", False)
+        else:
+            completed_steps += 1
+        finally:
+            ended = dt.datetime.now()
+            with connect_db() as conn:
+                conn.execute(
+                    "update _job_run_steps set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+                    (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - step_started).total_seconds() * 1000), step_status, step_message, step_id),
+                )
+        if should_stop:
+            break
+    ended = dt.datetime.now()
+    if status == "成功":
+        message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
+        # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）
+        if guards:
+            for step_index, guard_item in guards.items():
+                fp = guard_item.get("fingerprint")
+                if fp:
+                    with connect_db() as conn:
+                        conn.execute(
+                            "insert or replace into _job_file_guards (job_id, step_index, fingerprint, source_text, updated_at) values (?, ?, ?, ?, ?)",
+                            (job_id, step_index, fp, guard_item.get("source", ""), now_text()),
+                        )
+    else:
+        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
+    with connect_db() as conn:
+        conn.execute(
+            "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+            (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - started).total_seconds() * 1000), status, message, run_id),
+        )
+    return {"id": run_id, "jobId": job_id, "status": status, "message": message}
+
+
+def prune_job_logs(retention_days: int) -> None:
+    cutoff = (dt.datetime.now() - dt.timedelta(days=max(retention_days, 1))).strftime("%Y-%m-%d %H:%M:%S")
+    with connect_db() as conn:
+        old_ids = [row["id"] for row in conn.execute("select id from _job_runs where started_at < ?", (cutoff,)).fetchall()]
+        if old_ids:
+            placeholders = ",".join("?" for _ in old_ids)
+            conn.execute(f"delete from _job_run_steps where run_id in ({placeholders})", old_ids)
+            conn.execute(f"delete from _job_runs where id in ({placeholders})", old_ids)
+
+
+def recover_interrupted_runs() -> int:
+    """P2-9: 恢复上次进程崩溃残留的「运行中」任务。
+
+    进程在定时任务执行中被强制终止（断电 / OOM / kill -9）时，scheduler 已经把
+    _schedules.running 置为 1，却没机会在 run_schedule_once 末尾重置。下次启动后
+    dispatch 查询条件是 running = 0，会导致该计划被永久静默跳过。这里在启动时把
+    这些僵尸计划重置为可调度，并把挂起的「运行中」执行/步骤记录标记为中断，
+    保证历史记录不会永远停在「运行中」。幂等：正常启动时无残留，直接返回 0。
+    """
+    now = now_text()
+    with connect_db() as conn:
+        zombies = conn.execute("select id from _schedules where running = 1").fetchall()
+        for row in zombies:
+            conn.execute(
+                "update _schedules set running = 0, updated_at = ? where id = ?",
+                (now, row["id"]),
+            )
+        orphan_runs = conn.execute(
+            "select id from _job_runs where status = ?", ("运行中",)
+        ).fetchall()
+        for row in orphan_runs:
+            conn.execute(
+                "update _job_runs set ended_at = ?, status = ?, message = ? where id = ?",
+                (now, "失败", "进程异常中断，已自动恢复（上次执行未完成）。", row["id"]),
+            )
+        orphan_steps = conn.execute(
+            "select id from _job_run_steps where status = ?", ("运行中",)
+        ).fetchall()
+        for row in orphan_steps:
+            conn.execute(
+                "update _job_run_steps set ended_at = ?, status = ?, message = ? where id = ?",
+                (now, "失败", "进程异常中断，已自动恢复。", row["id"]),
+            )
+    n_z, n_r, n_s = len(zombies), len(orphan_runs), len(orphan_steps)
+    recovered = n_z + n_r + n_s
+    if recovered:
+        print(
+            f"[recover] 已恢复 {n_z} 个僵尸计划 / {n_r} 条运行记录 / {n_s} 条步骤记录"
+            f"（上次进程异常中断）。",
+            flush=True,
+        )
+    return recovered
+
+
+def dispatch_due_schedules() -> None:
+    now = now_text()
+    with connect_db() as conn:
+        rows = conn.execute(
+            "select * from _schedules where enabled = 1 and running = 0 and next_run_at != '' and next_run_at <= ?",
+            (now,),
+        ).fetchall()
+        for row in rows:
+            conn.execute("update _schedules set running = 1 where id = ?", (row["id"],))
+    for row in rows:
+        threading.Thread(target=run_schedule_once, args=(row["id"],), daemon=True).start()
+
+
+def run_schedule_once(schedule_id: str) -> None:
+    with connect_db() as conn:
+        row = conn.execute("select * from _schedules where id = ?", (schedule_id,)).fetchone()
+    if not row:
+        return
+    schedule = row_to_schedule(row)
+    status = "成功"
+    try:
+        prune_job_logs(int(schedule["logRetentionDays"]))
+        result = run_saved_job(str(schedule["jobId"]), schedule_id)
+        status = str(result["status"])
+    except Exception as exc:
+        status = "失败"
+        with connect_db() as conn:
+            conn.execute(
+                "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, ended_at, status, message) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                (uuid.uuid4().hex, str(schedule["jobId"]), schedule_id, str(schedule["name"]), now_text(), now_text(), "失败", str(exc)),
+            )
+    rule = schedule["rule"] if isinstance(schedule["rule"], dict) else {}
+    next_run = compute_next_run(rule, str(schedule["startAt"]), str(schedule["endAt"]), now_text())
+    enabled = 1 if next_run else 0
+    with connect_db() as conn:
+        conn.execute(
+            "update _schedules set running = 0, enabled = ?, last_run_at = ?, last_status = ?, next_run_at = ?, updated_at = ? where id = ?",
+            (enabled, now_text(), status, next_run, now_text(), schedule_id),
+        )
+
+
+def scheduler_loop(stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        try:
+            dispatch_due_schedules()
+        except Exception:
+            pass
+        stop_event.wait(5)
+
+
+def log_import(
+    conn: sqlite3.Connection,
+    file_name: str,
+    table_name: str,
+    mode: str,
+    rows_read: int,
+    rows_written: int,
+    rows_updated: int,
+    rows_skipped: int,
+    status: str,
+    message: str,
+) -> None:
+    if parse_bool({"disableLog": "false"}, "disableLog", False):
+        return
+    conn.execute(
+        """
+        insert into _import_logs
+        (id, created_at, file_name, table_name, mode, rows_read, rows_written, rows_updated, rows_skipped, status, message)
+        values (?, datetime('now', 'localtime'), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (str(uuid.uuid4()), file_name, table_name, mode, rows_read, rows_written, rows_updated, rows_skipped, status, message),
+    )
+
+
+def import_file_fingerprint(path: Path) -> str:
+    """P2-12：源文件内容指纹（大小 + 内容 sha256 前 32 位）。
+
+    浏览器上传产生的副本 mtime 每次都是新的，不能作为"文件是否更新"的依据；
+    内容哈希是唯一可靠信号。按 1MB 分块读取，两万行 xlsx 约毫秒级。
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"{size}:{digest.hexdigest()[:32]}"
+
+
+def import_file_key(file_name: str, fields: dict[str, str]) -> str:
+    """P2-12：文件导入身份键 = 目标库 + 目标表配置 + 文件名。
+
+    同一文件导入到不同目标（换连接或换表）不算"上次导入过"，
+    避免同一模板文件导入第二张表时被误跳过。
+    """
+    dest = str(fields.get("connectionId") or "").strip()
+    if not dest:
+        dest = "|".join(
+            [
+                str(fields.get("dbHost") or ""),
+                str(fields.get("dbPort") or ""),
+                str(fields.get("dbName") or ""),
+            ]
+        )
+    target = str(fields.get("targetDbType") or "mysql").strip().lower()
+    return f"{target}|{dest}|{str(fields.get('tableName') or '').strip()}|{file_name}"
+
+
+def import_file_fingerprint_seen(file_key: str, fingerprint: str) -> bool:
+    with connect_db() as conn:
+        row = conn.execute(
+            "select fingerprint from _import_file_fingerprints where file_key = ?",
+            (file_key,),
+        ).fetchone()
+    return bool(row and str(row["fingerprint"]) == fingerprint)
+
+
+def record_import_file_fingerprint(file_key: str, fingerprint: str, table_name: str) -> None:
+    with connect_db() as conn:
+        conn.execute(
+            """
+            insert or replace into _import_file_fingerprints (file_key, fingerprint, table_name, updated_at)
+            values (?, ?, ?, datetime('now', 'localtime'))
+            """,
+            (file_key, fingerprint, table_name),
+        )
+
+
+def run_import_batch(
+    uploaded_files: list[UploadedFile],
+    fields: dict[str, str],
+    fail_fast: bool = False,
+) -> tuple[list[dict[str, object]], list[dict[str, str]], int]:
+    """按顺序导入一批文件（P2-12：skipSeenFile 命中时整文件跳过）。
+
+    返回 (results, failures, skipped_files)：
+    - 每次导入成功都记录内容指纹（无论是否勾选跳过），保证"上次导入"语义准确：
+      先正常导入、后开启跳过选项也能正确命中；
+    - 勾选"跳过自上次导入后未曾更新过的文件"时，按 内容指纹+目标身份 判断，
+      命中则该文件不解析不写入，写一条"已跳过"日志，计入 skipped_files；
+      仅导入成功后才记录指纹，失败的文件下次仍会重试。
+    - fail_fast=True 时首个失败即抛出（作业/定时路径保持原有失败中止语义）。
+    """
+    skip_seen = parse_bool(fields, "skipSeenFile", False)
+    results: list[dict[str, object]] = []
+    failures: list[dict[str, str]] = []
+    skipped_files = 0
+    for uploaded in uploaded_files:
+        try:
+            fingerprint = import_file_fingerprint(uploaded.path)
+        except OSError:
+            fingerprint = ""
+        if skip_seen and fingerprint:
+            file_key = import_file_key(uploaded.filename, fields)
+            if import_file_fingerprint_seen(file_key, fingerprint):
+                results.append(
+                    {
+                        "fileName": uploaded.filename,
+                        "tableName": "",
+                        "columns": [],
+                        "rowsRead": 0,
+                        "rowsWritten": 0,
+                        "rowsUpdated": 0,
+                        "rowsSkipped": 0,
+                        "message": "文件自上次导入后未变更，已跳过",
+                    }
+                )
+                skipped_files += 1
+                if not parse_bool(fields, "disableLog", False):
+                    with connect_db() as log_conn:
+                        log_import(
+                            log_conn,
+                            uploaded.filename,
+                            "",
+                            fields.get("importMode", "append"),
+                            0,
+                            0,
+                            0,
+                            0,
+                            "成功",
+                            "文件自上次导入后未变更，已跳过",
+                        )
+                continue
+        try:
+            result = import_uploaded_file(uploaded, fields)
+        except Exception as exc:
+            if fail_fast:
+                raise
+            failures.append({"fileName": uploaded.filename, "error": str(exc)})
+            continue
+        results.append(result)
+        if fingerprint:
+            record_import_file_fingerprint(
+                import_file_key(uploaded.filename, fields),
+                fingerprint,
+                str(result.get("tableName") or ""),
+            )
+    return results, failures, skipped_files
+
+
+def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict[str, object]:
+    if fields.get("sheetMode") == "all" and uploaded.path.suffix.lower() in {".xlsx", ".xlsm", ".xls"}:
+        results = []
+        original_table_name = fields.get("tableName", "")
+        for tabular in read_tabular_tasks(uploaded.path, fields):
+            per_sheet = dict(fields)
+            per_sheet["sheetMode"] = "specified"
+            per_sheet["sheetFilterMode"] = "name"
+            per_sheet["sheetName"] = tabular.selected_sheet
+            if original_table_name:
+                per_sheet["tableName"] = f"{original_table_name}_{tabular.selected_sheet}"
+            else:
+                per_sheet["tableNameRule"] = "sheet"
+            results.append(import_uploaded_file(uploaded, per_sheet))
+        return {
+            "fileName": uploaded.filename,
+            "tableName": results[0]["tableName"] if results else "",
+            "columns": results[0]["columns"] if results else [],
+            "rowsRead": sum(int(item["rowsRead"]) for item in results),
+            "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
+            "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
+            "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
+            "message": f"已导入 {len(results)} 个 Sheet",
+            "sheetResults": results,
+        }
+
+    tabular = read_tabular_file(uploaded.path, fields)
+    columns, rows, match_keys, skipped = build_target_data(tabular, fields, uploaded.filename)
+    rows = convert_date_columns(columns, rows, fields)
+    table_name = normalize_target_name(uploaded, tabular, fields)
+    mode = fields.get("importMode", "append")
+    if mode not in {"append", "update", "overwrite", "rebuild"}:
+        raise ValueError("导入模式只能是追加、更新、覆盖或重建。")
+
+    conn = connect_target_db(fields)
+    written = 0
+    updated = 0
+    verified_rows = 0
+    try:
+        duplicate_mode = fields.get("duplicateTableMode", "same")
+        if target_table_exists(conn, table_name, fields) and mode == "append" and duplicate_mode == "skip":
+            if not parse_bool(fields, "disableLog", False):
+                with connect_db() as log_conn:
+                    log_import(log_conn, uploaded.filename, table_name, mode, len(tabular.rows), 0, 0, len(rows), "成功", "目标表重复，已按配置跳过")
+            return {
+                "fileName": uploaded.filename,
+                "tableName": table_name,
+                "columns": columns,
+                "rowsRead": len(tabular.rows),
+                "rowsWritten": 0,
+                "rowsUpdated": 0,
+                "rowsSkipped": len(rows),
+                "message": "目标表重复，已跳过",
+            }
+        if target_table_exists(conn, table_name, fields) and mode == "append" and duplicate_mode == "suffix":
+            base = table_name
+            index = 2
+            while target_table_exists(conn, table_name, fields):
+                table_name = sanitize_identifier(f"{base}_{index}", "import_table")
+                index += 1
+
+        cp_key = checkpoint_key(uploaded, table_name, fields)
+        resume_offset = get_checkpoint(cp_key) if parse_bool(fields, "resumeImport", False) and mode in {"append", "rebuild", "overwrite"} else 0
+        target_create_or_expand_table(conn, table_name, columns, rows, mode == "rebuild" and resume_offset == 0, parse_bool(fields, "autoExpand", True), fields)
+        existing = target_existing_columns(conn, table_name, fields)
+        if any(column not in existing for column in columns):
+            raise ValueError("目标表字段与当前导入字段不一致。")
+        rows_before = target_row_count(conn, table_name, fields)
+
+        if mode == "overwrite" and resume_offset == 0:
+            sql = f"delete from {db_quote(table_name, fields)}"
+            if target_db_type(fields) == "mysql":
+                with conn.cursor() as cursor:
+                    cursor.execute(sql)
+            else:
+                conn.execute(sql)
+
+        active_rows = rows[resume_offset:] if resume_offset else rows
+
+        def progress(done: int) -> None:
+            if parse_bool(fields, "resumeImport", False):
+                if target_db_type(fields) == "sqlite":
+                    conn.commit()
+                set_checkpoint(cp_key, resume_offset + done)
+
+        if mode == "update":
+            written, updated = target_update_rows(conn, table_name, columns, rows, match_keys, fields)
+        else:
+            if fields.get("writeMode") == "load" and target_db_type(fields) == "mysql":
+                try:
+                    written = mysql_load_rows(conn, table_name, columns, active_rows, fields, progress)
+                except Exception:
+                    written = target_insert_rows(conn, table_name, columns, active_rows, fields, progress)
+            elif fields.get("writeMode") == "parallel":
+                conn.commit()
+                written = target_insert_rows_parallel(table_name, columns, active_rows, fields, progress)
+            else:
+                written = target_insert_rows(conn, table_name, columns, active_rows, fields, progress)
+            updated = 0
+
+        target_execute_sql_batch(conn, fields.get("customSql", ""), "自定义 SQL", fields)
+        target_execute_sql_batch(conn, fields.get("afterEachSql", ""), "每次导入成功后 SQL", fields)
+        if target_db_type(fields) != "mysql" or fields.get("commitMode") != "auto":
+            conn.commit()
+        verified_rows = target_row_count(conn, table_name, fields)
+        if mode == "overwrite" and resume_offset == 0:
+            expected_rows = written
+        elif mode == "rebuild" and resume_offset == 0:
+            expected_rows = written
+        elif mode == "append":
+            expected_rows = rows_before + written
+        else:
+            expected_rows = verified_rows
+        if verified_rows != expected_rows:
+            raise ValueError(
+                f"导入后数据库行数校验失败：目标表当前 {verified_rows} 行，预期 {expected_rows} 行。任务已标记为失败。"
+            )
+        if not parse_bool(fields, "disableLog", False):
+            with connect_db() as log_conn:
+                log_import(
+                    log_conn,
+                    uploaded.filename,
+                    table_name,
+                    mode,
+                    len(tabular.rows),
+                    written,
+                    updated,
+                    skipped,
+                    "成功",
+                    f"导入完成；源文件 {len(tabular.rows)} 行，成功写入 {written} 行，数据库校验 {verified_rows} 行",
+                )
+        if parse_bool(fields, "resumeImport", False):
+            clear_checkpoint(cp_key)
+    except Exception as exc:
+        conn.rollback()
+        if not parse_bool(fields, "disableLog", False):
+            with connect_db() as log_conn:
+                log_import(
+                    log_conn,
+                    uploaded.filename,
+                    table_name,
+                    mode,
+                    len(tabular.rows),
+                    written,
+                    updated,
+                    skipped,
+                    "失败",
+                    f"导入失败：{exc}",
+                )
+        raise
+    finally:
+        conn.close()
+
+    if parse_bool(fields, "deleteAfterSuccess", False):
+        uploaded.path.unlink(missing_ok=True)
+
+    return {
+        "fileName": uploaded.filename,
+        "tableName": table_name,
+        "columns": columns,
+        "rowsRead": len(tabular.rows),
+        "rowsWritten": written,
+        "rowsUpdated": updated,
+        "rowsSkipped": skipped,
+        "verifiedRows": verified_rows,
+        "message": "导入完成",
+    }
+
+def parse_multipart(handler: SimpleHTTPRequestHandler) -> tuple[dict[str, str], list[UploadedFile]]:
+    content_type = handler.headers.get("Content-Type", "")
+    if "multipart/form-data" not in content_type:
+        raise ValueError("请求格式错误，需要 multipart/form-data。")
+    boundary_match = re.search(r"boundary=(.+)", content_type)
+    if not boundary_match:
+        raise ValueError("上传请求缺少 boundary。")
+    boundary = boundary_match.group(1).strip('"')
+    length = int(handler.headers.get("Content-Length", "0"))
+    body = handler.rfile.read(length)
+    parts = body.split(("--" + boundary).encode("utf-8"))
+    fields: dict[str, str] = {}
+    uploaded_files: list[UploadedFile] = []
+
+    for part in parts:
+        part = part.strip(b"\r\n")
+        if not part or part == b"--":
+            continue
+        header_blob, _, content = part.partition(b"\r\n\r\n")
+        headers = header_blob.decode("utf-8", errors="replace")
+        name_match = re.search(r'name="([^"]+)"', headers)
+        if not name_match:
+            continue
+        name = name_match.group(1)
+        filename_match = re.search(r'filename="([^"]*)"', headers)
+        content = content.rstrip(b"\r\n")
+        if filename_match and filename_match.group(1):
+            original = Path(filename_match.group(1)).name
+            target = UPLOADS / f"{int(time.time())}_{uuid.uuid4().hex}_{original}"
+            target.write_bytes(content)
+            uploaded_files.append(UploadedFile(filename=original, path=target))
+        else:
+            fields[name] = content.decode("utf-8", errors="replace")
+    return fields, uploaded_files
+
+
+def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, object]:
+    length = int(handler.headers.get("Content-Length", "0") or "0")
+    if length <= 0:
+        return {}
+    raw = handler.rfile.read(length).decode("utf-8")
+    payload = json.loads(raw) if raw.strip() else {}
+    if not isinstance(payload, dict):
+        raise ValueError("请求内容格式不正确。")
+    return payload
+
+
+def public_auth_enabled() -> bool:
+    enabled_value = os.environ.get("APP_AUTH_ENABLED", "").strip().lower()
+    return enabled_value in {"1", "true", "yes", "on"} and bool(os.environ.get("ADMIN_PASSWORD", "").strip())
+
+
+def check_basic_auth(header_value: str) -> bool:
+    admin_user = os.environ.get("ADMIN_USER", "admin")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "")
+    if not admin_password:
+        return True
+    if not header_value.startswith("Basic "):
+        return False
+    try:
+        decoded = base64.b64decode(header_value[6:].strip()).decode("utf-8")
+    except Exception:
+        return False
+    user, separator, password = decoded.partition(":")
+    if not separator:
+        return False
+    return hmac.compare_digest(user, admin_user) and hmac.compare_digest(password, admin_password)
+
+
+def bind_host() -> str:
+    if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_ENVIRONMENT_NAME"):
+        return "0.0.0.0"
+    return os.environ.get("HOST", "127.0.0.1")
+
+
+# Connection credential query parameters that must never reach the logs (P1-3).
+SENSITIVE_QUERY_PARAMS = ("dbPassword", "dbPasswordSecret", "password")
+
+_SENSITIVE_QUERY_VALUE_RE = re.compile(
+    r"([?&](?:" + "|".join(re.escape(p) for p in SENSITIVE_QUERY_PARAMS) + r")=)[^&#\s\"']*",
+    re.IGNORECASE,
+)
+
+
+def redact_log_text(message: str) -> str:
+    """Replace sensitive query parameter values (dbPassword etc.) with '***'."""
+    return _SENSITIVE_QUERY_VALUE_RE.sub(r"\1***", message)
+
+
+def is_allowed_download_path(path: Path) -> bool:
+    """True only for regular files inside a download-whitelisted directory (P2-14)."""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    if not resolved.is_file():
+        return False
+    for root in DOWNLOAD_ALLOWED_ROOTS:
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+class ImportPrototypeHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format: str, *args: object) -> None:
+        try:
+            message = format % args
+        except Exception:
+            message = " ".join(str(arg) for arg in args)
+        print(f"{self.address_string()} - {redact_log_text(message)}", flush=True)
+
+    def require_auth(self) -> bool:
+        if not public_auth_enabled():
+            return True
+        if urlparse(self.path).path == "/api/ping":
+            return True
+        if check_basic_auth(self.headers.get("Authorization", "")):
+            return True
+        self.send_response(HTTPStatus.UNAUTHORIZED)
+        self.send_header("WWW-Authenticate", 'Basic realm="Data Converter"')
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.end_headers()
+        self.wfile.write("Authentication required.".encode("utf-8"))
+        return False
+
+    def end_headers(self) -> None:
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
+    def translate_path(self, path: str) -> str:
+        parsed = urlparse(path)
+        request_path = parsed.path
+        if request_path == "/":
+            request_path = "/index.html"
+        base = PUBLIC.resolve()
+        target = (base / request_path.lstrip("/")).resolve()
+        try:
+            target.relative_to(base)
+        except ValueError:
+            return str(base / "__missing__")
+        return str(target)
+
+    def do_GET(self) -> None:
+        if not self.require_auth():
+            return
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/api/tables":
+                self.handle_tables(parsed.query)
+                return
+            if parsed.path == "/api/target-tables":
+                self.handle_target_tables(parsed.query)
+                return
+            if parsed.path == "/api/target-table-details":
+                self.handle_target_table_details(parsed.query)
+                return
+            if parsed.path == "/api/table":
+                self.handle_table_preview(parsed.query)
+                return
+            if parsed.path == "/api/logs":
+                self.handle_logs()
+                return
+            if parsed.path == "/api/ping":
+                json_response(self, {"ok": True, "version": "export-v2-download"})
+                return
+            if parsed.path == "/api/meta":
+                json_response(self, {"ok": True, "appVersion": APP_VERSION})
+                return
+            if parsed.path == "/api/storage/status":
+                self.handle_storage_status()
+                return
+            if parsed.path == "/api/connections":
+                self.handle_connections()
+                return
+            if parsed.path == "/api/jobs":
+                self.handle_jobs()
+                return
+            if parsed.path == "/api/schedules":
+                self.handle_schedules()
+                return
+            if parsed.path == "/api/job-runs":
+                self.handle_job_runs(parsed.query)
+                return
+            if parsed.path == "/api/queries":
+                self.handle_queries()
+                return
+            if parsed.path == "/api/export/sources":
+                self.handle_export_sources(parsed.query)
+                return
+            if parsed.path == "/api/export/download":
+                self.handle_export_download(parsed.query)
+                return
+        except Exception as exc:
+            error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
+            return
+        return super().do_GET()
+
+    def do_POST(self) -> None:
+        if not self.require_auth():
+            return
+        try:
+            post_path = urlparse(self.path).path
+            # Read-only connection lookups accept POST + JSON body so connection
+            # credentials are no longer required to travel in a GET query string.
+            if post_path == "/api/tables":
+                self.handle_tables()
+                return
+            if post_path == "/api/target-tables":
+                self.handle_target_tables()
+                return
+            if post_path == "/api/target-table-details":
+                self.handle_target_table_details()
+                return
+            if post_path == "/api/table":
+                self.handle_table_preview()
+                return
+            if post_path == "/api/export/sources":
+                self.handle_export_sources()
+                return
+            if self.path == "/api/preview":
+                self.handle_preview()
+                return
+            if self.path == "/api/import":
+                self.handle_import()
+                return
+            if self.path == "/api/task-source":
+                self.handle_task_source()
+                return
+            if self.path == "/api/import/choose-source":
+                self.handle_import_choose_source()
+                return
+            if self.path == "/api/connections/test":
+                self.handle_connection_test()
+                return
+            if self.path == "/api/connections":
+                self.handle_connection_save()
+                return
+            if self.path == "/api/export/preview":
+                self.handle_export_preview()
+                return
+            if self.path == "/api/export/run":
+                self.handle_export_run()
+                return
+            if self.path == "/api/export/choose-target":
+                self.handle_export_choose_target()
+                return
+            if self.path == "/api/query/run":
+                self.handle_query_run()
+                return
+            if self.path == "/api/queries":
+                self.handle_query_save()
+                return
+            if self.path == "/api/jobs":
+                self.handle_job_save()
+                return
+            if self.path == "/api/jobs/run":
+                self.handle_job_run()
+                return
+            if self.path == "/api/schedules":
+                self.handle_schedule_save()
+                return
+            if self.path == "/api/schedules/start":
+                self.handle_schedule_state(True)
+                return
+            if self.path == "/api/schedules/pause":
+                self.handle_schedule_state(False)
+                return
+            error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
+        except Exception as exc:
+            error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
+
+    def do_DELETE(self) -> None:
+        if not self.require_auth():
+            return
+        parsed = urlparse(self.path)
+        try:
+            if parsed.path == "/api/connections":
+                self.handle_connection_delete(parsed.query)
+                return
+            if parsed.path == "/api/jobs":
+                self.handle_job_delete(parsed.query)
+                return
+            if parsed.path == "/api/schedules":
+                self.handle_schedule_delete(parsed.query)
+                return
+            if parsed.path == "/api/queries":
+                self.handle_query_delete(parsed.query)
+                return
+            error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
+        except Exception as exc:
+            error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
+
+    def guess_type(self, path: str) -> str:
+        if path.endswith(".js"):
+            return "text/javascript; charset=utf-8"
+        if path.endswith(".css"):
+            return "text/css; charset=utf-8"
+        if path.endswith(".html"):
+            return "text/html; charset=utf-8"
+        return mimetypes.guess_type(path)[0] or "application/octet-stream"
+
+    def handle_preview(self) -> None:
+        fields, uploaded_files = parse_multipart(self)
+        if not uploaded_files and fields.get("sourcePath", "").strip():
+            uploaded_files = collect_local_files(fields["sourcePath"])
+        if not uploaded_files:
+            raise ValueError("请选择要预览的文件。")
+        uploaded = uploaded_files[0]
+        tabular = read_tabular_file(uploaded.path, fields)
+        columns = tabular.columns
+        rows = tabular.rows
+        # 预览阶段的类型推断只依赖 targetDbType，避免解析/加载数据库连接（连接失效不应阻断预览）。
+        type_fields = dict(fields)
+        type_fields["connectionId"] = ""
+        type_rows = convert_date_columns(columns, rows, type_fields) if target_db_type(type_fields) == "mysql" else rows
+        column_types = infer_column_types(columns, type_rows, type_fields)
+        type_warnings = detect_type_warnings(columns, rows, column_types)
+        json_response(
+            self,
+            {
+                "ok": True,
+                "fileName": uploaded.filename,
+                "suggestedTable": sanitize_identifier(Path(uploaded.filename).stem, "import_table"),
+                "columns": columns,
+                "preview": rows[:MAX_PREVIEW_ROWS],
+                "totalRows": len(rows),
+                "sheets": tabular.sheets,
+                "selectedSheet": tabular.selected_sheet,
+                "columnTypes": column_types,
+                "typeWarnings": type_warnings,
+            },
+        )
+
+    def handle_import(self) -> None:
+        fields, uploaded_files = parse_multipart(self)
+        if not uploaded_files and fields.get("sourcePath", "").strip():
+            uploaded_files = collect_local_files(fields["sourcePath"])
+        if not uploaded_files:
+            raise ValueError("请选择要导入的文件。")
+
+        with connect_db() as log_conn:
+            if parse_bool(fields, "clearLogBeforeImport", False):
+                log_conn.execute("delete from _import_logs")
+
+        target_conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(target_conn, fields.get("beforeAllSql", ""), "全部导入开始前 SQL", fields)
+            if target_db_type(fields) != "mysql" or fields.get("commitMode") != "auto":
+                target_conn.commit()
+        finally:
+            target_conn.close()
+
+        results, failures, skipped_files = run_import_batch(uploaded_files, fields)
+
+        target_conn = connect_target_db(fields)
+        try:
+            target_execute_sql_batch(target_conn, fields.get("afterAllSql", ""), "全部导入结束后 SQL", fields)
+            export_path = target_export_query_to_excel(target_conn, fields.get("afterQuerySql", ""), fields.get("afterQueryExport", ""), fields)
+            if target_db_type(fields) != "mysql" or fields.get("commitMode") != "auto":
+                target_conn.commit()
+        finally:
+            target_conn.close()
+
+        if failures and not results:
+            raise ValueError(failures[0]["error"])
+
+        json_response(
+            self,
+            {
+                "ok": True,
+                "tableName": results[0]["tableName"] if results else "",
+                "columns": results[0]["columns"] if results else [],
+                "summary": {
+                    "totalFiles": len(uploaded_files),
+                    "successFiles": len(results),
+                    "failedFiles": len(failures),
+                    "skippedFiles": skipped_files,
+                    "rowsRead": sum(int(item["rowsRead"]) for item in results),
+                    "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
+                    "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
+                    "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
+                },
+                "results": results,
+                "failures": failures,
+                "exportPath": export_path,
+                "message": (
+                    f"成功导入 {len(results)} 个文件，失败 {len(failures)} 个文件"
+                    + (f"，跳过未变更文件 {skipped_files} 个。" if skipped_files else "。")
+                ),
+            },
+        )
+
+    def handle_task_source(self) -> None:
+        _, uploaded_files = parse_multipart(self)
+        if not uploaded_files:
+            raise ValueError("请选择要关联到任务的源文件。")
+        source_dir = TASK_SOURCES / uuid.uuid4().hex
+        source_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for uploaded in uploaded_files:
+            target = source_dir / Path(uploaded.filename).name
+            uploaded.path.replace(target)
+            paths.append(str(target.resolve()))
+        source_path = paths[0] if len(paths) == 1 else str(source_dir.resolve())
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sourcePath": source_path,
+                "files": paths,
+                "message": f"已关联 {len(paths)} 个任务源文件。",
+            },
+        )
+
+    def handle_import_choose_source(self) -> None:
+        # 方案 A：浏览器选中的本机源文件上传后，落到服务器固定输入目录 linked_sources
+        # （原名覆盖，非 task_sources 一次性副本）。该目录不在 execute_import_step 的
+        # 拒绝名单内，定时/作业任务可稳定读取，保证"关联本机原文件"后的任务真正能定时跑。
+        _, uploaded_files = parse_multipart(self)
+        if not uploaded_files:
+            raise ValueError("请选择要关联的源文件。")
+        LINKED_SOURCES.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for uploaded in uploaded_files:
+            target = LINKED_SOURCES / Path(uploaded.filename).name
+            uploaded.path.replace(target)
+            paths.append(str(target.resolve()))
+        source_path = paths[0] if len(paths) == 1 else str(LINKED_SOURCES.resolve())
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sourcePath": source_path,
+                "files": paths,
+                "message": f"已把源文件复制到服务器固定目录，定时任务可稳定读取；本机文件更新后请重新关联（会覆盖同名旧文件）。",
+            },
+        )
+
+    def _request_fields(self, query: str = "") -> dict[str, str]:
+        """Build a flat connection-field dict for the current request.
+
+        - POST + JSON body is the modern, credential-safe transport.
+        - Legacy GET query strings stay supported for backwards compatibility,
+          but dbPassword / dbPasswordSecret are dropped so secrets never travel
+          in a URL (P1-3). Saved connections still work over GET because
+          resolve_connection_fields() loads the password from storage when a
+          connectionId is present; direct-credential MySQL calls must use POST.
+        """
+        if self.command == "POST":
+            payload = read_json_body(self)
+            if not isinstance(payload, dict):
+                raise ValueError("请求内容格式不正确。")
+            return {
+                str(key): ("" if value is None else str(value))
+                for key, value in payload.items()
+                if not isinstance(value, (list, dict))
+            }
+        raw = {key: values[-1] for key, values in parse_qs(query).items()}
+        fields = {key: str(value) for key, value in raw.items()}
+        for sensitive_key in SENSITIVE_QUERY_PARAMS:
+            fields.pop(sensitive_key, None)
+        return fields
+
+    def handle_tables(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        if target_db_type(fields) == "mysql":
+            try:
+                tables = target_table_names(fields)
+            except Exception as exc:
+                raise ValueError(f"无法读取目标数据库的表列表，请检查连接配置：{exc}")
+            json_response(self, {"ok": True, "tables": tables, "targetDbType": "mysql"})
+            return
+        with connect_db() as conn:
+            rows = conn.execute(
+                """
+                select name from sqlite_master
+                where type = 'table' and name not like 'sqlite_%' and name not like '\\_%' escape '\\'
+                order by name
+                """
+            ).fetchall()
+        json_response(self, {"ok": True, "tables": [row["name"] for row in rows], "targetDbType": "sqlite"})
+
+    def handle_target_tables(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        json_response(self, {"ok": True, "tables": target_table_names(fields)})
+
+    def handle_target_table_details(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        table_name = fields.pop("name", "")
+        json_response(self, {"ok": True, "table": target_table_details(fields, table_name)})
+
+    def handle_table_preview(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        table_name = fields.pop("name", "").strip()
+        if target_db_type(fields) == "mysql":
+            if not table_name:
+                raise ValueError("缺少表名。")
+            self._preview_mysql_table(fields, table_name)
+            return
+        table_name = sanitize_identifier(table_name, "")
+        if not table_name:
+            raise ValueError("缺少表名。")
+        with connect_db() as conn:
+            columns = existing_columns(conn, table_name)
+            if not columns:
+                raise ValueError("表不存在或没有字段。")
+            rows = conn.execute(f"select * from {quote_identifier(table_name)} limit 50").fetchall()
+            count = conn.execute(f"select count(*) as total from {quote_identifier(table_name)}").fetchone()["total"]
+        json_response(
+            self,
+            {
+                "ok": True,
+                "tableName": table_name,
+                "columns": columns,
+                "rows": [[cell_to_text(row[column]) for column in columns] for row in rows],
+                "totalRows": count,
+            },
+        )
+
+    def _preview_mysql_table(self, fields: dict[str, str], table_name: str) -> None:
+        try:
+            conn = connect_target_db(fields)
+        except Exception as exc:
+            raise ValueError(f"无法连接目标数据库，请检查连接配置：{exc}")
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(f"select count(*) as total from {db_quote(table_name, fields)}")
+                count = int(list(cursor.fetchone())[0])
+                cursor.execute(f"select * from {db_quote(table_name, fields)} limit 50")
+                columns = [str(item[0]) for item in cursor.description or []]
+                rows = cursor.fetchall()
+        except Exception as exc:
+            raise ValueError(f"读取表数据失败，请确认表存在且账号有权限：{exc}")
+        finally:
+            conn.close()
+        json_response(
+            self,
+            {
+                "ok": True,
+                "tableName": table_name,
+                "columns": columns,
+                "rows": [[cell_to_text(cell) for cell in row] for row in rows],
+                "totalRows": count,
+            },
+        )
+
+    def handle_logs(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute(
+                """
+                select created_at, file_name, table_name, mode, rows_read, rows_written, rows_updated, rows_skipped, status, message
+                from _import_logs
+                order by created_at desc
+                limit 50
+                """
+            ).fetchall()
+        json_response(self, {"ok": True, "logs": [dict(row) for row in rows]})
+
+    def handle_storage_status(self) -> None:
+        ensure_dirs()
+        volume_mount = os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "").strip()
+        write_test_path = DATA / ".storage-write-test"
+        write_ok = False
+        write_error = ""
+        try:
+            write_test_path.write_text(now_text(), encoding="utf-8")
+            write_ok = write_test_path.exists()
+        except Exception as exc:
+            write_error = str(exc)
+        def inside_volume(path: Path) -> bool:
+            if not volume_mount:
+                return False
+            try:
+                path.resolve().relative_to(Path(volume_mount).resolve())
+                return True
+            except ValueError:
+                return False
+        json_response(
+            self,
+            {
+                "ok": True,
+                "railwayVolumeMountPath": volume_mount,
+                "persistentReady": bool(volume_mount) and inside_volume(DB_PATH) and write_ok,
+                "dataDir": str(DATA),
+                "uploadsDir": str(UPLOADS),
+                "exportsDir": str(EXPORTS),
+                "databasePath": str(DB_PATH),
+                "databaseExists": DB_PATH.exists(),
+                "writeTestOk": write_ok,
+                "writeTestError": write_error,
+            },
+        )
+
+    def handle_connections(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _db_connections order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "connections": [connection_public(row) for row in rows]})
+
+    def handle_connection_test(self) -> None:
+        payload = read_json_body(self)
+        connection_id = str(payload.get("id") or "").strip()
+        if connection_id and not str(payload.get("password") or ""):
+            with connect_db() as conn:
+                saved = conn.execute("select password from _db_connections where id = ?", (connection_id,)).fetchone()
+            if saved:
+                payload["password"] = decode_secret(saved["password"])
+        result = test_mysql_connection(payload)
+        json_response(
+            self,
+            {
+                "ok": True,
+                "message": "连接成功。",
+                "version": result["version"],
+                "databases": result["databases"],
+            },
+        )
+
+    def handle_connection_save(self) -> None:
+        payload = read_json_body(self)
+        record = normalize_connection_payload(payload)
+        now = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        with connect_db() as conn:
+            old = conn.execute("select created_at, password from _db_connections where id = ?", (record["id"],)).fetchone()
+            raw_password = str(payload.get("password") or "")
+            stored_password = old["password"] if old and not raw_password else encode_secret(str(record["password"]))
+            conn.execute(
+                """
+                insert into _db_connections (
+                    id, name, db_type, host, port, user_name, password, db_name, charset,
+                    ssl_enabled, ssl_ca, ssl_cert, ssl_key, created_at, updated_at
+                )
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                on conflict(id) do update set
+                    name = excluded.name,
+                    db_type = excluded.db_type,
+                    host = excluded.host,
+                    port = excluded.port,
+                    user_name = excluded.user_name,
+                    password = excluded.password,
+                    db_name = excluded.db_name,
+                    charset = excluded.charset,
+                    ssl_enabled = excluded.ssl_enabled,
+                    ssl_ca = excluded.ssl_ca,
+                    ssl_cert = excluded.ssl_cert,
+                    ssl_key = excluded.ssl_key,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    record["id"],
+                    record["name"],
+                    record["db_type"],
+                    record["host"],
+                    record["port"],
+                    record["user_name"],
+                    stored_password,
+                    record["db_name"],
+                    record["charset"],
+                    record["ssl_enabled"],
+                    record["ssl_ca"],
+                    record["ssl_cert"],
+                    record["ssl_key"],
+                    old["created_at"] if old else now,
+                    now,
+                ),
+            )
+            row = conn.execute("select * from _db_connections where id = ?", (record["id"],)).fetchone()
+        json_response(self, {"ok": True, "connection": connection_public(row)})
+
+    def handle_connection_delete(self, query: str) -> None:
+        params = parse_qs(query)
+        connection_id = params.get("id", [""])[0]
+        if not connection_id:
+            raise ValueError("缺少连接编号。")
+        with connect_db() as conn:
+            conn.execute("delete from _db_connections where id = ?", (connection_id,))
+        json_response(self, {"ok": True})
+
+    def handle_jobs(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _jobs order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "jobs": [row_to_job(row) for row in rows]})
+
+    def handle_job_save(self) -> None:
+        job = save_job(read_json_body(self))
+        json_response(self, {"ok": True, "job": job})
+
+    def handle_job_run(self) -> None:
+        payload = read_json_body(self)
+        job_id = str(payload.get("id") or payload.get("jobId") or "").strip()
+        schedule_id = str(payload.get("scheduleId") or "").strip()
+        if not job_id:
+            raise ValueError("缺少作业编号。")
+        result = run_saved_job(job_id, schedule_id)
+        if schedule_id:
+            # 立即执行也要把结果同步回定时任务状态，否则列表 last_status 一直停在
+            # 调度器上一次触发的结果，用户会看到"状态与最新日志不一致"。
+            # 只回写 last_run_at/last_status；next_run_at/enabled 仍由调度器管理。
+            status = str(result.get("status") or "失败")
+            try:
+                with connect_db() as conn:
+                    conn.execute(
+                        "update _schedules set last_run_at = ?, last_status = ?, updated_at = ? where id = ?",
+                        (now_text(), status, now_text(), schedule_id),
+                    )
+            except Exception:
+                pass  # 状态回写失败不影响本次执行结果的返回
+        json_response(self, {"ok": True, "run": result})
+
+    def handle_job_delete(self, query: str) -> None:
+        params = parse_qs(query)
+        job_id = params.get("id", [""])[0]
+        if not job_id:
+            raise ValueError("缺少作业编号。")
+        with connect_db() as conn:
+            conn.execute("delete from _jobs where id = ?", (job_id,))
+            conn.execute("delete from _schedules where job_id = ?", (job_id,))
+        json_response(self, {"ok": True})
+
+    def handle_schedules(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _schedules order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "schedules": [row_to_schedule(row) for row in rows]})
+
+    def handle_schedule_save(self) -> None:
+        schedule = save_schedule(read_json_body(self))
+        json_response(self, {"ok": True, "schedule": schedule})
+
+    def handle_schedule_state(self, enabled: bool) -> None:
+        payload = read_json_body(self)
+        schedule_id = str(payload.get("id") or "").strip()
+        if not schedule_id:
+            raise ValueError("缺少定时任务编号。")
+        with connect_db() as conn:
+            row = conn.execute("select * from _schedules where id = ?", (schedule_id,)).fetchone()
+            if not row:
+                raise ValueError("定时任务不存在。")
+            schedule = row_to_schedule(row)
+            next_run = compute_next_run(schedule["rule"], str(schedule["startAt"]), str(schedule["endAt"]), None) if enabled else ""
+            conn.execute(
+                "update _schedules set enabled = ?, running = 0, next_run_at = ?, updated_at = ? where id = ?",
+                (1 if enabled else 0, next_run, now_text(), schedule_id),
+            )
+            row = conn.execute("select * from _schedules where id = ?", (schedule_id,)).fetchone()
+        json_response(self, {"ok": True, "schedule": row_to_schedule(row)})
+
+    def handle_schedule_delete(self, query: str) -> None:
+        params = parse_qs(query)
+        schedule_id = params.get("id", [""])[0]
+        if not schedule_id:
+            raise ValueError("缺少定时任务编号。")
+        with connect_db() as conn:
+            row = conn.execute("select job_id from _schedules where id = ?", (schedule_id,)).fetchone()
+            conn.execute("delete from _schedules where id = ?", (schedule_id,))
+            # 若该定时任务指向的是"自动作业"载体，且不再被任何调度引用，则一并清理，避免孤儿残留
+            if row:
+                job_id = row["job_id"]
+                job = conn.execute("select name from _jobs where id = ?", (job_id,)).fetchone()
+                if job and str(job["name"] or "").endswith(" - 自动作业"):
+                    still_used = conn.execute(
+                        "select 1 from _schedules where job_id = ? limit 1", (job_id,)
+                    ).fetchone()
+                    if not still_used:
+                        conn.execute("delete from _jobs where id = ?", (job_id,))
+        json_response(self, {"ok": True})
+
+    def handle_job_runs(self, query: str) -> None:
+        params = parse_qs(query)
+        job_id = params.get("jobId", [""])[0]
+        schedule_id = params.get("scheduleId", [""])[0]
+        where = []
+        args: list[object] = []
+        if job_id:
+            where.append("job_id = ?")
+            args.append(job_id)
+        if schedule_id:
+            where.append("schedule_id = ?")
+            args.append(schedule_id)
+        clause = (" where " + " and ".join(where)) if where else ""
+        with connect_db() as conn:
+            runs = conn.execute(f"select * from _job_runs{clause} order by started_at desc limit 80", args).fetchall()
+            run_ids = [row["id"] for row in runs]
+            steps_by_run: dict[str, list[dict[str, object]]] = {run_id: [] for run_id in run_ids}
+            if run_ids:
+                placeholders = ",".join("?" for _ in run_ids)
+                steps = conn.execute(f"select * from _job_run_steps where run_id in ({placeholders}) order by step_index", run_ids).fetchall()
+                for step in steps:
+                    steps_by_run[step["run_id"]].append(dict(step))
+        json_response(self, {"ok": True, "runs": [{**dict(row), "steps": steps_by_run.get(row["id"], [])} for row in runs]})
+
+    def handle_queries(self) -> None:
+        with connect_db() as conn:
+            rows = conn.execute("select * from _saved_queries order by updated_at desc, name").fetchall()
+        json_response(self, {"ok": True, "queries": [saved_query_public(row) for row in rows]})
+
+    def handle_query_run(self) -> None:
+        payload = read_json_body(self)
+        try:
+            result = run_readonly_query(payload)
+        except Exception as exc:
+            raise ValueError(str(exc)) from exc
+        json_response(self, {"ok": True, **result})
+
+    def handle_query_save(self) -> None:
+        payload = read_json_body(self)
+        query_id = str(payload.get("id") or uuid.uuid4().hex)
+        name = str(payload.get("name") or "").strip()
+        sql = str(payload.get("sql") or "").strip()
+        connection_id = str(payload.get("connectionId") or "").strip()
+        if not name:
+            raise ValueError("请填写查询名称。")
+        if not sql:
+            raise ValueError("请输入要保存的 SQL。")
+        now = now_text()
+        with connect_db() as conn:
+            old = conn.execute("select created_at from _saved_queries where id = ?", (query_id,)).fetchone()
+            conn.execute(
+                "insert or replace into _saved_queries (id, name, connection_id, sql_text, created_at, updated_at) values (?, ?, ?, ?, ?, ?)",
+                (query_id, name, connection_id, sql, old["created_at"] if old else now, now),
+            )
+            _sync_query_to_job(conn, query_id, name, connection_id)
+            conn.commit()
+            row = conn.execute("select * from _saved_queries where id = ?", (query_id,)).fetchone()
+        json_response(self, {"ok": True, "query": saved_query_public(row)})
+
+    def handle_query_delete(self, query: str) -> None:
+        query_id = parse_qs(query).get("id", [""])[0]
+        if not query_id:
+            raise ValueError("缺少查询 ID。")
+        with connect_db() as conn:
+            conn.execute("delete from _saved_queries where id = ?", (query_id,))
+            removed_jobs = _delete_jobs_for_query(conn, query_id)
+            conn.commit()
+        json_response(self, {"ok": True, "removedJobs": removed_jobs})
+
+    def handle_export_sources(self, query: str = "") -> None:
+        fields = self._request_fields(query)
+        export_fields = {
+            "connectionId": fields.get("connectionId", ""),
+            "targetDbType": fields.get("targetDbType", "mysql"),
+        }
+        json_response(self, {"ok": True, "sources": export_sources(export_fields)})
+
+    def handle_export_preview(self) -> None:
+        payload = read_json_body(self)
+        preview = preview_export_job(payload)
+        json_response(self, {"ok": True, **preview})
+
+    def handle_export_run(self) -> None:
+        payload = read_json_body(self)
+        try:
+            result = run_export_job(payload)
+        except Exception as exc:
+            fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
+            raise ValueError(friendly_export_error(exc, fields)) from exc
+        json_response(
+            self,
+            {
+                "ok": True,
+                "files": result["files"],
+                "downloadUrls": ["/api/export/download?path=" + quote(str(path)) for path in result["files"]],
+                "rows": result["rows"],
+                "elapsedMs": result["elapsedMs"],
+                "message": f"导出完成：{len(result['files'])} 个文件，{result['rows']} 行。",
+            },
+        )
+
+    def handle_export_choose_target(self) -> None:
+        # 由服务端弹 Windows 原生对话框，把绝对路径交还给页面。
+        # 旧的实现直接抛错"请在浏览器中完成"，但浏览器拿不到绝对路径，界面上只能显示文件夹名，
+        # 存进任务配置时也只能写空串，导致"选了文件夹但下次打开不生效"。
+        payload = read_json_body(self)
+        # 必须由前端显式声明选文件夹还是选文件，不能默认成 folder：
+        # 否则一个缺字段的请求（空 body、老版本前端、随手 curl）就会在用户桌面弹出原生对话框，
+        # 并且把该 HTTP 线程一直阻塞到有人去点掉窗口为止。
+        mode = str(payload.get("mode") or "").strip().lower()
+        if mode not in ("folder", "file"):
+            raise ValueError("选择类型不支持，请指定 mode 为 folder 或 file。")
+        if os.name != "nt":
+            json_response(
+                self,
+                {"ok": False, "unsupported": True, "error": "服务端不是 Windows，无法打开系统选择框，请手动填写绝对路径。"},
+                HTTPStatus.NOT_IMPLEMENTED,
+            )
+            return
+        try:
+            path = native_pick_path(
+                mode,
+                initial=str(payload.get("initial") or "").strip(),
+                extension=str(payload.get("extension") or "xlsx").strip(),
+                suggest=str(payload.get("suggest") or "").strip(),
+            )
+        except ValueError:
+            raise
+        except Exception as exc:  # 无桌面会话、对话框创建失败等 → 让前端回退到浏览器直选
+            json_response(
+                self,
+                {"ok": False, "unsupported": True, "error": f"打开系统选择框失败：{exc}"},
+                HTTPStatus.NOT_IMPLEMENTED,
+            )
+            return
+        json_response(self, {"ok": True, "path": path, "cancelled": path == ""})
+
+    def handle_export_download(self, query: str) -> None:
+        params = parse_qs(query)
+        raw_path = params.get("path", [""])[0]
+        legacy_name = Path(params.get("name", [""])[0]).name
+        if raw_path:
+            path = Path(raw_path).resolve()
+        elif legacy_name:
+            path = (EXPORTS / legacy_name).resolve()
+        else:
+            raise ValueError("缺少文件名。")
+        # P2-14: never serve files outside the export/upload product directories.
+        if not is_allowed_download_path(path):
+            if not path.exists():
+                raise ValueError("导出文件不存在。")
+            raise ValueError("该路径不在允许下载的目录内。")
+        if not path.exists() or not path.is_file():
+            raise ValueError("导出文件不存在。")
+        name = path.name
+        ascii_stem = re.sub(r"[^A-Za-z0-9_-]+", "_", path.stem, flags=re.ASCII).strip("_") or "export"
+        ascii_suffix = re.sub(r"[^A-Za-z0-9.]+", "", path.suffix, flags=re.ASCII)
+        ascii_name = f"{ascii_stem}{ascii_suffix}"
+        encoded_name = quote(name)
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", mimetypes.guess_type(str(path))[0] or "application/octet-stream")
+        self.send_header("Content-Disposition", f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}")
+        self.send_header("Content-Length", str(path.stat().st_size))
+        self.end_headers()
+        with path.open("rb") as file:
+            while True:
+                chunk = file.read(1024 * 1024)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+
+
+def main() -> None:
+    ensure_dirs()
+    try:
+        recover_interrupted_runs()
+    except Exception as exc:  # pragma: no cover - defensive
+        print(f"WARNING: interrupted-run recovery skipped: {exc}", flush=True)
+    port = int(os.environ.get("PORT", "8765"))
+    host = bind_host()
+    server = ThreadingHTTPServer((host, port), ImportPrototypeHandler)
+    stop_event = threading.Event()
+    scheduler = threading.Thread(target=scheduler_loop, args=(stop_event,), daemon=True)
+    scheduler.start()
+    print(f"Import prototype running at http://{host}:{port}", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping import prototype...")
+    finally:
+        stop_event.set()
+        server.server_close()
+
+
+if __name__ == "__main__":
+    main()

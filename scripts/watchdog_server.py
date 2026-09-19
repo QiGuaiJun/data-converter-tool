@@ -37,7 +37,22 @@ HOST = "127.0.0.1"
 PORT = 51978
 BASE = Path(__file__).resolve().parent.parent  # 项目根目录
 PYTHON = BASE / ".venv" / "Scripts" / "python.exe"
-DATA_DIR = BASE / "data"
+
+
+def _resolve_data_dir() -> Path:
+    """运行数据目录：必须与 server.py 的 runtime_path("data") 用同一套规则。
+
+    守护进程按这个路径写 server.log / watchdog.log，并在这里找停止标志文件。
+    两处实现一旦不一致，日志会落到另一个目录，"服务为什么没起来"就无从查起。
+    2026-09-17 起运行数据默认在项目内的 runtime/data。
+    """
+    raw = os.environ.get("DATA_DIR", "").strip()
+    if raw:
+        return Path(raw)
+    return BASE / "runtime" / "data"
+
+
+DATA_DIR = _resolve_data_dir()
 WATCHDOG_LOG = DATA_DIR / "watchdog.log"
 SERVER_LOG = DATA_DIR / "server.log"
 STOP_FLAG = DATA_DIR / "watchdog.stop"
@@ -149,6 +164,9 @@ def start_server() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ)
     env["PORT"] = str(PORT)
+    # 显式传给子进程：让 server.py 的落点与上面算出来的 DATA_DIR 逐字一致，
+    # 不依赖两边各算一次还恰好算得一样。
+    env["DATA_DIR"] = str(DATA_DIR)
     flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     log_fh = SERVER_LOG.open("a", encoding="utf-8")
     try:

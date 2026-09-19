@@ -1,0 +1,35 @@
+connectionId = 9c528bd1bafd4533b29be96c5ff2265b
+
+==============================================================================
+2. 导出边界（修正后，两种凭据形式都测）
+==============================================================================
+  ok  2.1[connectionId] 空结果集导出 | status=200 files=['空.csv'] rows=0 err=
+  ok  2.1[direct-fields] 空结果集导出 | status=200 files=['空.csv'] rows=0 err=
+  ok  2.2b 超长名称 xlsx 导出（sheet 名须 ≤31 字符） | sheets=['超长名称超长名称超长名称超长名称超长名称超长名称超长名称超长名'] 长度=[31]
+  ok  2.3 导出文件名路径穿越防护 | 落盘=['evil_name.csv'] 越界=无
+  ok  2.5 导出不存在的表被拒 | status=400 msg=(1146, "Table 'dc_p2_test.绝对不存在的表xyz' doesn't exist")
+  ok  2.6 导出预览坏项隔离（direct-fields 形式） | ok序列=[True, False, True]
+
+==============================================================================
+3. 查询边界（修正后）
+==============================================================================
+  **BUG**  3.1 大结果集（>1000 行） | status=400 返回行数=0 truncated=None err=(1146, "Table 'dc_p2_test.export_large_people' doesn't exist
+  warn  3.2 前置块注释 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  warn  3.2b 前置行注释 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  warn  3.2c 注释+换行 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  ok  3.7 SHOW TABLES | status=200 行数=7
+
+==============================================================================
+6. 表名/字段名特殊字符（SQL 注入面）
+==============================================================================
+  ok  6.1 分号+写操作被拦 | status=400 msg=一次只能执行一条 SQL 查询。
+  ok  6.2 information_schema 可读（只读） | status=200
+  ok  6.3 恶意表名的表结构查询 | status=400 msg=请选择要查看的表。
+
+==============================================================================
+第二批汇总: 共 14 | BUG 1 | WARN 3 | OK 10
+  [BUG ] 3.1 大结果集（>1000 行） | status=400 返回行数=0 truncated=None err=(1146, "Table 'dc_p2_test.export_large_people' doesn't exist
+  [WARN] 3.2 前置块注释 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  [WARN] 3.2b 前置行注释 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  [WARN] 3.2c 注释+换行 | status=400 cols=None msg=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+==============================================================================

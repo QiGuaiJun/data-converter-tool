@@ -30,22 +30,34 @@ def find_free_port(preferred: int = DEFAULT_PORT) -> int:
     raise RuntimeError(f"No free local port found between {preferred} and {MAX_PORT}.")
 
 
-def prepare_environment() -> tuple[Path, int]:
-    root = runtime_root()
-    data_root = root / "data"
-    uploads_root = root / "uploads"
-    exports_root = root / "exports"
-    logs_root = root / "logs"
+def runtime_data_root(root: Path) -> Path:
+    """运行数据根目录：与 server.py 的 runtime_path() / watchdog 用同一套规则。
 
-    for path in (data_root, uploads_root, exports_root, logs_root):
+    2026-09-17 起运行数据统一落在源码（或 exe）目录内的 runtime/ 下，整个项目
+    就是一个文件夹；同目录下已有旧版的 data/ 时沿用旧目录，避免出现两份数据。
+    """
+    nested = root / "runtime"
+    if not nested.exists() and (root / "imports.db").exists():
+        return root  # 兼容早期「exe 同级直接放数据」的桌面版布局
+    return nested
+
+
+def prepare_environment() -> tuple[Path, int]:
+    data_root = runtime_data_root(runtime_root())
+    data_dir = data_root / "data"
+    uploads_dir = data_root / "uploads"
+    exports_dir = data_root / "exports"
+    logs_root = data_root / "logs"
+
+    for path in (data_dir, uploads_dir, exports_dir, logs_root):
         path.mkdir(parents=True, exist_ok=True)
 
     port = int(os.environ.get("PORT") or find_free_port())
     os.environ.setdefault("HOST", "127.0.0.1")
     os.environ["PORT"] = str(port)
-    os.environ.setdefault("DATA_DIR", str(data_root))
-    os.environ.setdefault("UPLOADS_DIR", str(uploads_root))
-    os.environ.setdefault("EXPORTS_DIR", str(exports_root))
+    os.environ.setdefault("DATA_DIR", str(data_dir))
+    os.environ.setdefault("UPLOADS_DIR", str(uploads_dir))
+    os.environ.setdefault("EXPORTS_DIR", str(exports_dir))
     os.environ.setdefault("APP_AUTH_ENABLED", "false")
 
     return logs_root, port

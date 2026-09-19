@@ -8,6 +8,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+# 与 server.py 的 runtime_path() / create_data_backup.py 保持同一套默认口径：
+# 2026-09-17 起运行数据在项目内的 runtime/ 下，ROOT/data 已废弃。
+RUNTIME_ROOT = ROOT / "runtime"
 
 
 def target_path(name: str, fallback: Path) -> Path:
@@ -54,9 +57,9 @@ def main() -> None:
     with zipfile.ZipFile(backup, "r") as archive:
         safe_extract(archive, extract_root)
 
-    data_dir = target_path("DATA_DIR", ROOT / "data")
-    uploads_dir = target_path("UPLOADS_DIR", ROOT / "uploads")
-    exports_dir = target_path("EXPORTS_DIR", ROOT / "exports")
+    data_dir = target_path("DATA_DIR", RUNTIME_ROOT / "data")
+    uploads_dir = target_path("UPLOADS_DIR", RUNTIME_ROOT / "uploads")
+    exports_dir = target_path("EXPORTS_DIR", RUNTIME_ROOT / "exports")
 
     copy_tree_contents(extract_root / "data", data_dir)
     copy_tree_contents(extract_root / "uploads", uploads_dir)

@@ -20,7 +20,7 @@
 Option Explicit
 
 Dim PROJECT_ROOT
-PROJECT_ROOT = "C:\Users\Administrator\WorkBuddy\2026-08-27-16-17-35\data-converter-tool"
+PROJECT_ROOT = "D:\ProjectDevelopment\data-converter-tool"
 
 Dim WshShell
 Set WshShell = CreateObject("WScript.Shell")

@@ -17,7 +17,10 @@ async function requestJson(url, options = {}) {
 }
 
 function setStatus(message, type = "") {
-  $("#jobStatus").textContent = message;
+  // 运行结果里可能带多行产物路径（每个文件一行），用 textContent 会把换行压成空白，
+  // 用户看不到文件落在哪；这里转义后用 <br> 保留换行。
+  const text = String(message ?? "");
+  $("#jobStatus").innerHTML = escapeHtml(text).replace(/\r?\n/g, "<br>");
   $("#jobStatus").className = type;
 }
 
@@ -25,10 +28,88 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
+// 状态条只留结论句：run.message 里的「产出文件（N 个）：」表头 + 逐行绝对路径 + 默认目录警告，
+// 是给下方运行记录看的明细（日志侧仍由 runMessageText() 从 run.outputs 重建），塞进状态条
+// 会把一行结论撑成多行。这里只把明细块剥掉，结论句与「最后错误：…」一定留在状态条上。
+//
+// 判定依据（刻意不依赖"像路径就当产物"的宽正则，那会把导入失败错误里内联的
+// `D:\input\不存在的源表.xlsx 路径不存在` 误删——上一轮点名的 P2-B）：
+//   1) 「产出文件…」表头行必丢，并从表头里读出它声明的条数 N，记下"后面还有 N 行明细"；
+//   2) 明细块内的每一行，只有**命中 run.outputs 白名单**（经 outputPathKey 归一化后比对）
+//      才丢；命中不了就说明它不属于本次产物 → 立刻结束明细块，这一行照常保留；
+//   3) 历史记录没有 outputs 字段（白名单为空）时退化为"按表头声明的 N 行丢"，且 N 用尽即停，
+//      所以最多只丢表头自己承认的那几行，不会越过明细块去吞结论句或错误文本；
+//   4) 「（警告：…）」行一律丢（警告含义已写进日志侧，状态条不需要）。
+function statusSummary(run) {
+  const source = String(run?.message ?? "");
+  if (!source.trim()) return source;
+  const knownKeys = new Set((Array.isArray(run?.outputs) ? run.outputs : []).map(outputPathKey).filter(Boolean));
+  const kept = [];
+  let pendingPaths = 0; // 明细块内还需要丢掉的产物行数（来自表头声明的 N）
+  for (const line of source.split(/\r?\n/).map((item) => item.trim())) {
+    if (line.startsWith("产出文件")) {
+      const declared = /（\s*(\d+)\s*个/.exec(line);
+      pendingPaths = declared ? Number(declared[1]) : 0;
+      continue;
+    }
+    if (line.startsWith("（警告：")) continue;
+    if (pendingPaths > 0) {
+      if (!line) continue; // 明细块里的空行只当分隔，不消耗 N
+      if (knownKeys.size && !knownKeys.has(outputPathKey(line))) {
+        pendingPaths = 0; // 这一行不在产物白名单里，明细块到此结束，该行按内容保留
+      } else {
+        pendingPaths -= 1;
+        continue;
+      }
+    }
+    kept.push(line);
+  }
+  const summary = kept.join(" ").replace(/\s+/g, " ").trim();
+  if (summary) return summary;
+  // 极端情况（整条 message 只有明细块、没有结论句）：宁可原样显示，也别给用户一片空白
+  return source.replace(/\s+/g, " ").trim() || source;
+}
+
 function runStateClass(status) {
   if (status === "成功") return "success";
   if (status === "跳过") return "skipped";
   return "failed";
+}
+
+// 产物路径的去重键（P2-A）：Windows 路径大小写不敏感、\ 与 / 是同一分隔符，同一个真实文件
+// 的大小写变体必须算成 1 个；语义与服务端 server.py::output_dedupe_key 对齐，只用于比较，
+// 渲染始终用首次出现的原始字符串。
+function outputPathKey(path) {
+  const text = String(path ?? "").trim();
+  if (!text) return "";
+  const windowsStyle = /^[A-Za-z]:/.test(text) || text.includes("\\");
+  return windowsStyle ? text.replace(/\\/g, "/").toLowerCase() : text.replace(/\\/g, "/");
+}
+
+// 详情页的 run 文本：产物清单改读服务端 run.outputs 字段（P3-B），不再从 message 文本里正则
+// 认路径（P2-B：像「D:\input\不存在的源表.xlsx 路径不存在」这样的行会被误当成产物）。
+// message 里原有的清单行剔除后由这里重新生成唯一一次，表头与路径因此各只出现一次（P1-A）。
+// 没有 outputs 字段的历史记录原样展示 message，不报错、不丢信息。
+function runMessageText(run) {
+  const structured = (Array.isArray(run.outputs) ? run.outputs : []).map((item) => String(item ?? "").trim()).filter(Boolean);
+  const source = String(run.message ?? "");
+  if (!structured.length) return source;
+  const keys = new Set(structured.map(outputPathKey));
+  const lines = source.split(/\r?\n/).map((line) => line.trim());
+  const body = lines
+    .filter((line) => line && !line.startsWith("产出文件") && !line.startsWith("（警告：") && !keys.has(outputPathKey(line)))
+    .join(" ");
+  const warnings = lines.filter((line) => line.startsWith("（警告："));
+  const unique = [];
+  const seen = new Set();
+  structured.forEach((item) => {
+    const key = outputPathKey(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    unique.push(item);
+  });
+  const label = run.status === "成功" ? `产出文件（${unique.length} 个）：` : `产出文件（${unique.length} 个，失败前已落盘）：`;
+  return [body, label, ...unique, ...warnings].filter(Boolean).join("\n");
 }
 
 function renderRunLog(run) {
@@ -38,7 +119,7 @@ function renderRunLog(run) {
   return `<div class="log-item ${runStateClass(run.status)}">
     <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
     <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms)} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
-    <div class="run-message">${escapeHtml(run.message)}</div>
+    <div class="run-message">${escapeHtml(runMessageText(run))}</div>
     ${steps.map((step) => `<div class="run-step ${runStateClass(step.status)}">
       <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
       <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
@@ -131,7 +212,7 @@ function renderSelectedJob() {
   const gText = job ? guardSummary(job) : "";
   $("#stepPreview").innerHTML = (job
     ? (gText ? `<div class="step-row guard-summary"><strong>${escapeHtml(gText)}</strong></div>` : "") +
-      job.steps.map((step, index) => `<div class="step-row"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${escapeHtml(step.type)} · ${step.enabled ? "启用" : "禁用"} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></div>`).join("")
+      job.steps.map((step, index) => `<div class="step-row"><strong>${index + 1}. ${escapeHtml(step.name)}</strong></div>`).join("")
     : "请选择作业");
   loadRuns().catch((error) => setStatus(error.message, "error"));
 }
@@ -177,6 +258,28 @@ function renderTaskOptions() {
       : '<option value="">(暂无可用任务)</option>';
     taskSelect.disabled = filtered.length === 0;
   }
+  renderAddTaskHint();
+}
+
+// 导出任务的目标文件夹为空时，导出会静默回退到服务端默认目录，作业照样报"成功"
+// 而用户以为"没输出"。选任务时就提示，避免这种配置漏填无人察觉。
+function renderAddTaskHint() {
+  const hint = $("#addTaskHint");
+  if (!hint) return;
+  const source = taskOptions.find((t) => t.id === ($("#addStepTask")?.value || "").trim());
+  if (!source || source.type !== "export") {
+    hint.textContent = "";
+    hint.className = "hint";
+    return;
+  }
+  const folder = String(source.config?.exportFolder || "").trim();
+  if (!folder) {
+    hint.textContent = "注意：该导出任务未设置目标文件夹，运行结果将落在服务端默认目录。";
+    hint.className = "hint warn";
+    return;
+  }
+  hint.textContent = `该导出任务的输出文件夹：${folder}`;
+  hint.className = "hint";
 }
 
 function draftStepFromSelection() {
@@ -203,7 +306,7 @@ function draftStepFromSelection() {
 
 function renderDraftSteps() {
   $("#selectedSteps").innerHTML = draftSteps.length
-    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong><span>${taskTypeLabel(step.type)} · ${step.continueOnError ? "失败继续" : "失败停止"}</span></button>`).join("")
+    ? draftSteps.map((step, index) => `<button type="button" class="selected-step ${index === selectedStepIndex ? "active" : ""}" data-index="${index}"><strong>${index + 1}. ${escapeHtml(step.name)}</strong></button>`).join("")
     : '<div class="empty-list">还没有子任务</div>';
   $$("#selectedSteps .selected-step").forEach((button) => button.addEventListener("click", () => { selectedStepIndex = Number(button.dataset.index); renderDraftSteps(); }));
 }
@@ -338,7 +441,8 @@ async function runSelectedJob() {
   if (!selectedJobId) throw new Error("请先选择作业。");
   setStatus("正在执行作业...");
   const payload = await requestJson("/api/jobs/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: selectedJobId }) });
-  setStatus(`${payload.run.status}：${payload.run.message}`, payload.run.status === "成功" ? "success" : payload.run.status === "跳过" ? "skipped" : "error");
+  // 状态条只给结论句，产物清单留给下方运行记录（见 statusSummary 注释）
+  setStatus(`${payload.run.status}：${statusSummary(payload.run)}`, payload.run.status === "成功" ? "success" : payload.run.status === "跳过" ? "skipped" : "error");
   await loadRuns();
 }
 
@@ -353,6 +457,7 @@ $("#cancelJob").addEventListener("click", () => $("#jobDialog").close());
 $("#saveJob").addEventListener("click", () => saveJob().catch((error) => setStatus(error.message, "error")));
 $("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromSelection()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
 $("#addStepType").addEventListener("change", renderTaskOptions);
+$("#addStepTask").addEventListener("change", renderAddTaskHint);
 $("#guardType").addEventListener("change", renderGuardConfig);
 $("#guardDateMode").addEventListener("change", renderGuardConfig);
 $("#guardAddDate").addEventListener("click", () => {

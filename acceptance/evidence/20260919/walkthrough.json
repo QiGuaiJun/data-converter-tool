@@ -1,0 +1,6238 @@
+{
+  "base": "http://127.0.0.1:51978",
+  "started_at": "2026-09-19T02:57:42.152Z",
+  "pages": [
+    {
+      "label": "导入",
+      "path": "/",
+      "slug": "index",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 85,
+        "textarea": 6,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 2
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DOC 操作手册",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            722,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "? 咨询建议反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            808,
+            10,
+            100,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "backImportTaskList",
+          "cls": "",
+          "text": "返回任务列表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openImportTask",
+          "cls": "",
+          "text": "打开导入",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            247,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "newImportTask",
+          "cls": "",
+          "text": "新增导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            345,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "deleteImportTask",
+          "cls": "",
+          "text": "删除导入",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            443,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "module-task-item task-import ",
+          "text": "IN 中秋试饮",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            140,
+            360,
+            30
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "module-task-item task-import ",
+          "text": "IN 云购商城销售数据",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            172,
+            360,
+            30
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "module-task-item task-import ",
+          "text": "IN 小票导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            203,
+            360,
+            30
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "module-task-item task-import ",
+          "text": "IN 中秋试饮权益",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            235,
+            360,
+            30
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "button module-link",
+          "text": "导出",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "linkSourceFile",
+          "cls": "button",
+          "text": "关联本机原文件",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "matchBy",
+          "cls": "",
+          "text": "按名称 按顺序 自定义",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openMapping",
+          "cls": "",
+          "text": "...",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "connectionSelect",
+          "cls": "",
+          "text": "使用默认连接参数srlcdp_srlcdp-sr",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "button",
+          "text": "管理连接",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab active",
+          "text": "Excel选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "数据清洗选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "数据库选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "其他选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "sheetFilterMode",
+          "cls": "",
+          "text": "名称序号",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "+",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "",
+          "cls": "",
+          "text": "名称序号",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "encoding",
+          "cls": "",
+          "text": "自动识别 UTF-8 BOM UTF-8 GBK GB18030",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "sql-editor-btn",
+          "text": "排版",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "tableNameRule",
+          "cls": "",
+          "text": "自动判断按文件名按Sheet名",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "duplicateTableMode",
+          "cls": "",
+          "text": "写入同一目标表 视为不同目标表并为表名添加后缀 跳过重复目标表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "fieldReplaceFrom",
+          "cls": "short",
+          "text": "请选择符号空格",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "fieldReplaceTo",
+          "cls": "short",
+          "text": "下划线空字符",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "",
+          "cls": "",
+          "text": "SQL语句或文件",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "...",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "previewButton",
+          "cls": "",
+          "text": "预览",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveImportTask",
+          "cls": "",
+          "text": "保存为任务",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "primary",
+          "text": "开始导入",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeMapping",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "confirmDialogClose",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "confirmDialogCancel",
+          "cls": "button",
+          "text": "取消",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "confirmDialogOk",
+          "cls": "primary",
+          "text": "确认继续",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "ai外呼客户触达名单",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "上海中秋活动",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "中秋试饮",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "云购商城访客流量",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "云购商城销售数据表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "会员小票表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "商品分类",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "商品字典",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "季莉萍客户信息",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "庆春店客户信息",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "新品体验权益核销",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "春节ai外呼表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "权益核销",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "沙龙活动",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "活动开展规则",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "火龙果权益核销",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "留资数",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "秀禾店生日用券订单信息",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "鉴真游客户信息表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "领航部-权益核销明细",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "领航部-权益核销明细2",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "香梨活动订单数据",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "新增导入",
+          "id": "newImportTask",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 小票导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "导出",
+      "path": "/export.html",
+      "slug": "export",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 39,
+        "textarea": 4,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DOC 操作手册",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            722,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "? 咨询建议反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            808,
+            10,
+            100,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "backExportTaskList",
+          "cls": "",
+          "text": "返回任务列表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openExportTask",
+          "cls": "",
+          "text": "打开导出",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            247,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "newExportTask",
+          "cls": "",
+          "text": "新增导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            345,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "deleteExportTask",
+          "cls": "",
+          "text": "删除导出",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            443,
+            87,
+            90,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "module-task-item task-export ",
+          "text": "OUT 中秋试饮活动",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            140,
+            360,
+            30
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "exportConnection",
+          "cls": "",
+          "text": "srlcdp_srlcdp-sr本地 SQLite",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveExportConfig",
+          "cls": "",
+          "text": "保存",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "startExport",
+          "cls": "",
+          "text": "开始",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "stopExport",
+          "cls": "",
+          "text": "结束",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "button",
+          "text": "导入",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "explainExport",
+          "cls": "",
+          "text": "选项说明",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "chooseTables",
+          "cls": "",
+          "text": "选择表",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "singleQuery",
+          "cls": "",
+          "text": "单个查询",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "multiQuery",
+          "cls": "",
+          "text": "多个查询",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "sql-editor-btn",
+          "text": "排版",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "chooseExportFolder",
+          "cls": "",
+          "text": "...",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "exportExtension",
+          "cls": "",
+          "text": ".xlsx .csv .txt .json .xml .xls 后续支持 .dbf 后续支持",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "chooseExportFile",
+          "cls": "",
+          "text": "...",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab active",
+          "text": "数据选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "格式选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "其他选项",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "encoding",
+          "cls": "",
+          "text": "UTF-8 UTF-8 BOM GBK GB18030",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "",
+          "cls": "",
+          "text": "SQL语句或文件",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "",
+          "text": "...",
+          "disabled": true,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "previewExport",
+          "cls": "",
+          "text": "预览",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "runExport",
+          "cls": "primary",
+          "text": "开始导出",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "新增导出",
+          "id": "newExportTask",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "新建连接",
+      "path": "/connections.html",
+      "slug": "connections",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 13,
+        "textarea": 0,
+        "table": 1,
+        "tbody tr": 3,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "testConn",
+          "cls": "button",
+          "text": "测试连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            851,
+            103,
+            86,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveConn",
+          "cls": "button primary",
+          "text": "保存",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            945,
+            103,
+            78,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connDbTrigger",
+          "cls": "conn-db-trigger",
+          "text": "MySQL / MariaDB",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            239,
+            416,
+            28
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-spin-up",
+          "text": "",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            643,
+            346,
+            19,
+            13
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-spin-down",
+          "text": "",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            643,
+            359,
+            19,
+            13
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connTogglePwd",
+          "cls": "conn-suffix-btn",
+          "text": "显示密码",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            628,
+            453,
+            32,
+            24
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "connCharset",
+          "cls": "conn-input conn-select",
+          "text": "utf8mb4 utf8 gbk latin1",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            247,
+            557,
+            416,
+            28
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-help-icon",
+          "text": "",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1007,
+            191,
+            16,
+            17
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-help-icon",
+          "text": "",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1007,
+            244,
+            16,
+            17
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "connTimezone",
+          "cls": "conn-input conn-select",
+          "text": "系统默认 Asia/Shanghai UTC Asia/Tokyo America/New_York",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            704,
+            292,
+            319,
+            28
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-help-icon",
+          "text": "",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1007,
+            403,
+            16,
+            17
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "connListTypeFilter",
+          "cls": "conn-input conn-select conn-filter-select",
+          "text": "全部类型 MySQL PostgreSQL SQL Server Oracle SQLite ClickHouse",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1073,
+            631,
+            107,
+            28
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connStatusRefreshBtn",
+          "cls": "conn-ghost-btn conn-ghost-btn-text",
+          "text": "刷新状态",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1188,
+            630,
+            94,
+            30
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connNewBtn",
+          "cls": "button primary conn-btn-new",
+          "text": "新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1290,
+            628,
+            103,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "编辑",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1309,
+            719,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "复制",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1339,
+            719,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn conn-op-delete",
+          "text": "删除",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1369,
+            719,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "编辑",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1309,
+            764,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "复制",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1339,
+            764,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn conn-op-delete",
+          "text": "删除",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1369,
+            764,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "编辑",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1309,
+            809,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn",
+          "text": "复制",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1339,
+            809,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "conn-op-btn conn-op-delete",
+          "text": "删除",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1369,
+            809,
+            26,
+            26
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connConfirmCancel",
+          "cls": "button",
+          "text": "取消",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "connConfirmOk",
+          "cls": "button conn-btn-danger",
+          "text": "删除",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "测试连接",
+          "id": "testConn",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "保存",
+          "id": "saveConn",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "新建连接",
+          "id": "connNewBtn",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "删除",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "删除",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "删除",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "同步",
+      "path": "/sync.html",
+      "slug": "sync",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 0,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DOC 操作手册",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            722,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "? 咨询建议反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            808,
+            10,
+            100,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "查询",
+      "path": "/query.html",
+      "slug": "query",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 1,
+        "textarea": 1,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "queryConnection",
+          "cls": "",
+          "text": "sr lcdp_sr lcdp-sr",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            339,
+            97,
+            300,
+            32
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "runQuery",
+          "cls": "primary",
+          "text": "执行查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            649,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "newQuery",
+          "cls": "",
+          "text": "新建",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            749,
+            95,
+            62,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveQuery",
+          "cls": "",
+          "text": "保存查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            821,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "deleteQuery",
+          "cls": "",
+          "text": "删除查询",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            921,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "sendToExport",
+          "cls": "",
+          "text": "转到导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1021,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "refreshQueries",
+          "cls": "",
+          "text": "刷新",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            435,
+            165,
+            62,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "query-list-item ",
+          "text": "SQL 中秋试饮活动 2026-09-05 09:33:56",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            219,
+            258,
+            59
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "sql-editor-btn",
+          "text": "排版",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1355,
+            219,
+            46,
+            23
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "执行查询",
+          "id": "runQuery",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "保存查询",
+          "id": "saveQuery",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "转到导出",
+          "id": "sendToExport",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "表",
+      "path": "/tables.html",
+      "slug": "tables",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 1,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "tableConnection",
+          "cls": "",
+          "text": "sr lcdp_sr lcdp-sr",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            339,
+            97,
+            300,
+            32
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "refreshTables",
+          "cls": "primary",
+          "text": "刷新表列表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            983,
+            95,
+            104,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openInQuery",
+          "cls": "",
+          "text": "转到查询",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            1097,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openInExport",
+          "cls": "",
+          "text": "转到导出",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            1197,
+            95,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB ai外呼客户触达名单 AI外呼客户触达记录表 约 270,549 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            244,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 上海中秋活动 无注释 578 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            308,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 中秋试饮 无注释 361 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            372,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 云购商城访客流量 云购商城访客流量统计表 1,362 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            436,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 云购商城销售数据表 云购商城销售数据记录表，包含订单、商品、买家及交易相关信息 约 108,507 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            500,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 会员小票表 无注释 约 285,105 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            564,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 商品分类 无注释 1,324 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            628,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 商品字典 无注释 1,319 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            692,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 季莉萍客户信息 无注释 2,554 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            756,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 庆春店客户信息 无注释 701 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            820,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 新品体验权益核销 无注释 51 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            884,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 春节ai外呼表 AI外呼通话记录表（春节专用） 6,562 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            948,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 权益核销 无注释 18 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1012,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 沙龙活动 秀禾店的沙龙活动参与表 20 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1076,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 活动开展规则 无注释 6 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1140,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 火龙果权益核销 无注释 190 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1204,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 留资数 无注释 10,680 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1268,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 秀禾店生日用券订单信息 无注释 129 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1332,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 鉴真游客户信息表 无注释 70,256 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1396,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 领航部-权益核销明细 无注释 42,709 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1460,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 领航部-权益核销明细2 无注释 1,489 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1524,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "table-list-item ",
+          "text": "TAB 香梨活动订单数据 无注释 130 行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            243,
+            1588,
+            318,
+            58
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab active",
+          "text": "字段结构",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1120,
+            203,
+            90,
+            38
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "数据预览",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1218,
+            203,
+            90,
+            38
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "tab",
+          "text": "建表 DDL",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1316,
+            203,
+            93,
+            38
+          ]
+        }
+      ],
+      "clicked": [
+        {
+          "text": "数据预览",
+          "id": "",
+          "click_ok": true,
+          "error": "",
+          "opened_dialog": false
+        }
+      ],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "作业",
+      "path": "/jobs.html",
+      "slug": "jobs",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 12,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "newJob",
+          "cls": "",
+          "text": "新增作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            245,
+            93,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "editJob",
+          "cls": "",
+          "text": "编辑作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            343,
+            93,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "duplicateJob",
+          "cls": "",
+          "text": "复制作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            441,
+            93,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "deleteJob",
+          "cls": "",
+          "text": "删除作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            539,
+            93,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "runJob",
+          "cls": "",
+          "text": "立即执行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            637,
+            93,
+            90,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "refreshJobs",
+          "cls": "",
+          "text": "刷新",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            735,
+            93,
+            62,
+            36
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "job-item ",
+          "text": "中秋试饮活动全链路 3 个步骤 · 2026-09-09 10:05:09",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            258,
+            212,
+            288,
+            61
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeJobDialog",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "guardType",
+          "cls": "",
+          "text": "不启用（每次都执行） 文件有新增才执行 仅在指定日期执行",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "guardDateMode",
+          "cls": "",
+          "text": "日期范围（该期间每天执行） 指定日期 指定星期 指定每月几号",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "guardAddDate",
+          "cls": "",
+          "text": "添加",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "addStepType",
+          "cls": "",
+          "text": "导入任务导出任务查询(SQL)",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "addStepTask",
+          "cls": "",
+          "text": "",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "addStep",
+          "cls": "",
+          "text": ">>",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "removeStep",
+          "cls": "",
+          "text": "<<",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "moveStepUp",
+          "cls": "",
+          "text": "↑",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "moveStepDown",
+          "cls": "",
+          "text": "↓",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveJob",
+          "cls": "primary",
+          "text": "确认",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "cancelJob",
+          "cls": "",
+          "text": "取消",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "clicked": [
+        {
+          "text": "新增作业",
+          "id": "newJob",
+          "click_ok": true,
+          "error": "",
+          "opened_dialog": false
+        }
+      ],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "删除作业",
+          "id": "deleteJob",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "立即执行",
+          "id": "runJob",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "定时任务",
+      "path": "/schedule.html",
+      "slug": "schedule",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 15,
+        "textarea": 0,
+        "table": 1,
+        "tbody tr": 1,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node active",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "refreshSchedules",
+          "cls": "",
+          "text": "↻ 刷新",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1337,
+            88,
+            74,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "editSchedule",
+          "cls": "",
+          "text": "编辑任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            245,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "newSchedule",
+          "cls": "",
+          "text": "新增任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            335,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "deleteSchedule",
+          "cls": "",
+          "text": "删除任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            425,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "startSchedule",
+          "cls": "",
+          "text": "启用任务",
+          "disabled": true,
+          "visible": true,
+          "rect": [
+            515,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "pauseSchedule",
+          "cls": "",
+          "text": "禁用任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            605,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "viewScheduleLog",
+          "cls": "",
+          "text": "查看日志",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            695,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "runScheduleNow",
+          "cls": "",
+          "text": "立即运行",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            785,
+            146,
+            76,
+            34
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeScheduleDialog",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "addStep",
+          "cls": "",
+          "text": ">>",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "removeStep",
+          "cls": "",
+          "text": "<<",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "moveStepUp",
+          "cls": "",
+          "text": "↑",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "moveStepDown",
+          "cls": "",
+          "text": "↓",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "openScheduleAssistant",
+          "cls": "",
+          "text": "定时设置助手",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "saveSchedule",
+          "cls": "primary",
+          "text": "确认",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "cancelSchedule",
+          "cls": "",
+          "text": "取消",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeAssistant",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "assistantUnit",
+          "cls": "",
+          "text": "秒 分钟 小时 天",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "select",
+          "id": "assistantFixedMode",
+          "cls": "",
+          "text": "每天 每周 每月 每年",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "applyAssistant",
+          "cls": "primary",
+          "text": "设置",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "cancelAssistant",
+          "cls": "",
+          "text": "取消",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeLogDialog",
+          "cls": "",
+          "text": "×",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "closeLogFooter",
+          "cls": "",
+          "text": "关闭",
+          "disabled": false,
+          "visible": false,
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "clicked": [
+        {
+          "text": "新增任务",
+          "id": "newSchedule",
+          "click_ok": true,
+          "error": "",
+          "opened_dialog": false
+        },
+        {
+          "text": "查看日志",
+          "id": "viewScheduleLog",
+          "click_ok": true,
+          "error": "",
+          "opened_dialog": false
+        }
+      ],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "删除任务",
+          "id": "deleteSchedule",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "立即运行",
+          "id": "runScheduleNow",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "API",
+      "path": "/api.html",
+      "slug": "api",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 0,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DOC 操作手册",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            722,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "? 咨询建议反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            808,
+            10,
+            100,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "操作手册",
+      "path": "/docs.html",
+      "slug": "docs",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 1,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "docs-return",
+          "text": "← 返回主应用",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            10,
+            878,
+            227,
+            40
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-quick",
+          "text": "新手入门 5 分钟快速上手",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            309,
+            222,
+            204,
+            134
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-quick",
+          "text": "功能指南 详细操作说明",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            525,
+            222,
+            204,
+            134
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-quick",
+          "text": "场景教程 典型场景案例",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            742,
+            222,
+            204,
+            134
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-quick",
+          "text": "常见问题 问题解决方案",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            958,
+            222,
+            204,
+            134
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-quick",
+          "text": "视频教程 观看教学视频",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1175,
+            222,
+            204,
+            134
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-flow-step",
+          "text": "导入数据 从文件导入数据库",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            301,
+            464,
+            178,
+            60
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-flow-step",
+          "text": "导出数据 从数据库导出文件",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            511,
+            464,
+            178,
+            60
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-flow-step",
+          "text": "查询数据 使用 SQL 查询数据",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            720,
+            464,
+            182,
+            60
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-flow-step",
+          "text": "创建作业 组合步骤处理数据",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            934,
+            464,
+            178,
+            60
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "docs-flow-step",
+          "text": "定时执行 定时自动执行任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1143,
+            464,
+            178,
+            60
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "数据库连接 数据库连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            293,
+            709,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "数据导入 数据导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            524,
+            709,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "数据导出 数据导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            755,
+            709,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "数据查询 数据查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            985,
+            709,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "数据表 数据表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1216,
+            709,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "作业 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            293,
+            1065,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "定时任务 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            524,
+            1065,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "快速开始 快速开始",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            755,
+            1065,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "常见问题 常见问题",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            985,
+            1065,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "button",
+          "id": "",
+          "cls": "doc-thumb-link",
+          "text": "操作手册目录 操作手册目录",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            1216,
+            1065,
+            179,
+            101
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "",
+          "text": "提交反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            280,
+            1348,
+            68,
+            27
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "",
+          "text": "联系我们",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            352,
+            1348,
+            68,
+            27
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "",
+          "text": "在线支持",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            424,
+            1348,
+            68,
+            27
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "",
+          "text": "视频教程",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            496,
+            1348,
+            68,
+            27
+          ]
+        }
+      ],
+      "clicked": [
+        {
+          "text": "功能指南 详细操作说明",
+          "id": "",
+          "click_ok": false,
+          "error": "locator.click: Timeout 4000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('button').filter({ hasText: '功能指南 详细操作说明' }).first()\u001b[22m\n",
+          "opened_dialog": false
+        },
+        {
+          "text": "操作手册目录 操作手册目录",
+          "id": "",
+          "click_ok": true,
+          "error": "",
+          "opened_dialog": false
+        }
+      ],
+      "skipped_danger": [
+        {
+          "text": "← 返回主应用",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "导入数据 从文件导入数据库",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "导出数据 从数据库导出文件",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "定时执行 定时自动执行任务",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "数据库连接 数据库连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "数据导入 数据导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "数据导出 数据导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "快速开始 快速开始",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "提交反馈",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    },
+    {
+      "label": "咨询建议反馈",
+      "path": "/feedback.html",
+      "slug": "feedback",
+      "http_status": 200,
+      "page_errors": [],
+      "console_errors": [],
+      "counts": {
+        "input": 0,
+        "textarea": 0,
+        "table": 0,
+        "tbody tr": 0,
+        ".card": 0,
+        ".modal": 0,
+        ".dialog": 0
+      },
+      "buttons": [
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            18,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            104,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            180,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            256,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            332,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            408,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            484,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            560,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "API API",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            646,
+            10,
+            64,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item ",
+          "text": "DOC 操作手册",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            722,
+            10,
+            74,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "ribbon-item active",
+          "text": "? 咨询建议反馈",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            808,
+            10,
+            100,
+            50
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "DB 新建连接",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            118,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "IN 导入",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            158,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "OUT 导出",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            198,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "SYNC 同步",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            238,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "SQL 查询",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            278,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TAB 表",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            318,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "JOB 作业",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            358,
+            191,
+            34
+          ]
+        },
+        {
+          "tag": "a",
+          "id": "",
+          "cls": "tree-node ",
+          "text": "TIME 定时任务",
+          "disabled": false,
+          "visible": true,
+          "rect": [
+            12,
+            398,
+            191,
+            34
+          ]
+        }
+      ],
+      "clicked": [],
+      "skipped_danger": [
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "DB 新建连接",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "IN 导入",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        },
+        {
+          "text": "OUT 导出",
+          "id": "",
+          "reason": "会写数据或触发外部动作，未点击"
+        }
+      ]
+    }
+  ],
+  "console_errors": [],
+  "page_errors": [],
+  "finished_at": "2026-09-19T02:58:15.268Z"
+}

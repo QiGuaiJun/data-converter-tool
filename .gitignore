@@ -1,15 +1,26 @@
 .venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 build/
 dist/
 *.manifest
 *.toc
 
+runtime/
 data/
 uploads/
 exports/
+logs/
 deployment-data/
+
+# 归档里的运行数据副本（含加密密码），绝不入库
+archive/migration-backup-*/
+
+# 验收演练产物：体积大且可一键复跑，不入库（脚本与报告本身入库）
+acceptance/rebuild-*/
+acceptance/replay-*/
+acceptance/evidence/*/screenshots/
 
 *.db
 *.sqlite

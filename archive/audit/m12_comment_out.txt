@@ -1,0 +1,52 @@
+==============================================================================
+A. 正向用例（全部应 status=200）
+==============================================================================
+  PASS 纯 SELECT                   cols=['a']                  rows=[['1']]
+  PASS 行注释 -- + SELECT            cols=['a']                  rows=[['1']]
+  PASS 行注释 # + SELECT             cols=['a']                  rows=[['1']]
+  PASS 行注释 -- 带井号 + SELECT        cols=['a']                  rows=[['1']]
+  PASS 块注释 + SELECT               cols=['a']                  rows=[['1']]
+  PASS 块注释换行 + SELECT             cols=['a']                  rows=[['1']]
+  PASS 多行块注释 + SELECT             cols=['a']                  rows=[['1']]
+  PASS 连续两种注释 + SELECT            cols=['a']                  rows=[['1']]
+  PASS 括号包裹 SELECT                cols=['a']                  rows=[['1']]
+  PASS WITH                       cols=['a']                  rows=[['1']]
+  PASS 字符串内分号                     cols=['a']                  rows=[[';']]
+  PASS 字符串内双分号                    cols=['a']                  rows=[['a;b;c']]
+  PASS 注释内分号                      cols=['a']                  rows=[['1']]
+  PASS 行注释内分号                     cols=['1']                  rows=[['1']]
+  PASS 尾部行注释                      cols=['a']                  rows=[['1']]
+  PASS 尾分号                        cols=['a']                  rows=[['1']]
+  PASS 尾分号 + 尾注释                  cols=['a']                  rows=[['1']]
+  PASS 注释 + 尾分号                   cols=['a']                  rows=[['1']]
+  PASS 中间块注释                      cols=['a']                  rows=[['1']]
+  PASS SHOW TABLES                cols=['Tables_in_dc_p2_test'] rows=[['p2_big_t'], ['p2_comment_t'], ['p2_rowcount_t'], ['p3_27_mysql'], ['pm_date_t'], ['pm_pk_t'], ['pm_type_t']]
+  PASS EXPLAIN                    cols=['id', 'select_type', 'table', 'partitions', 'type', 'possible_keys', 'key', 'key_len', 'ref', 'rows', 'filtered', 'Extra'] rows=[['1', 'SIMPLE', '', '', '', '', '', '', '', '', '', 'No tables used']]
+  FAIL DESCRIBE                   status=400 error=(1146, "Table 'dc_p2_test.export_people' doesn't exist")
+
+==============================================================================
+B. 负向用例（全部应被拒绝且文案匹配）
+==============================================================================
+  PASS 非只读 DROP                 status=400 error=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  PASS 非只读 DELETE               status=400 error=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  PASS 非只读 UPDATE               status=400 error=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  PASS 注释 + 非只读                 status=400 error=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。
+  PASS 真多语句                     status=400 error=一次只能执行一条 SQL 查询。
+  PASS 真多语句带注释                  status=400 error=一次只能执行一条 SQL 查询。
+  PASS 前导注释的真多语句                status=400 error=一次只能执行一条 SQL 查询。
+  PASS 空                        status=400 error=请输入要执行的 SQL。
+  PASS 纯空白                      status=400 error=请输入要执行的 SQL。
+  PASS 纯行注释                     status=400 error=请输入要执行的 SQL。
+  PASS 纯块注释                     status=400 error=请输入要执行的 SQL。
+  PASS 纯注释 + 分号                 status=400 error=请输入要执行的 SQL。
+
+==============================================================================
+C. 与导出模块一致性抽查（同一条带注释 SQL 在两边都应可用）
+==============================================================================
+  PASS   块注释 + SELECT         查询=200 导出预览 ok=True
+  PASS   行注释 + SELECT         查询=200 导出预览 ok=True
+  PASS   注释内分号                查询=200 导出预览 ok=True
+
+==============================================================================
+正向 21/22 通过 | 负向 12/12 通过
+==============================================================================

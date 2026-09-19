@@ -64,9 +64,21 @@ def env_path(name: str, fallback: Path) -> Path:
     return fallback.resolve()
 
 
-DATA = env_path("DATA_DIR", ROOT / "data")
-UPLOADS = env_path("UPLOADS_DIR", ROOT / "uploads")
-EXPORTS = env_path("EXPORTS_DIR", ROOT / "exports")
+# 源码与运行数据同处一个目录（2026-09-17 调整）：运行数据统一落在项目内的
+# runtime/ 下，并整体 gitignore —— 整个项目就是**一个文件夹**，拷走即用；
+# 同时源码区（server.py / public / tests）与运行数据区仍然泾渭分明，
+# runtime/ 单独删掉不影响源码，重新起来会自动重建空目录。
+RUNTIME_ROOT = ROOT / "runtime"
+
+
+def runtime_path(name: str) -> Path:
+    """运行数据子目录的默认落点（DATA_DIR / UPLOADS_DIR / EXPORTS_DIR 仍可覆盖）。"""
+    return RUNTIME_ROOT / name
+
+
+DATA = env_path("DATA_DIR", runtime_path("data"))
+UPLOADS = env_path("UPLOADS_DIR", runtime_path("uploads"))
+EXPORTS = env_path("EXPORTS_DIR", runtime_path("exports"))
 # 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
 APP_VERSION = "1.4.0"
 TASK_SOURCES = DATA / "task_sources"
@@ -216,10 +228,14 @@ def connect_db() -> sqlite3.Connection:
             ended_at text not null default '',
             elapsed_ms integer not null default 0,
             status text not null,
-            message text not null default ''
+            message text not null default '',
+            outputs_json text not null default ''
         )
         """
     )
+    # P3-B：运行记录也要携带结构化产物清单（outputs_json），前端据此渲染「产出文件」块，
+    # 不再靠正则从 message 文本里猜路径。历史记录该列为空 → 前端优雅降级（见 _decode_run_outputs）。
+    _ensure_column(conn, "_job_runs", "outputs_json", "text not null default ''")
     conn.execute(
         """
         create table if not exists _job_run_steps (
@@ -265,6 +281,22 @@ def connect_db() -> sqlite3.Connection:
             source_text text not null,
             updated_at text not null,
             primary key (job_id, step_index)
+        )
+        """
+    )
+    # 执行前预检：定时任务在到期前 precheck_minutes 分钟先做一次「源文件有没有新增」检查，
+    # 结论落在 _schedule_prechecks，执行期据此决定「执行 / 整个作业跳过」。
+    # due_at 是本轮的 next_run_at —— 用它当"轮次"标识，主键 (schedule_id, due_at) 天然幂等。
+    _ensure_column(conn, "_schedules", "precheck_minutes", "integer not null default 5")
+    conn.execute(
+        """
+        create table if not exists _schedule_prechecks (
+            schedule_id text not null,
+            due_at text not null,
+            checked_at text not null,
+            has_new integer not null,
+            detail_json text not null default '{}',
+            primary key (schedule_id, due_at)
         )
         """
     )
@@ -1555,6 +1587,47 @@ def target_existing_column_keys(conn, table_name: str, fields: dict[str, str]) -
     :func:`target_existing_columns` 返回的原始大小写，否则会把用户的大写列改名。
     """
     return {column.strip().lower() for column in target_existing_columns(conn, table_name, fields)}
+
+
+def align_columns_by_position(
+    conn,
+    table_name: str,
+    columns: list[str],
+    match_keys: list[str],
+    fields: dict[str, str],
+) -> tuple[list[str], list[str]]:
+    """字段匹配=「按顺序」：把源文件列**按列序号**对齐到既有目标表的列名。
+
+    背景：前端「字段匹配」下拉（`#matchBy`）提供 按名称 / 按顺序 / 自定义 三项，
+    其中 `matchBy=order` 长期只发送、服务端无消费方 —— 于是「按顺序」与「按名称」
+    行为完全一致，选项形同虚设。本函数补上「按顺序」的真实语义：
+
+    - 仅当 ``matchBy == "order"`` **且目标表已存在**时生效，此时把第 i 个源列
+      映射到既有目标表的第 i 个列（沿用目标表的原始大小写）；
+    - 目标表列数少于源列数时明确报错，不静默丢列；
+    - 其余情况（未传 / ``name`` / ``custom`` / 目标表不存在）**原样返回**，
+      行为与修复前逐字节一致 —— 既有作业与定时任务的配置里写的是 ``name``，
+      因此不受影响。
+
+    返回 ``(对齐后的列名, 按位置重映射后的匹配键)``；匹配键要一起换名，
+    否则 update 模式会按旧列名找不到键列。
+    """
+    if str(fields.get("matchBy") or "name").strip().lower() != "order":
+        return columns, match_keys
+    if not target_table_exists(conn, table_name, fields):
+        return columns, match_keys
+    existing = target_existing_columns(conn, table_name, fields)
+    if len(existing) < len(columns):
+        raise ValueError(
+            f"字段匹配设为「按顺序」，但目标表 {table_name} 只有 {len(existing)} 列"
+            f"（{'、'.join(existing)}），少于源文件的 {len(columns)} 列"
+            f"（{'、'.join(columns)}），无法按序号一一对应。"
+            "请改为「按名称」，或先在目标表上补齐列。"
+        )
+    aligned = existing[: len(columns)]
+    position = {name: index for index, name in enumerate(columns)}
+    remapped_keys = [aligned[position[key]] for key in match_keys if key in position]
+    return aligned, remapped_keys
 
 
 def target_row_count(conn, table_name: str, fields: dict[str, str]) -> int:
@@ -3709,6 +3782,25 @@ def parse_datetime(value: str) -> dt.datetime | None:
     return None
 
 
+def _row_int(row: sqlite3.Row, column: str, default: int) -> int:
+    """安全读取行里的整数列：列缺失 / 值为空 / 非数字时返回 default。
+
+    为什么要这层：precheck_minutes 是后来用 _ensure_column 补建的列，读行函数也可能
+    被拿去读一个尚未跑过迁移的库的连接；直接 row[column] 在列缺失时抛 IndexError，
+    会把整个「定时任务列表」接口打挂（历史库升级路径上必须能容错）。
+    """
+    try:
+        value = row[column]
+    except (IndexError, KeyError):
+        return default
+    if value is None or value == "":
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def row_to_job(row: sqlite3.Row) -> dict[str, object]:
     return {
         "id": row["id"],
@@ -3734,6 +3826,8 @@ def row_to_schedule(row: sqlite3.Row) -> dict[str, object]:
         "lastRunAt": row["last_run_at"],
         "lastStatus": row["last_status"],
         "logRetentionDays": row["log_retention_days"],
+        # 预检提前量（分钟）：0 = 关闭预检（行为与引入预检之前完全一致）
+        "precheckMinutes": _row_int(row, "precheck_minutes", 5),
         "emailOnFail": bool(row["email_on_fail"]),
         "running": bool(row["running"]),
         "createdAt": row["created_at"],
@@ -3818,6 +3912,14 @@ def save_schedule(payload: dict[str, object]) -> dict[str, object]:
     start_at = str(payload.get("startAt") or payload.get("start_at") or "").replace("T", " ")
     end_at = str(payload.get("endAt") or payload.get("end_at") or "").replace("T", " ")
     retention = max(int(payload.get("logRetentionDays") or payload.get("log_retention_days") or 3), 1)
+    # 执行前预检提前量（分钟）：缺省 5（= 到期前 5 分钟检查一次）；传负数归 0（关闭预检）。
+    raw_precheck = payload.get("precheckMinutes", payload.get("precheck_minutes"))
+    try:
+        precheck_minutes = 5 if raw_precheck is None else int(raw_precheck)
+    except (TypeError, ValueError):
+        precheck_minutes = 5
+    if precheck_minutes < 0:
+        precheck_minutes = 0
     enabled = payload.get("enabled", False) in (True, "true", "1", 1, "on")
     next_run = compute_next_run(rule, start_at, end_at, None) if enabled else ""
     now = now_text()
@@ -3827,9 +3929,10 @@ def save_schedule(payload: dict[str, object]) -> dict[str, object]:
             """
             insert into _schedules (
                 id, name, job_id, enabled, rule_json, start_at, end_at, next_run_at,
-                last_run_at, last_status, log_retention_days, email_on_fail, running, created_at, updated_at
+                last_run_at, last_status, log_retention_days, precheck_minutes, email_on_fail,
+                running, created_at, updated_at
             )
-            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             on conflict(id) do update set
                 name = excluded.name,
                 job_id = excluded.job_id,
@@ -3839,6 +3942,7 @@ def save_schedule(payload: dict[str, object]) -> dict[str, object]:
                 end_at = excluded.end_at,
                 next_run_at = excluded.next_run_at,
                 log_retention_days = excluded.log_retention_days,
+                precheck_minutes = excluded.precheck_minutes,
                 email_on_fail = excluded.email_on_fail,
                 updated_at = excluded.updated_at
             """,
@@ -3854,6 +3958,7 @@ def save_schedule(payload: dict[str, object]) -> dict[str, object]:
                 old["last_run_at"] if old else "",
                 old["last_status"] if old else "",
                 retention,
+                precheck_minutes,
                 1 if payload.get("emailOnFail") in (True, "true", "1", 1, "on") else 0,
                 old["created_at"] if old else now,
                 now,
@@ -4034,6 +4139,18 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
             "然后必须重新点击「保存为任务」——只关联不保存，任务路径不会更新。"
             "保存后引用该任务的作业会自动使用新路径，无需重新编辑作业。"
         )
+    # 快照目录只提示、不阻断：linked_sources 是「关联本机原文件」上传后的服务器副本，
+    # 它只在导入页面打开时才由前端 syncLinkedSources() 自动刷新。无人值守的定时执行
+    # 页面没开 → 副本可能已陈旧，用户却以为"我每次都指定了路径"。阻断会破坏已有可用配置，
+    # 因此这里只把风险写进步骤日志。
+    linked_sources = LINKED_SOURCES.resolve()
+    snapshot_hint = ""
+    if source == linked_sources or linked_sources in source.parents:
+        snapshot_hint = (
+            "提示：本次读取的是服务器副本（data/linked_sources），它只在导入页面打开时才会"
+            "自动同步本机更新，无人值守的定时执行不会刷新。若源文件由外部系统更新，"
+            "请把该导入任务的路径直接指向源文件的真实路径。"
+        )
     files = collect_local_files(source_path)
     pending_before_sql = str(fields.get("beforeAllSql") or "").strip()
     pending_after_sql = str(fields.get("afterAllSql") or "").strip()
@@ -4067,43 +4184,135 @@ def execute_import_step(config: dict[str, object]) -> dict[str, object]:
         "verifiedRows": {str(item["tableName"]): int(item.get("verifiedRows", 0)) for item in results if item.get("tableName")},
         "skippedFiles": skipped_files,
         "sqlStatus": sql_status,
+        "warning": snapshot_hint,
     }
 
 
 def _file_fingerprint(path_text: str) -> str:
-    """计算源文件/目录的指纹：文件数量 + 每个文件 (名称, 大小, mtime) 拼接哈希。
+    """计算源文件/目录的指纹：文件数量 + 每个文件 (名称, 大小, mtime_ns) 拼接哈希。
 
     用于"文件无更新则跳过作业"守卫。不含内容级 hash（大文件性能考虑），
-    以 大小+mtime 变化作为"文件有更新"的可靠近似。
+    以 大小 + 纳秒级 mtime 变化作为"文件有更新"的可靠近似。
+
+    为什么用 st_mtime_ns 而不是 int(st_mtime)（P1-1）：
+    秒级截断会把"同一秒内的两次修改"折叠成同一个整数。外部系统用批量脚本、
+    下载即覆盖、或"导出后立刻回写"的形态更新源文件时，原始大小往往恰好不变
+    （同样结构的 xlsx 只改了单元格值），于是 大小+秒 两个信号都没变
+    → 新数据被漏判 → 该轮不执行导入。改用纳秒精度后，可分辨窗口从
+    "最多 999 ms（秒级截断）"压到"约 15.6 ms（系统计时器 tick，见下方残留边界）"，
+    生产链上"两个源文件被分别更新"的间隔以分钟/小时计，必然被区分出来。
+
+    已知残留边界（真实取舍，不假装消除）：
+      - Windows/NTFS 实测：两次写入若落在**同一个系统计时器 tick**（约 15.6 ms）内，
+        文件系统可能完全不推进 last-write-time —— 紧邻的两次写入 st_mtime_ns 会一模一样。
+        这种"同 tick 内改两次且大小不变"仍会漏判。
+        为什么实务上可接受：守卫基线是在一次完整作业运行（sqlite 事务 + 文件解析，
+        耗时远超 15.6 ms）的末尾读到的，两次外部写入之间必然夹着一次作业运行，
+        因此必然跨 tick，撞不上这个窗口。这是本次改用 ns 之后剩下的唯一实测残留边界。
+      - 比 tick 更长的间隔但 int(mtime) 相同（即本函数修复前漏判的那类）→ 已能可靠区分。
+      - 改内容后外部工具刻意把 size 与 mtime 一起还原 → 漏判（需要内容 hash 才能识别）。
+      - mtime 变但内容没变（复制/覆盖同名文件）→ 误判为"有更新"，多跑一次导入。
+        方向是保守的（不会丢数据），且导入步骤本身是幂等的，可接受。
+      - 要彻底消除前两类必须做内容 hash，代价是每次守卫评估都要读整个文件
+        （生产源文件 xlsx 可达几十 MB，且守卫在每次定时触发前都要跑），
+        与"守卫必须轻量"的设计目标冲突，因此保留 大小+时间 的近似。
+
+    注意：本函数与 import_file_fingerprint()（skipSeenFile 用，大小+内容 sha256）
+    是两个用途不同的函数，不能互相替代——前者要极轻量，后者要绝对可靠。
     """
     import hashlib
     files = collect_local_files(path_text)
     parts = [f"{len(files)}"]
     for f in files:
         st = f.path.stat()
-        parts.append(f"{f.filename}|{st.st_size}|{int(st.st_mtime)}")
+        parts.append(f"{f.filename}|{st.st_size}|{st.st_mtime_ns}")
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
 
 
-def _guard_summary(job: dict[str, object]) -> dict[int, dict[str, str]]:
-    """收集作业中启用了文件守卫的 import 步骤。
+def _guard_summary(job: dict[str, object], _visited: set[str] | None = None) -> dict[tuple[str, int], dict[str, str]]:
+    """收集作业中启用了文件守卫的导入步骤（含被引用的导入任务、嵌套子作业）。
 
     - 步骤 config.skipIfFileUnchanged 为真 → 该步骤启用文件守卫
-    - 作业 guard.type == "file_has_new" → 全部启用的 import 步骤都启用文件守卫
+    - 作业 guard.type == "file_has_new" → 本作业（及其递归子作业）全部启用的 import 步骤都启用文件守卫
+    - 子作业自身 guard.type == "file_has_new" → 对父作业同样生效：父作业先跳过，
+      子作业根本不会被执行到，用户看到的是"跳过"而不是"子作业执行失败"的假失败
+    - type == "import" 且 config 含 importJobId → 复用 resolve_import_step_config() 展开真实路径。
+      为什么必须展开：作业里的导入步骤常常只带 importJobId，真实文件路径存在被引用的导入任务里，
+      只看 step.config 会得到空守卫 —— 这正是"明明没新数据却每次都执行"的根因。
+      展开失败（引用不存在 / 循环 / 该任务没有可用导入步骤）直接抛出，不静默吞掉：
+      静默返回空守卫等价于"条件没配"，问题会被藏到用户下次发现数据不对为止。
+
+    返回 dict，键为 (job_id, step_index) —— 与 _job_file_guards 主键 (job_id, step_index) 一一对应。
+    为什么要带 job_id：嵌套子作业的基线必须记在"子作业自己的 job_id"下。若统一用父作业 id 作键，
+    父子作业相同的 step_index 会互相覆盖基线，指纹比对形同虚设。
     """
     job_guard = job.get("guard") if isinstance(job.get("guard"), dict) else {}
     force_all = str(job_guard.get("type") or "").strip().lower() == "file_has_new"
-    guards: dict[int, dict[str, str]] = {}
-    for index, step in enumerate(job["steps"]):
+    job_id = str(job.get("id") or "")
+    visited = set(_visited or ())
+    if job_id:
+        visited.add(job_id)
+    guards: dict[tuple[str, int], dict[str, str]] = {}
+    _collect_file_guards(job, job_id, force_all, visited, guards)
+    return guards
+
+
+def _collect_file_guards(
+    job: dict[str, object],
+    job_id: str,
+    force_all: bool,
+    visited: set[str],
+    guards: dict[tuple[str, int], dict[str, str]],
+) -> None:
+    """``_guard_summary`` 的递归实现：把本作业（及嵌套子作业）里启用的导入步骤守卫收进 guards。
+
+    visited 只用于阻断"祖先 → 后代"的环路，且每层分支各自复制一份，
+    因此 A → C、B → C 这种菱形引用不会被误判成循环。
+    """
+    for index, step in enumerate(job.get("steps") or []):
+        if not isinstance(step, dict) or not step.get("enabled", True):
+            continue
+        step_type = str(step.get("type") or "")
         cfg = step.get("config") if isinstance(step.get("config"), dict) else {}
         flag = str(cfg.get("skipIfFileUnchanged") or "").strip().lower()
-        enabled_step = step.get("type") == "import" and step.get("enabled", True)
         guarded = force_all or flag in {"true", "1", "yes", "on"}
-        if enabled_step and guarded:
-            path_text = str(cfg.get("path") or cfg.get("sourcePath") or "").strip()
+        if step_type == "import":
+            if not guarded:
+                continue
+            # 关键：路径可能不在 step.config 里，而在 config.importJobId 指向的导入任务里
+            resolved = resolve_import_step_config(cfg)
+            path_text = str(resolved.get("path") or resolved.get("sourcePath") or "").strip()
             if path_text:
-                guards[index] = {"source": path_text}
-    return guards
+                guards[(job_id, index)] = {
+                    "source": path_text,
+                    "jobId": job_id,
+                    "stepIndex": str(index),
+                    "stepName": str(step.get("name") or ""),
+                }
+            continue
+        if step_type != "job":
+            continue
+        nested_id = str(cfg.get("jobId") or "").strip()
+        if not nested_id:
+            # 没有 jobId 的嵌套步骤本身是坏配置，执行到该步骤时会明确报错；
+            # 这里拿不到任何守卫信息，跳过（不额外制造一个与守卫无关的失败）。
+            continue
+        if nested_id in visited:
+            raise ValueError(f"检测到作业循环引用，无法评估文件更新条件：{nested_id}")
+        with connect_db() as conn:
+            nested_row = conn.execute("select * from _jobs where id = ?", (nested_id,)).fetchone()
+        if not nested_row:
+            # 不静默：这个分支既不能证明"源文件没有新内容"，也不能证明"有"，静默跳过
+            # 等于让作业带着坏引用继续跑（或永久跳过）——引用被误删这种事会一直潜伏到
+            # 用户发现数据不对为止。文案给出可执行动作，用户不必猜哪里坏了。
+            raise ValueError(
+                f"引用的子作业不存在或已删除（jobId={nested_id}），无法评估文件更新条件。"
+                "请打开本作业，编辑这个子作业步骤重新选择目标作业，或删除该步骤后保存。"
+            )
+        nested_job = row_to_job(nested_row)
+        nested_guard = nested_job.get("guard") if isinstance(nested_job.get("guard"), dict) else {}
+        nested_force = force_all or str(nested_guard.get("type") or "").strip().lower() == "file_has_new"
+        _collect_file_guards(nested_job, nested_id, nested_force, visited | {nested_id}, guards)
 
 
 def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -> tuple[bool, str]:
@@ -4172,6 +4381,128 @@ def evaluate_job_guard(job: dict[str, object], now: dt.datetime | None = None) -
     raise ValueError(f"不支持的作业执行条件类型：{gtype}")
 
 
+def is_server_default_export(path_text: str) -> bool:
+    """判断导出产物是否落在服务端默认导出目录。
+
+    之所以要单独判定：export_target_path() 在 exportFolder 为空时会静默回退到
+    EXPORTS 目录，作业照样报"成功"，用户只看到"没输出"。这里把它识别出来，
+    好在运行日志里显式警告，让配置漏填一眼可见。
+    """
+    try:
+        return Path(str(path_text)).expanduser().parent.resolve() == EXPORTS.resolve()
+    except OSError:
+        # 路径解析失败（如盘符临时不可用）时按"非默认目录"处理，避免误报。
+        return False
+
+
+def format_export_step_message(files: list[str], rows: int) -> str:
+    """拼装导出步骤的运行日志文本，逐个列出产物的绝对路径。
+
+    只写"导出 N 个文件，M 行"时用户无法知道文件落在哪，所以把绝对路径一并写入；
+    若全部产物都落在服务端默认目录，则附加警告（说明该步骤没配目标文件夹）。
+    """
+    if not files:
+        return f"导出 0 个文件，{rows} 行。"
+    message = f"导出 {len(files)} 个文件（{rows} 行）：" + "；".join(files)
+    if all(is_server_default_export(item) for item in files):
+        message += "（警告：该导出步骤未配置目标文件夹，文件已写入服务端默认目录）"
+    return message
+
+
+def output_dedupe_key(path: str) -> str:
+    """产物路径的去重键：按平台语义归一化后再比较。
+
+    为什么需要：Windows 路径大小写不敏感、`\\` 与 `/` 是同一分隔符，`...\\out\\x.csv` 与
+    `...\\OUT\\x.csv` 指向同一个真实文件。只用精确字符串比较会把同一个文件算成 2 个，
+    于是「产出文件（2 个）」与实际落盘的 1 个文件对不上（P2-A）。
+    `os.path.normcase` 在 Windows 上会统一分隔符并小写化，在 POSIX 上是恒等变换，
+    所以这里对两个平台都安全；展示用的字符串仍是首次出现的原始写法。
+    """
+    return os.path.normcase(os.path.normpath(str(path).strip()))
+
+
+def dedupe_export_outputs(paths: Iterable[str]) -> list[str]:
+    """按出现顺序去重产物路径，保证「产出文件（N 个）」的 N 等于实际文件数。
+
+    为什么需要：顶层作业会把子作业的产物冒泡上来（见 run_saved_job 里 type=job 分支），
+    而子作业自己的 message 里也含同一批路径 —— 前端合并父子 run 一起展示时，同一条路径
+    与表头就会被列两遍；同一个文件名被多个步骤导出时同样会重复。这里统一去重，
+    只保留首次出现的位置与原始字符串，顺序不变。去重键见 output_dedupe_key（P2-A：
+    大小写 / 分隔符变体视为同一个文件）。
+    """
+    seen: set[str] = set()
+    unique: list[str] = []
+    for item in paths:
+        text = str(item).strip()
+        key = output_dedupe_key(text)
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        unique.append(text)
+    return unique
+
+
+def encode_run_outputs(outputs: Iterable[str]) -> str:
+    """把一次运行的产物清单序列化成 _job_runs.outputs_json（前端据此渲染，零文本解析）。"""
+    return json.dumps([str(item) for item in outputs], ensure_ascii=False)
+
+
+def decode_run_outputs(raw: object) -> list[str]:
+    """反解 _job_runs.outputs_json。
+
+    容错是硬要求：历史记录（本次改动前落库的运行记录）该列为空串，任何解析失败都必须
+    降级成空列表而不是抛异常，否则一条老日志就能把整个日志面板打崩。
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed if str(item).strip()]
+
+
+_OUTPUTS_BLOCK_HEADER = "产出文件（"
+_OUTPUTS_WARNING_PREFIX = "（警告："
+
+
+def strip_outputs_block(text: str, paths: Iterable[str] = ()) -> str:
+    """剥离子作业 message 里的产物明细（P1-A）。
+
+    父作业失败时会把子作业整段 message 内嵌进 last_error，子作业自己的「产出文件」块
+    也随之进来；本层随后再追加一次自己的产物块，同一条 run message 就会出现 2 个表头、
+    同一路径 2 次。这里只丢掉"清单行"：表头、默认目录警告，以及**确实属于该子作业产物列表**
+    的路径行（按 output_dedupe_key 归一化比对，不是"像路径就删"），结论句与「最后错误」
+    原样保留 —— 失败原因（如 `no such table: xxx`）必须仍然可见。
+    用产物列表做白名单而不是正则判断，是为了不误删错误文本里出现的路径行（P2-B 同类问题）。
+    """
+    known = {output_dedupe_key(item) for item in paths if str(item).strip()}
+    kept: list[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith(_OUTPUTS_BLOCK_HEADER) or stripped.startswith(_OUTPUTS_WARNING_PREFIX):
+            continue
+        if stripped and output_dedupe_key(stripped) in known:
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def format_outputs_block(files: list[str], failed: bool = False) -> str:
+    """把产物路径拼成运行日志里的一段文本块（表头一行 + 每个路径一行）。
+
+    成功与失败两个出口共用同一格式：前端按行渲染时才不会出现两种样式；
+    failed=True 时表头额外说明"失败前已落盘"，避免用户把半成品误当成整体成功。
+    """
+    if not files:
+        return ""
+    label = "产出文件（{} 个，失败前已落盘）：" if failed else "产出文件（{} 个）："
+    return "\n" + label.format(len(files)) + "\n" + "\n".join(files)
+
+
 def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None = None) -> dict[str, object]:
     visited = visited or set()
     if job_id in visited:
@@ -4182,6 +4513,40 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     if not row:
         raise ValueError("作业不存在。")
     job = row_to_job(row)
+
+    # 运行记录先落库、再评估前置条件（P1-2）。
+    # 过去 insert 排在守卫评估之后：守卫评估抛错时手动「立即运行」路径只回一条 HTTP 错误，
+    # 作业日志里查不到这次失败（定时路径有 run_schedule_once 的兜底补写，手动路径没有）。
+    # 先落"运行中"占位，任何提前退出都经 _abort_run_failed() 收口成"失败"，
+    # 不会把"运行中"的僵尸记录留在库里。
+    run_id = uuid.uuid4().hex
+    started = dt.datetime.now()
+    with connect_db() as conn:
+        conn.execute(
+            "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, status) values (?, ?, ?, ?, ?, ?)",
+            (run_id, job_id, schedule_id, str(job["name"]), started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
+        )
+
+    def _abort_run_failed(exc: BaseException) -> None:
+        """把本次运行收口成"失败"并落库，保证前置条件评估异常也留下可查的运行记录。"""
+        ended_at = dt.datetime.now()
+        with connect_db() as conn:
+            conn.execute(
+                "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+                (
+                    ended_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    int((ended_at - started).total_seconds() * 1000),
+                    "失败",
+                    f"作业执行失败：{exc}",
+                    run_id,
+                ),
+            )
+        # 把 run_id 挂在异常上：run_schedule_once 的兜底补写据此判断"这次失败已经落过库了"，
+        # 否则定时路径会同一次失败出现两条记录（一条带详细原因、一条只有异常文本）。
+        try:
+            setattr(exc, "run_id", run_id)
+        except Exception:  # pragma: no cover - 异常对象不允许挂属性时退化为兜底补写
+            pass
 
     # ---- 作业级执行条件（B/C 类守卫）：query_has_rows / date_match
     #      不满足 → 整个作业标记"跳过"，不执行任何步骤 ----
@@ -4196,46 +4561,97 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 guard_reason = reason
         except Exception as exc:
             # 条件评估异常（如查询连接失败）不静默——让作业失败以暴露配置问题
-            raise ValueError(f"作业执行条件评估失败：{exc}") from exc
+            failure = ValueError(f"作业执行条件评估失败：{exc}")
+            _abort_run_failed(failure)
+            raise failure from exc
 
-    # ---- 文件守卫：作业中任一启用了 skipIfFileUnchanged 的导入步骤，
-    #      若其源文件与上次成功执行时相比无变化 → 整个作业标记"跳过"，不执行任何步骤 ----
-    guards = _guard_summary(job)
-    if not guard_skip:
-        try:
-            for step_index, guard_item in guards.items():
-                current = _file_fingerprint(guard_item["source"])
+    # ---- 文件守卫：作业中任一启用了 skipIfFileUnchanged 的导入步骤（含被引用的导入任务、
+    #      嵌套子作业的导入步骤）----
+    #      语义（P0-1）：用户诉求是「每次作业定时任务执行前，都要查询目标文件是否有新增的
+    #      内容，如果有新增执行导入」→ any(changed) → 执行。
+    #      所以只有当【全部】守卫的指纹都与基线一致（一份新增都没有）才跳过整个作业。
+    #      上一轮的写法是"任意一条无变化就跳过"，等于"所有源文件同时变化才执行"，
+    #      量词被取反；生产作业 6b990e83 的两个源文件（会员小票.xlsx 与
+    #      中秋试饮权益核销.xlsx）由外部系统分别更新，"只变一个"是常态，
+    #      被误跳过的那轮又不写基线 → 下一轮继续跳过，作业会静默卡死。
+    try:
+        guards = _guard_summary(job)
+    except Exception as exc:
+        # 守卫收集异常（引用的导入任务被删 / 引用成环 / 子作业不存在）不静默——
+        # 静默等于条件没配，作业会无条件执行；让它在作业日志里明确失败。
+        failure = ValueError(f"作业文件更新条件评估失败：{exc}")
+        _abort_run_failed(failure)
+        raise failure from exc
+
+    guard_changed: list[str] = []    # 相对基线"有更新"的源文件（含无基线、无法评估）
+    guard_unchanged: list[str] = []  # 相对基线"无更新"的源文件
+    guard_notes: list[str] = []      # 单条守卫评估失败等原因，必须让用户在运行日志里看到
+    # 指纹与基线完全一致的守卫 → 它对应的那个导入步骤本轮不必重跑（步骤级跳过）。
+    guard_unchanged_keys: set[tuple[str, int]] = set()
+    if guards and not guard_skip:
+        for (guard_job_id, guard_step_index), guard_item in guards.items():
+            source_text = str(guard_item.get("source") or "")
+            try:
+                current = _file_fingerprint(source_text)
                 with connect_db() as conn:
                     prev = conn.execute(
                         "select fingerprint from _job_file_guards where job_id = ? and step_index = ?",
-                        (job_id, step_index),
+                        (guard_job_id, guard_step_index),
                     ).fetchone()
-                if prev and prev["fingerprint"] == current:
-                    guard_skip = True
-                    guard_reason = f"源文件无更新（{guard_item['source']}），作业已跳过"
-                    break
-                guard_item["fingerprint"] = current
-        except Exception as exc:
-            # 指纹计算失败（如路径暂不可达）不阻塞作业，仅提示
-            guard_reason = ""
+            except Exception as exc:
+                # 按守卫逐条兜底（P2-1）：上一轮用 try 包住整个 for，第一条守卫的路径暂时
+                # 不可达就会中断循环 —— 后面的守卫拿不到指纹、成功时也写不了基线，
+                # 而且 guard_reason 被清空、静默无日志，与"不静默"的改法自相矛盾。
+                # 现在：失败只影响这一条，其余守卫照常评估。
+                # 判定方向：路径不可达 = 无法证明"没有新内容" → 按"有更新"处理并执行
+                # （宁可多跑一次也不能把新数据静默漏掉）；真正的坏路径会在导入步骤里
+                # 报出明确错误，原因写进 guard_notes 呈现给用户。
+                guard_notes.append(f"{source_text}（{exc}）")
+                guard_changed.append(source_text)
+                continue
+            if prev is not None and str(prev["fingerprint"]) == current:
+                guard_unchanged.append(source_text)
+                # 该源文件与基线一致 → 它对应的导入步骤本轮不重跑（步骤级跳过）
+                guard_unchanged_keys.add((guard_job_id, guard_step_index))
+            else:
+                # prev is None：无基线（首次运行 / 新增守卫）必须视为"有更新"，
+                # 否则第一次就跳过、作业永远不会执行。这层语义与上一轮一致，未改坏。
+                guard_changed.append(source_text)
+            # 只有成功算出指纹的守卫才写基线；评估失败的那条不写，也不阻断别人写。
+            guard_item["fingerprint"] = current
+        if not guard_changed:
+            # 全部守卫都与基线一致 = 没有一个源文件新增内容 → 才跳过整个作业
+            guard_skip = True
+            guard_reason = f"源文件均无更新（{'、'.join(guard_unchanged)}），作业已跳过"
 
-    run_id = uuid.uuid4().hex
-    started = dt.datetime.now()
-    with connect_db() as conn:
-        conn.execute(
-            "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, status) values (?, ?, ?, ?, ?, ?)",
-            (run_id, job_id, schedule_id, str(job["name"]), started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
-        )
+    # 运行日志里如实交代"这次为什么执行 / 哪些源文件驱动了执行"，
+    # 以及"哪条守卫没评估成功、已被当作有更新处理"——都是用户排查配置的依据。
+    guard_note_text = ""
+    if guard_notes:
+        guard_note_text = "\n（警告：以下源文件更新条件无法评估，本次已按「有更新」执行：" + "；".join(guard_notes) + "）"
+    elif guard_changed:
+        guard_note_text = "\n（本次触发执行：源文件有更新 — " + "、".join(dict.fromkeys(guard_changed)) + "）"
+
+    # 步骤级跳过的明细（作业照常执行，但源文件没变的导入步骤不重跑）：逐个列在运行日志里，
+    # 否则用户看到"本次触发执行"却不知道还有步骤被跳过了，会误以为数据被完整重导了一遍。
+    guard_skipped_steps: list[str] = []
 
     if guard_skip:
         ended = dt.datetime.now()
         message = f"作业跳过：{guard_reason}。"
         with connect_db() as conn:
             conn.execute(
-                "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
-                (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - started).total_seconds() * 1000), "跳过", message, run_id),
+                "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ?, outputs_json = ? where id = ?",
+                (
+                    ended.strftime("%Y-%m-%d %H:%M:%S"),
+                    int((ended - started).total_seconds() * 1000),
+                    "跳过",
+                    message,
+                    encode_run_outputs([]),
+                    run_id,
+                ),
             )
-        return {"id": run_id, "jobId": job_id, "status": "跳过", "message": message}
+        return {"id": run_id, "jobId": job_id, "status": "跳过", "message": message, "outputs": []}
 
     status = "成功"
     message = ""
@@ -4243,6 +4659,9 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     failed_steps = 0
     skipped_steps = sum(1 for step in job["steps"] if not step.get("enabled", True))
     last_error = ""
+    # 本次运行产出的文件绝对路径。顶层作业要把嵌套子作业的产物合并上来，
+    # 否则「立即运行」只回一句"作业执行成功"，用户根本看不到文件落在哪。
+    outputs: list[str] = []
     for index, step in enumerate(job["steps"], start=1):
         if not step.get("enabled", True):
             continue
@@ -4256,6 +4675,28 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 "insert into _job_run_steps (id, run_id, step_index, step_name, step_type, started_at, status) values (?, ?, ?, ?, ?, ?, ?)",
                 (step_id, run_id, index, str(step.get("name") or ""), str(step.get("type") or ""), step_started.strftime("%Y-%m-%d %H:%M:%S"), "运行中"),
             )
+        # ---- 步骤级跳过：本步骤的源文件与基线一致 → 本轮不重跑这个导入 ----
+        # 作业级已经判定"至少有一个源文件新增"所以本次要执行；但两源文件对应两步骤时，
+        # 没变的那个步骤重跑一次对 append 模式（生产 6b990e83 的小票导入）等于把整份快照
+        # 再追加一遍 → 目标表出现重复行。故只跳过"自己那条守卫未变化"的步骤。
+        # 步骤索引换算：_collect_file_guards 用 0 基 enumerate，本循环从 1 开始计数。
+        if (job_id, index - 1) in guard_unchanged_keys:
+            guard_path = str((guards.get((job_id, index - 1)) or {}).get("source") or "")
+            guard_skip_message = f"源文件无更新（{guard_path}），本步骤未重跑导入。"
+            guard_skipped_steps.append(f"{step.get('name') or index}（{guard_path}）")
+            step_ended = dt.datetime.now()
+            with connect_db() as conn:
+                conn.execute(
+                    "update _job_run_steps set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
+                    (
+                        step_ended.strftime("%Y-%m-%d %H:%M:%S"),
+                        int((step_ended - step_started).total_seconds() * 1000),
+                        "跳过",
+                        guard_skip_message,
+                        step_id,
+                    ),
+                )
+            continue
         try:
             step_type = str(step.get("type") or "")
             config = step.get("config") if isinstance(step.get("config"), dict) else {}
@@ -4268,22 +4709,42 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     f"成功写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行；"
                     f"数据库校验行数：{result['verifiedRows']}；{result['sqlStatus']}。"
                 )
+                if result.get("warning"):
+                    step_message += f"\n{result['warning']}"
             elif step_type == "export":
                 try:
                     result = run_export_job(config)
                 except Exception as exc:
                     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
                     raise ValueError(friendly_export_error(exc, fields)) from exc
-                step_message = f"导出 {len(result['files'])} 个文件，{result['rows']} 行。"
+                # result["files"] 已是落盘后的绝对路径，直接进日志，用户才能去目录里取文件
+                step_files = [str(item) for item in result["files"]]
+                outputs.extend(step_files)
+                step_message = format_export_step_message(step_files, int(result["rows"]))
             elif step_type == "query":
                 result = execute_query_step(config)
                 step_message = f"SQL 执行完成，影响/读取 {result['rows']} 行。"
             elif step_type == "job":
                 nested = str(config.get("jobId") or "")
                 nested_result = run_saved_job(nested, schedule_id, visited.copy())
-                if nested_result["status"] != "成功":
-                    raise ValueError(f"子作业执行失败：{nested_result['message']}")
-                step_message = f"子作业执行成功：{nested_result['message']}"
+                # 子作业的产物先冒泡到本层，成功失败都要：失败时子作业已落盘的半成品也属于
+                # 本次运行的产物，否则父 outputs 为空、父 message 却列着路径，两者自相矛盾（P3-C）。
+                nested_outputs = [str(item) for item in nested_result.get("outputs", [])]
+                outputs.extend(nested_outputs)
+                # 步骤日志只写子作业的结论句 + 失败原因：产物已经冒泡到本层、由顶层「产出文件」
+                # 块统一列一次，若把子作业整条 message（含它自己的「产出文件」块）原样嵌进来，
+                # 同一条 run 里就会出现 2 个表头、同一路径 2 次（P1-A）。
+                nested_message = str(nested_result["message"])
+                if nested_result["status"] == "跳过":
+                    # 子作业因"源文件无更新"等执行条件跳过，这不是故障。若按失败抛出，
+                    # 用户会在"确实没有新数据"时看到一条红色失败记录，误判成系统坏了。
+                    step_message = f"子作业已跳过：{strip_outputs_block(nested_message, nested_outputs)}"
+                elif nested_result["status"] != "成功":
+                    raise ValueError(
+                        f"子作业执行失败：{strip_outputs_block(nested_message, nested_outputs)}"
+                    )
+                else:
+                    step_message = f"子作业执行成功：{nested_message.splitlines()[0] if nested_message else ''}"
             elif step_type == "sync":
                 raise ValueError("同步模块尚未开放。")
             else:
@@ -4306,27 +4767,55 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 )
         if should_stop:
             break
+    # 去重后再拼 message：同一文件可能被父子作业各收集一次（产物冒泡 + 子作业自身步骤），
+    # 不去重会出现「产出文件（2 个）」但实际只有 1 个文件
+    outputs = dedupe_export_outputs(outputs)
     ended = dt.datetime.now()
     if status == "成功":
         message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
-        # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）
+        if outputs:
+            # 逐行列出产物绝对路径（前端按行渲染），用户点「立即运行」后一眼能看到文件在哪
+            message += format_outputs_block(outputs)
+            if any(is_server_default_export(item) for item in outputs):
+                # 顶层反馈也要提示，否则用户只看到一条服务端 exports 路径，意识不到是配置漏填
+                message += "\n（警告：有文件写入服务端默认目录，说明对应导出步骤未配置目标文件夹）"
+        # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）。
+        # 基线写在"守卫所属的那个作业"的 job_id 下（嵌套子作业用自己的 id），
+        # 与 _guard_summary 的复合键保持一致，否则父子作业会互相覆盖基线。
         if guards:
-            for step_index, guard_item in guards.items():
+            for (guard_job_id, guard_step_index), guard_item in guards.items():
                 fp = guard_item.get("fingerprint")
                 if fp:
                     with connect_db() as conn:
                         conn.execute(
                             "insert or replace into _job_file_guards (job_id, step_index, fingerprint, source_text, updated_at) values (?, ?, ?, ?, ?)",
-                            (job_id, step_index, fp, guard_item.get("source", ""), now_text()),
+                            (guard_job_id, guard_step_index, fp, guard_item.get("source", ""), now_text()),
                         )
     else:
         message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
+        if outputs:
+            # 失败前已落盘的产物也要报出来：2 步作业第 1 步导出成功、第 2 步失败时，
+            # 只给"最后错误"用户不知道半成品在哪，只能重跑一遍
+            message += format_outputs_block(outputs, failed=True)
+    # 守卫结论统一追加在最后（成功/失败两个出口都要）：用户需要知道这次是被哪个源文件
+    # 的新增内容驱动执行的，以及有没有哪条守卫没能评估成功。
+    if guard_note_text:
+        message += guard_note_text
+    if guard_skipped_steps:
+        message += "\n（以下步骤本轮未重跑：源文件无更新 — " + "、".join(guard_skipped_steps) + "）"
     with connect_db() as conn:
         conn.execute(
-            "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ? where id = ?",
-            (ended.strftime("%Y-%m-%d %H:%M:%S"), int((ended - started).total_seconds() * 1000), status, message, run_id),
+            "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ?, outputs_json = ? where id = ?",
+            (
+                ended.strftime("%Y-%m-%d %H:%M:%S"),
+                int((ended - started).total_seconds() * 1000),
+                status,
+                message,
+                encode_run_outputs(outputs),
+                run_id,
+            ),
         )
-    return {"id": run_id, "jobId": job_id, "status": status, "message": message}
+    return {"id": run_id, "jobId": job_id, "status": status, "message": message, "outputs": outputs}
 
 
 def prune_job_logs(retention_days: int) -> None:
@@ -4383,6 +4872,276 @@ def recover_interrupted_runs() -> int:
     return recovered
 
 
+# ---------------------------------------------------------------------------
+# 执行前预检（precheck）
+#
+# 用户诉求原文：「每轮定时任务执行前 5 分钟做一次检查，有新增就执行，没有新增就跳过整个作业。」
+# ——注意语义是**到期前做一次检查**，不是"执行时才检查"、也不是"持续轮询"。
+# 所以流程是：到期前 N 分钟 → dispatch_prechecks 起线程跑 precheck_schedule → 结论落
+# _schedule_prechecks(本轮 due_at) → 到期后 dispatch_due_schedules 触发 run_schedule_once
+# → 读本轮预检结论 → 有新增执行 / 无新增整轮跳过。
+# ---------------------------------------------------------------------------
+
+# 正在跑预检的 (schedule_id, due_at)：防止 5 秒一次的调度循环在预检线程还没写完记录前
+# 重复起线程（同一轮预检两次没有意义，反而会把文件 IO 翻倍）。
+_PRECHECK_INFLIGHT_LOCK = threading.Lock()
+_PRECHECK_INFLIGHT: set[str] = set()
+
+
+def precheck_schedule(schedule_id: str) -> dict[str, object]:
+    """定时任务「执行前预检」：判断本轮到期时，源文件相对基线【有没有新增】。
+
+    只检查、不执行，且**严禁写回 _job_file_guards**：
+      - _job_file_guards 是执行期「当前指纹 vs 基线」比对的另一端（run_saved_job 在
+        作业整体成功后才更新它）。预检若顺手把它刷成当前指纹，执行期两边就变成同一个
+        值 → 永远判定"无变化" → 作业从此静默卡死、新数据一条都进不来。
+        这是"预检改写基线"类改法最典型的翻车方式，这里钉死：预检只读基线。
+      - 同理，预检也不会写 _job_runs（跳过/执行的记录由执行期统一落）。
+
+    量词：has_new = any(changed)。**绝不能写成 all**：
+    生产作业通常有多个源文件（如会员小票.xlsx + 权益核销.xlsx），外部系统是分别更新的，
+    "只变一个"才是常态。写成 all 就等于"所有源文件同时变化才执行" → 常态被判成"无新增"
+    → 整轮跳过；而跳过又不写基线 → 下一轮继续跳过 → 作业静默卡死（P0-1 线上已踩过一次）。
+
+    失败方向一律保守（宁可多跑一次，不能漏一轮数据）：
+      - 单条守卫评估失败（路径不可达等）→ 该条按"有更新"并记入 notes（与执行期一致）；
+      - 一条守卫都没有 → 按"有新增"；
+      - 整个函数异常 → 不落记录，执行期找不到预检记录即按现状执行。
+    """
+    try:
+        with connect_db() as conn:
+            row = conn.execute("select * from _schedules where id = ?", (schedule_id,)).fetchone()
+        if not row:
+            raise ValueError(f"定时任务不存在：{schedule_id}")
+        schedule = row_to_schedule(row)
+        due_at = str(schedule["nextRunAt"] or "").strip()
+        if not due_at:
+            raise ValueError(f"定时任务 {schedule_id} 没有到期时间（next_run_at 为空），无法预检")
+        job_id = str(schedule["jobId"] or "").strip()
+        with connect_db() as conn:
+            job_row = conn.execute("select * from _jobs where id = ?", (job_id,)).fetchone()
+        if not job_row:
+            raise ValueError(f"定时任务 {schedule_id} 引用的作业不存在：{job_id}")
+        job = row_to_job(job_row)
+
+        guards = _guard_summary(job)
+        items: list[dict[str, object]] = []
+        notes: list[str] = []
+        changed_any = False
+        for (guard_job_id, guard_step_index), guard_item in guards.items():
+            source = str(guard_item.get("source") or "")
+            try:
+                current = _file_fingerprint(source)
+                with connect_db() as conn:
+                    prev = conn.execute(
+                        "select fingerprint from _job_file_guards where job_id = ? and step_index = ?",
+                        (guard_job_id, guard_step_index),
+                    ).fetchone()
+            except Exception as exc:
+                # 与执行期同一条原则（P2-1）：单条守卫评估不出来 = 无法证明"没有新内容"
+                # → 按"有更新"，并把原因写进 notes；不中断其他守卫的评估。
+                notes.append(f"{source}（{exc}）")
+                changed_any = True
+                items.append({"source": source, "fingerprint": "", "changed": True})
+                continue
+            changed = prev is None or str(prev["fingerprint"]) != current
+            items.append({"source": source, "fingerprint": current, "changed": changed})
+            if changed:
+                changed_any = True
+        if not guards:
+            has_new = 1
+            reason = "未配置文件更新条件，按有新增处理"
+        elif changed_any:
+            has_new = 1
+            reason = "源文件有更新"
+        else:
+            has_new = 0
+            reason = "源文件均无更新"
+        detail = {"items": items, "reason": reason, "notes": notes}
+        checked_at = now_text()
+        with connect_db() as conn:
+            conn.execute(
+                """
+                insert or replace into _schedule_prechecks (schedule_id, due_at, checked_at, has_new, detail_json)
+                values (?, ?, ?, ?, ?)
+                """,
+                (schedule_id, due_at, checked_at, has_new, json.dumps(detail, ensure_ascii=False)),
+            )
+        return {
+            "scheduleId": schedule_id,
+            "dueAt": due_at,
+            "checkedAt": checked_at,
+            "hasNew": has_new,
+            "reason": reason,
+            "items": items,
+            "notes": notes,
+        }
+    except Exception as exc:
+        # 预检失败绝不能阻止任务执行：不落记录 → 执行期按"无预检记录 = 保守执行"处理。
+        print(f"[precheck] 定时任务 {schedule_id} 预检失败，本轮按「有新增」执行：{exc}", flush=True)
+        return {
+            "scheduleId": schedule_id,
+            "dueAt": "",
+            "checkedAt": now_text(),
+            "hasNew": 1,
+            "reason": f"预检失败，按有新增处理：{exc}",
+            "items": [],
+            "notes": [str(exc)],
+            "failed": True,
+        }
+
+
+def _load_precheck(schedule_id: str, due_at: str) -> dict[str, object] | None:
+    """读取本轮（schedule_id, due_at）的预检结论；没有记录返回 None（= 保守执行）。"""
+    if not due_at:
+        return None
+    with connect_db() as conn:
+        row = conn.execute(
+            "select * from _schedule_prechecks where schedule_id = ? and due_at = ?",
+            (schedule_id, due_at),
+        ).fetchone()
+    if not row:
+        return None
+    try:
+        detail = json.loads(row["detail_json"] or "{}")
+    except (TypeError, ValueError):
+        detail = {}
+    if not isinstance(detail, dict):
+        detail = {}
+    return {
+        "scheduleId": str(row["schedule_id"]),
+        "dueAt": str(row["due_at"]),
+        "checkedAt": str(row["checked_at"]),
+        "hasNew": int(row["has_new"] or 0),
+        "detail": detail,
+    }
+
+
+def _verify_precheck_unchanged(detail: dict[str, object]) -> tuple[bool, str]:
+    """预检结论复核：按 detail 里记录的指纹重算当前指纹，全部一致才确认"仍无新增"。
+
+    为什么要复核：预检在到期前 5 分钟做，执行在 5 分钟后。这 5 分钟里源文件完全可能又被
+    外部系统更新（预检判"无新增"之后来的新数据）。若只看预检结论就跳过，这一轮的新数据要
+    等到**下一轮**才进库——用户以为是"5 分钟延迟"，实际是丢了一整轮。
+    任一文件对不上就取消跳过、正常执行，并把原因报出来。
+    """
+    items = detail.get("items") if isinstance(detail.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        source = str(item.get("source") or "")
+        recorded = str(item.get("fingerprint") or "")
+        if not source or not recorded:
+            # 预检时就没算出指纹的那条（评估失败）已按"有更新"处理，不会走到跳过分支，
+            # 这里即便出现也不该凭空认定"一致"。
+            continue
+        try:
+            current = _file_fingerprint(source)
+        except Exception as exc:
+            return False, f"{source} 复核失败（{exc}）"
+        if current != recorded:
+            return False, f"{source} 在预检之后又发生变化"
+    return True, ""
+
+
+def _delete_precheck(schedule_id: str, due_at: str) -> None:
+    """本轮预检记录用完即删。
+
+    不删的话 5 分钟一轮的作业每天会在 _schedule_prechecks 堆 288 条垃圾记录，
+    而且 (schedule_id, due_at) 主键永不复用，纯属空间泄漏。
+    """
+    if not due_at:
+        return
+    with connect_db() as conn:
+        conn.execute("delete from _schedule_prechecks where schedule_id = ? and due_at = ?", (schedule_id, due_at))
+
+
+def _insert_skipped_run(schedule: dict[str, object], precheck: dict[str, object]) -> None:
+    """整轮跳过时补一条 _job_runs 记录（status="跳过"）。
+
+    为什么要留痕：定时任务每几分钟一轮，跳过若不留记录，用户看到的会是"上次运行：3 小时前"，
+    无法区分"作业挂了"和"确实没有新数据"，只能靠猜。
+    """
+    checked_at = str(precheck.get("checkedAt") or "")
+    hhmm = checked_at[11:16] if len(checked_at) >= 16 else ""
+    detail = precheck.get("detail") if isinstance(precheck.get("detail"), dict) else {}
+    reason = str(detail.get("reason") or "源文件均无更新")
+    message = f"预检（{hhmm or '预检'}）：{reason}，本轮跳过"
+    now = now_text()
+    with connect_db() as conn:
+        conn.execute(
+            """
+            insert into _job_runs (id, job_id, schedule_id, job_name, started_at, ended_at, elapsed_ms, status, message)
+            values (?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                uuid.uuid4().hex,
+                str(schedule["jobId"]),
+                str(schedule["id"]),
+                str(schedule["name"]),
+                now,
+                now,
+                "跳过",
+                message,
+            ),
+        )
+
+
+def _append_run_message(run_id: str, extra: str) -> None:
+    """给已落库的运行记录追加一段说明（用于"取消跳过"这类执行期补充信息）。"""
+    if not run_id or not extra:
+        return
+    with connect_db() as conn:
+        conn.execute("update _job_runs set message = message || ? where id = ?", (extra, run_id))
+
+
+def dispatch_prechecks() -> None:
+    """扫描即将到期的计划，在到期前 precheck_minutes 分钟内触发一次预检（每轮只做一次）。
+
+    与 dispatch_due_schedules 并列由 scheduler_loop 每 5 秒调用一次：
+      - 已过点（now >= due）的不在这里处理，交给 dispatch_due_schedules 正常执行；
+      - 本轮已有 (schedule_id, due_at) 预检记录 → 跳过（幂等，避免每 5 秒重复检查文件）；
+      - 预检在 daemon 线程里跑，不阻塞调度循环。
+    """
+    now = app_now()
+    with connect_db() as conn:
+        rows = conn.execute(
+            "select * from _schedules where enabled = 1 and running = 0 and next_run_at != '' and precheck_minutes > 0"
+        ).fetchall()
+    for row in rows:
+        schedule = row_to_schedule(row)
+        schedule_id = str(schedule["id"])
+        due = parse_datetime(str(schedule["nextRunAt"]))
+        if due is None or now >= due:
+            continue
+        minutes = _row_int(row, "precheck_minutes", 5)
+        if minutes <= 0 or (due - now) > dt.timedelta(minutes=minutes):
+            continue
+        due_at = str(schedule["nextRunAt"])
+        with connect_db() as conn:
+            done = conn.execute(
+                "select 1 from _schedule_prechecks where schedule_id = ? and due_at = ?",
+                (schedule_id, due_at),
+            ).fetchone()
+        if done:
+            continue
+        key = f"{schedule_id}|{due_at}"
+        with _PRECHECK_INFLIGHT_LOCK:
+            if key in _PRECHECK_INFLIGHT:
+                continue
+            _PRECHECK_INFLIGHT.add(key)
+        threading.Thread(target=_run_precheck_thread, args=(schedule_id, key), daemon=True).start()
+
+
+def _run_precheck_thread(schedule_id: str, key: str) -> None:
+    """预检线程体：跑完必须把 in-flight 标记摘掉，否则该轮之后再也预检不了。"""
+    try:
+        precheck_schedule(schedule_id)
+    finally:
+        with _PRECHECK_INFLIGHT_LOCK:
+            _PRECHECK_INFLIGHT.discard(key)
+
+
 def dispatch_due_schedules() -> None:
     now = now_text()
     with connect_db() as conn:
@@ -4402,18 +5161,56 @@ def run_schedule_once(schedule_id: str) -> None:
     if not row:
         return
     schedule = row_to_schedule(row)
+    # 本轮到期时间必须在算 next_run **之前**取：下面会把 _schedules.next_run_at 覆盖成
+    # 下一轮时间，而预检记录以 (schedule_id, 本轮 next_run_at) 为主键，取晚了就查不到本轮结论。
+    due_at = str(schedule["nextRunAt"] or "").strip()
+    # 无预检记录（服务在这 5 分钟内才启动 / 预检异常 / precheck_minutes=0）→ 保守执行，
+    # 行为与引入预检之前完全一致，不会因为"没检查过"就把作业跳掉。
+    precheck = _load_precheck(schedule_id, due_at)
     status = "成功"
+    cancel_note = ""
     try:
         prune_job_logs(int(schedule["logRetentionDays"]))
-        result = run_saved_job(str(schedule["jobId"]), schedule_id)
-        status = str(result["status"])
+        should_skip = False
+        skip_reason = ""
+        if precheck is not None and int(precheck["hasNew"]) == 0:
+            still_unchanged, note = _verify_precheck_unchanged(precheck["detail"])  # type: ignore[arg-type]
+            if still_unchanged:
+                should_skip = True
+                detail = precheck["detail"] if isinstance(precheck["detail"], dict) else {}
+                skip_reason = str(detail.get("reason") or "源文件均无更新")
+            else:
+                # 双校验未通过：预检之后、执行之前文件又变了 → 取消跳过，正常执行
+                cancel_note = note
+                print(
+                    f"[precheck] 定时任务 {schedule_id} 本轮原判定跳过，但复核发现源文件已变化（{note}），取消跳过改为执行。",
+                    flush=True,
+                )
+        if should_skip:
+            status = "跳过"
+            print(f"[precheck] 定时任务 {schedule_id} 本轮跳过（{skip_reason}）。", flush=True)
+            _insert_skipped_run(schedule, precheck)  # type: ignore[arg-type]
+        else:
+            result = run_saved_job(str(schedule["jobId"]), schedule_id)
+            status = str(result["status"])
+            if cancel_note:
+                _append_run_message(
+                    str(result.get("id") or ""),
+                    f"\n（预检判定无新增本可跳过，但复核发现源文件在预检后又发生变化（{cancel_note}），已取消跳过并执行本轮作业。）",
+                )
     except Exception as exc:
         status = "失败"
-        with connect_db() as conn:
-            conn.execute(
-                "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, ended_at, status, message) values (?, ?, ?, ?, ?, ?, ?, ?)",
-                (uuid.uuid4().hex, str(schedule["jobId"]), schedule_id, str(schedule["name"]), now_text(), now_text(), "失败", str(exc)),
-            )
+        # run_saved_job 已经在自己的 run 记录里写过失败原因（P1-2：先落记录再评估前置条件，
+        # 手动「立即运行」路径也才查得到）——那种情况下不再补写，避免同一次失败出现两条记录。
+        # 其余异常（例如作业不存在、run 记录都还没建起来）仍走兜底，保证定时路径一定有记录。
+        if not getattr(exc, "run_id", ""):
+            with connect_db() as conn:
+                conn.execute(
+                    "insert into _job_runs (id, job_id, schedule_id, job_name, started_at, ended_at, status, message) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (uuid.uuid4().hex, str(schedule["jobId"]), schedule_id, str(schedule["name"]), now_text(), now_text(), "失败", str(exc)),
+                )
+    # 无论跳过还是执行，本轮预检结论都已消费完，删掉避免堆积
+    _delete_precheck(schedule_id, due_at)
     rule = schedule["rule"] if isinstance(schedule["rule"], dict) else {}
     next_run = compute_next_run(rule, str(schedule["startAt"]), str(schedule["endAt"]), now_text())
     enabled = 1 if next_run else 0
@@ -4426,6 +5223,12 @@ def run_schedule_once(schedule_id: str) -> None:
 
 def scheduler_loop(stop_event: threading.Event) -> None:
     while not stop_event.is_set():
+        # 先预检（到期前 N 分钟），再按点派发执行 —— 顺序不能反：
+        # 反了会先执行、后预检，本轮的预检结论就永远差一轮。
+        try:
+            dispatch_prechecks()
+        except Exception:
+            pass
         try:
             dispatch_due_schedules()
         except Exception:
@@ -4644,6 +5447,9 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
             while target_table_exists(conn, table_name, fields):
                 table_name = sanitize_identifier(f"{base}_{index}", "import_table")
                 index += 1
+
+        # 字段匹配「按顺序」：目标表已存在时按列序号对齐（默认 name 匹配不受影响）
+        columns, match_keys = align_columns_by_position(conn, table_name, columns, match_keys, fields)
 
         cp_key = checkpoint_key(uploaded, table_name, fields)
         resume_offset = get_checkpoint(cp_key) if parse_bool(fields, "resumeImport", False) and mode in {"append", "rebuild", "overwrite"} else 0
@@ -5574,7 +6380,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 steps = conn.execute(f"select * from _job_run_steps where run_id in ({placeholders}) order by step_index", run_ids).fetchall()
                 for step in steps:
                     steps_by_run[step["run_id"]].append(dict(step))
-        json_response(self, {"ok": True, "runs": [{**dict(row), "steps": steps_by_run.get(row["id"], [])} for row in runs]})
+        runs_payload: list[dict[str, object]] = []
+        for row in runs:
+            item = dict(row)
+            # P3-B：把结构化产物清单直接交给前端，前端不再用正则从 message 文本里猜路径。
+            # outputs_json 是内部存储列，替换成解析好的 outputs 列表后不外泄（历史记录为空 → []）。
+            item["outputs"] = decode_run_outputs(item.pop("outputs_json", ""))
+            item["steps"] = steps_by_run.get(row["id"], [])
+            runs_payload.append(item)
+        json_response(self, {"ok": True, "runs": runs_payload})
 
     def handle_queries(self) -> None:
         with connect_db() as conn:
@@ -5740,6 +6554,13 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     ensure_dirs()
+    # 启动即把三个运行数据落点打出来：定时任务无人值守跑，出问题时第一件事就是
+    # 确认进程到底读的哪个 imports.db —— 数据目录一旦分裂成两份，症状是"数据没更新"
+    # 而不是报错，极难排查。这里让路径一眼可见。
+    print(f"数据目录 DATA_DIR      = {DATA}", flush=True)
+    print(f"上传目录 UPLOADS_DIR   = {UPLOADS}", flush=True)
+    print(f"导出目录 EXPORTS_DIR   = {EXPORTS}", flush=True)
+    print(f"元数据库 DB_PATH       = {DB_PATH}", flush=True)
     try:
         recover_interrupted_runs()
     except Exception as exc:  # pragma: no cover - defensive

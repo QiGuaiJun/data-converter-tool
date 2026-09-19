@@ -1,0 +1,200 @@
+[
+  {
+    "path": "/",
+    "label": "导入",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 11,
+      "bodyTextLen": 194,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API DOC 操作手册 ? 咨询建议反馈 功能 DB",
+      "scripts": 3,
+      "stylesheets": 3,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "导入功能 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/export.html",
+    "label": "导出",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 11,
+      "bodyTextLen": 234,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API DOC 操作手册 ? 咨询建议反馈 功能 DB",
+      "scripts": 3,
+      "stylesheets": 3,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "导出功能 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/connections.html",
+    "label": "连接",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 9,
+      "bodyTextLen": 1081,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API 功能 DB 新建连接 IN 导入 OUT 导出",
+      "scripts": 2,
+      "stylesheets": 3,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "新建数据库连接 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/query.html",
+    "label": "查询",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 9,
+      "bodyTextLen": 424,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API 功能 DB 新建连接 IN 导入 OUT 导出",
+      "scripts": 3,
+      "stylesheets": 3,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "SQL 查询 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/tables.html",
+    "label": "表",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 9,
+      "bodyTextLen": 470,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API 功能 DB 新建连接 IN 导入 OUT 导出",
+      "scripts": 3,
+      "stylesheets": 3,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "表管理 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/jobs.html",
+    "label": "作业",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 9,
+      "bodyTextLen": 585,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API 功能 DB 新建连接 IN 导入 OUT 导出",
+      "scripts": 2,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "作业 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/schedule.html",
+    "label": "定时任务",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 9,
+      "bodyTextLen": 609,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API 功能 DB 新建连接 IN 导入 OUT 导出",
+      "scripts": 2,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "定时任务 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/sync.html",
+    "label": "同步",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 11,
+      "bodyTextLen": 290,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API DOC 操作手册 ? 咨询建议反馈 功能 DB",
+      "scripts": 0,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "同步 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/api.html",
+    "label": "API",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 11,
+      "bodyTextLen": 281,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API DOC 操作手册 ? 咨询建议反馈 功能 DB",
+      "scripts": 0,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "API - 数据导表工具"
+    }
+  },
+  {
+    "path": "/feedback.html",
+    "label": "反馈",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 11,
+      "bodyTextLen": 270,
+      "bodyTextHead": "DB 新建连接 IN 导入 OUT 导出 SYNC 同步 SQL 查询 TAB 表 JOB 作业 TIME 定时任务 API API DOC 操作手册 ? 咨询建议反馈 功能 DB",
+      "scripts": 0,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "咨询建议反馈 - 数据导表工具"
+    }
+  },
+  {
+    "path": "/docs.html",
+    "label": "操作手册",
+    "pageErrors": [],
+    "consoleErrors": [],
+    "failedReqs": [],
+    "badResponses": [],
+    "dom": {
+      "ribbonCount": 0,
+      "bodyTextLen": 1235,
+      "bodyTextHead": "数据导表工具操作手册 帮助您快速掌握数据导入、导出、查询、作业与定时任务等核心功能 10+ 功能模块 9 操作指南 5 核心流程 1套 常见问题合集 M 数据导表工具 操作手册 快",
+      "scripts": 0,
+      "stylesheets": 2,
+      "emptySheets": 0,
+      "themeLoaded": true,
+      "title": "操作手册 - 数据导表工具"
+    }
+  }
+]

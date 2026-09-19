@@ -1,0 +1,713 @@
+{
+  "generatedAt": "2026-09-19 12:48:42",
+  "scope": "C 层（M0/M1/M2/M3 · 可机器判定部分）",
+  "isolation": {
+    "dataDir": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-20260919-fix1\\data",
+    "uploadsDir": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-20260919-fix1\\uploads",
+    "exportsDir": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-20260919-fix1\\exports",
+    "ports": [
+      51979,
+      51980
+    ],
+    "touchProduction": false
+  },
+  "elapsedSeconds": 40.0,
+  "aggregate": {
+    "pass": 110,
+    "fail": 0,
+    "manual": 5,
+    "total": 115
+  },
+  "results": [
+    {
+      "id": "M0-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "默认配置输出匹配=是；日志尾部: Import prototype running at http://127.0.0.1:8765"
+    },
+    {
+      "id": "M0-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HOST=127.0.0.1 PORT=51979 启动成功，端口可连且 /api/ping=200"
+    },
+    {
+      "id": "M0-005",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 {\"ok\": true, \"appVersion\": \"1.4.0\", \"version\": \"1.4.0\"}"
+    },
+    {
+      "id": "M0-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 {\"ok\": true, \"appVersion\": \"1.4.0\", \"version\": \"1.4.0\"}"
+    },
+    {
+      "id": "M0-007",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "字段齐全=True writeTestOk=True databaseExists=True"
+    },
+    {
+      "id": "M0-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "scheduler_loop 内含 dispatch_prechecks+dispatch_due_schedules 且周期 stop_event.wait(5) = True"
+    },
+    {
+      "id": "M0-010a",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "启动后（尚无加密调用）.secret_key 尚未生成（惰性生成）= True"
+    },
+    {
+      "id": "M0-003",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "不带 Auth 头访问 /api/meta -> HTTP 401（期望 401）"
+    },
+    {
+      "id": "M0-004",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "带正确 Basic Auth -> HTTP 200 {\n  \"ok\": true,\n  \"appVersion\": \"1.4.0\",\n  \"version\": \"1.4.0\"\n}"
+    },
+    {
+      "id": "M2-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 columns=['name', 'amount', 'city'] totalRows=3 columnTypes={'name': 'text', 'amount': 'integer', 'city': 'text'} warnings=[]"
+    },
+    {
+      "id": "M2-044",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 summary={\"totalFiles\": 1, \"successFiles\": 1, \"failedFiles\": 0, \"skippedFiles\": 0, \"rowsRead\": 3, \"rowsWritten\": 3, \"rowsUpdated\": 0, \"rowsSkipped\": 0} failures=[]"
+    },
+    {
+      "id": "M2-066",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 表数=1 含 export_people=True"
+    },
+    {
+      "id": "M2-059",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 日志条数=1"
+    },
+    {
+      "id": "M2-007",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 sourcePath 预览 totalRows=3 columns=['name', 'amount', 'city']"
+    },
+    {
+      "id": "M1-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 连接数=0 明文密码泄漏=无 字段=[]"
+    },
+    {
+      "id": "M1-004",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 新建连接 id=3cb687248c284236aef331288b830418"
+    },
+    {
+      "id": "M1-004b",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "库中密码列前缀=fernet:"
+    },
+    {
+      "id": "M1-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 用已存密码解密测试 -> ok=True version=8.0.44 databases=['dc_p2_test', 'lcdp_fe'] 系统库混入=无"
+    },
+    {
+      "id": "M0-010b",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "发生加密调用后 .secret_key 存在=True 长度=44（期望 44）"
+    },
+    {
+      "id": "M2-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 sheets=['SheetA', 'SheetB'] selectedSheet=SheetA columns=['code']"
+    },
+    {
+      "id": "M2-061",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 path=D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-20260919-fix1\\data\\task_sources\\84379f2df37147a581249a5dd12bae60\\task.csv"
+    },
+    {
+      "id": "M2-062",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 保存任务 id=ce1b0a3a734548d1a7fbf4d65f773a1c"
+    },
+    {
+      "id": "M1-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 删除后剩余连接=0"
+    },
+    {
+      "id": "M2-060",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "该接口由服务进程弹系统原生文件选择框，自动化执行会阻塞 HTTP 线程，转人工实操"
+    },
+    {
+      "id": "M3-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 源数=1 export_people={\"name\": \"export_people\", \"type\": \"table\", \"comment\": \"\", \"rows\": 3, \"rowsApproximate\": false}"
+    },
+    {
+      "id": "M3-008",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 sourceName=export_people columns=['name', 'amount', 'city'] rows=[['Alice', '10', '北京'], ['Bob', '20', '上海'], ['Carol', '30', '北京']]"
+    },
+    {
+      "id": "M3-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 files=['D:\\\\ProjectDevelopment\\\\data-converter-tool\\\\acceptance\\\\replay-20260919-fix1\\\\exports\\\\m3_run.xlsx'] rows=3 elapsedMs=15"
+    },
+    {
+      "id": "M3-010",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 ext=xlsx rows=3 files=1 落盘=是 首行=''"
+    },
+    {
+      "id": "M3-011",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 ext=csv rows=3 files=1 落盘=是 首行='name,amount,city\\nAlice,10,北京\\nBob,20,上海\\nC'"
+    },
+    {
+      "id": "M3-012",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 ext=json rows=3 files=1 落盘=是 首行=''"
+    },
+    {
+      "id": "M3-013",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 ext=xml rows=3 files=1 落盘=是 首行='<?xml version=\"1.0\" encoding=\"utf-8\"?>\\n<'"
+    },
+    {
+      "id": "M3-014",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 ext=txt rows=3 files=1 落盘=是 首行=''"
+    },
+    {
+      "id": "M3-015",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 splitField=city files=['m3_split_北京.json', 'm3_split_上海.json'] rows=3"
+    },
+    {
+      "id": "M3-017",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 CSV 首行='name,amount'"
+    },
+    {
+      "id": "M3-018",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 whereClause='amount >= 20' rows=2"
+    },
+    {
+      "id": "M3-030",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 前两行=['name;amount;city', 'Alice;10;北京']"
+    },
+    {
+      "id": "M3-037",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 产物 stem=['prem3_pssuf']"
+    },
+    {
+      "id": "M3-038",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 batchRows=2 files=['m3_batch_001.csv', 'm3_batch_002.csv'] rows=3"
+    },
+    {
+      "id": "M3-039",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 200 首行='name,amount,city,exported_at'"
+    },
+    {
+      "id": "M3-032",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP 400（期望 4xx 拒绝） body={\"ok\": false, \"error\": \"该路径不在允许下载的目录内。\"}"
+    },
+    {
+      "id": "M3-035",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "本机为 Windows，'非 Windows 返回 501' 分支无法在当前环境复现（须在 Linux/容器验证）"
+    },
+    {
+      "id": "M3-033",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "需人工在桌面实操观察原生文件夹对话框；自动化点击会阻塞 HTTP 线程，故不自动执行"
+    },
+    {
+      "id": "M3-034",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "同上（另存为对话框）"
+    },
+    {
+      "id": "M2-005",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "DBF 预览 HTTP=200 columns=['NAME', 'AMOUNT'] totalRows=2"
+    },
+    {
+      "id": "M2-006",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "解密分支存在（server.py L1048-1052 excelPassword → msoffcrypto.OfficeFile）；但沙箱内无带密码 xlsx 夹具（本机 403 个 Office 文件中无一个加密文件），且自行构造 ECMA-376 加密容器风险高。转人工：提供一份密码已知的加密 xlsx 即可自动跑完"
+    },
+    {
+      "id": "M1-005",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "不填密码重存前后密文一致=True，前缀=fernet:"
+    },
+    {
+      "id": "M2-013",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rebuild 写 2 行 → overwrite 写 1 行，最终行数=1（期望 1，即被清空重写）"
+    },
+    {
+      "id": "M2-018",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "typeMode=text 建表列类型=['TEXT', 'TEXT']"
+    },
+    {
+      "id": "M2-030",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "输入含 1 空行 → 导入后 2 行（期望 2）"
+    },
+    {
+      "id": "M2-032",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "第二行 name 被上行补全 → ['A', 'A']（期望 ['A','A']）"
+    },
+    {
+      "id": "M2-035",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "空白单元格落库值=None（期望 None）"
+    },
+    {
+      "id": "M2-036",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "replaceTextFrom/To 生效 → val='yy'（期望 'yy'）"
+    },
+    {
+      "id": "M2-040",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "tablePrefix+tableSuffix 建表名含 pre_t_pfx_suf=True"
+    },
+    {
+      "id": "M2-041",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "tableRegex='T\\d+' 从 T2026_data.csv 提取 → 命中表=['t2026']"
+    },
+    {
+      "id": "M2-042",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "符号→下划线 建表名=['sym_bol']"
+    },
+    {
+      "id": "M2-043",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "首建t_dupmode=True；suffix→表=['t_dupmode', 't_dupmode_2']，t_dupmode_2.a=2；skip→rowsSkipped=1，表数不变=True"
+    },
+    {
+      "id": "M2-015",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "同名列追加(autoExpand=false) HTTP=200 行数 1→2；异名列追加 HTTP=400 err=目标表缺少字段：nm, amt"
+    },
+    {
+      "id": "M2-016",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "matchBy=order 异名列导入 HTTP=200 → 落到既有列 ['x', 'y'] 值=['7', '8']（期望 x=7,y=8）；matchBy=name HTTP=400（期望 400 缺少字段）；不传 matchBy HTTP=400（期望 400，默认行为未变）；目标表列数不足 HTTP=400 err=字段匹配设为「按顺序」，但目标表 t_match_short 只有 1 列（only），少于源文件的 2 列（p、q），"
+    },
+    {
+      "id": "M2-053",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "afterAllSql 建标记表 mark_after_all → 行数=1"
+    },
+    {
+      "id": "M2-055",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "deleteAfterSuccess 后源文件仍存在=False（期望 False）；HTTP=200；resp={'ok': True, 'tableName': 't_del', 'columns': ['a'], 'summary': {'totalFiles': 1, 'successFiles': 1, 'failedFiles': 0, 'skippedFiles': 0, 'rowsRead': 1, 'rowsWritten': 1, 'rowsUpda"
+    },
+    {
+      "id": "M2-056",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "disableLog=true 前后 _import_logs 行数 25 → 25（应相等）"
+    },
+    {
+      "id": "M3-019",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "exportMode=sheet → sheetnames=['First', 'Second']（期望 ['First','Second']）；data 模式 Second 行数=4"
+    },
+    {
+      "id": "M3-040",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "空表 + skipEmptyTable → files=[] rows=0（期望空列表 / 0）"
+    },
+    {
+      "id": "M3-041",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "beforeSql/afterSql 标记表行数=1 / 1"
+    },
+    {
+      "id": "M3-042",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "POST /api/jobs 存单步 export 任务 → id=46f8ce4f6cbb4b5f91105b24991d0f4d"
+    },
+    {
+      "id": "M3-044",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "GET /api/jobs 能加载到该导出任务=True"
+    },
+    {
+      "id": "M3-020",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "field→['name', 'amount', 'city']；none→['Alice', 10, '北京']（首行即数据）；SQLite 上 comment→['name', 'amount', 'city']（按设计回退列名）；MySQL 建表 HTTP=200 导出 HTTP=200 comment→['甲方编号', '乙方名称']"
+    },
+    {
+      "id": "M0-008",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "就绪=True 日志含[recover]=True 注入运行记录恢复后 status='失败' msg='进程异常中断，已自动恢复（上次执行未完成' 残留 running=1 计划=0｜[recover] 已恢复 0 个僵尸计划 / 1 条运行记录 / 0 条步骤记录（上次进程异常中断）。"
+    },
+    {
+      "id": "M1-003",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p3_19_test_connection_filters_system_databases\": \"PASSED\"}"
+    },
+    {
+      "id": "M1-012",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p3_19_test_connection_filters_system_databases\": \"PASSED\", \"test_p3_27_sqlite_import_time_value_and_no_deprecation\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-003",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_json_flat_basic\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-009",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-017",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-051",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_after_each_sql_runs_marker\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-057",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-004",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_xml_basic\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-010",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_custom_line_delimiter\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-011",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\", \"test_csv_update_mode\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-012",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_update_mode\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-014",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-019",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-020",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_excel_import_respects_column_filter\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-021",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-022",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_pinyin_table_and_fields\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-023",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-024",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-025",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p3_27_sqlite_import_time_value_and_no_deprecation\": \"PASSED\", \"test_p3_27_mysql_import_time_column_is_datetime\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-026",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_excel_second_sheet\": \"PASSED\", \"test_excel_single_sheet\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-027",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-029",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-031",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_csv_rebuild_writes_deduped_rows\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-033",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_date_columns\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-034",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-037",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_excel_all_sheets\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-038",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_pinyin_table_and_fields\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-039",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_final_rows_match_expected_transformations\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-045",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_12_run_import_batch_skips_unchanged_file\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-046",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_excel_all_sheets\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-047",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_resume_checkpoint\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-048",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_12_run_import_batch_skips_unchanged_file\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-049",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_12_fingerprint_stable_and_sensitive\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-050",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_12_file_key_includes_target_identity\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-052",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_after_each_sql_runs_marker\": \"PASSED\"}"
+    },
+    {
+      "id": "M2-054",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_query_export\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-002",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_7_sqlite_sources_are_precise\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-010",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_sqlite_exports\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-024",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_large_streaming_export\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-025",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_large_streaming_export\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-026",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_sqlite_exports\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-027",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_sqlite_exports\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-023",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_13_sqlite_unaffected_by_flag\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-031",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_chinese_filename_download_header\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-021",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_13_comment_as_filename_mysql\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-022",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_13_comment_as_filename_mysql\": \"PASSED\"}"
+    },
+    {
+      "id": "M3-003",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_p2_7_mysql_small_table_uses_exact_count\": \"PASSED\"}"
+    }
+  ]
+}

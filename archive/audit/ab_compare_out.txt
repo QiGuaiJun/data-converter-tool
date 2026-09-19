@@ -1,0 +1,17 @@
+SQL                                      旧逻辑(HEAD)        新逻辑(当前)          结论
+----------------------------------------------------------------------------------------------------
+select 1 as a                            通过               通过               
+-- 注释<LF>select 1 as a                   拒绝:只允许SELECT     通过               <== 缺陷已修复
+# 注释<LF>select 1 as a                    拒绝:只允许SELECT     通过               <== 缺陷已修复
+/* 注释 */ select 1 as a                   拒绝:只允许SELECT     通过               <== 缺陷已修复
+/* 注释 */<LF>select 1 as a                拒绝:只允许SELECT     通过               <== 缺陷已修复
+select ';' as a                          拒绝:只能一条          通过               <== 缺陷已修复
+select 1 /* a;b */ as a                  拒绝:只能一条          通过               <== 缺陷已修复
+select 1; -- tail                        拒绝:只能一条          通过               <== 缺陷已修复
+select 1;                                通过               通过               
+(select 1 as a)                          通过               通过               
+with t as (select 1 as a) select * fro   通过               通过               
+drop table x                             拒绝:只允许SELECT     拒绝:只允许SELECT     
+select 1; select 2                       拒绝:只能一条          拒绝:只能一条          
+
+旧逻辑误拒 / 新逻辑放行： 7 / 13

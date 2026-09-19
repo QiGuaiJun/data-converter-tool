@@ -1,0 +1,62 @@
+======================================================================
+1) 备份（VACUUM INTO，事务安全快照）
+======================================================================
+  备份路径: C:\Users\Administrator\WorkBuddy\2026-08-27-16-17-35\data-converter-tool\data\imports.db.bak_20260916_before_qa_tables_drop
+  备份大小: 606208 bytes
+  备份内表数: 16
+
+======================================================================
+2) 待删的 qa_* 表
+======================================================================
+  qa_excel              2 行  列: ['code']
+  qa_import             3 行  列: ['id', 'name', 'amount', 'dept', 'imported_at', 'source_name', 'batch']
+  qa_job_table         32 行  列: ['id', 'name']
+  qa_json               2 行  列: ['city', 'qty']
+
+======================================================================
+3) 执行 DROP
+======================================================================
+  已 drop: qa_excel
+  已 drop: qa_import
+  已 drop: qa_job_table
+  已 drop: qa_json
+
+======================================================================
+4) 复核
+======================================================================
+  剩余 qa_* 表: 无 OK
+  当前全部表 (12):
+     _db_connections                     3 行
+     _import_checkpoints                 0 行
+     _import_file_fingerprints           2 行
+     _import_logs                        4 行
+     _job_file_guards                    0 行
+     _job_run_steps                     34 行
+     _job_runs                          20 行
+     _jobs                               8 行
+     _saved_queries                      1 行
+     _schedules                          2 行
+     export_large_people             20000 行
+     export_people                       3 行
+
+  关键表行数核对：
+     _db_connections        3 行 OK
+     _import_logs           4 行 OK
+     _jobs                  8 行 OK
+     _schedules             2 行 OK
+     _saved_queries         1 行 OK
+
+======================================================================
+5) 回收旧备份（保留最新一份）
+======================================================================
+  imports.db.bak_20260916_before_qa5cleanup -> 已移除
+
+======================================================================
+6) data/ 最终状态
+======================================================================
+  .secret_key                                                  44
+  .storage-write-test                                          19
+  imports.db                                              3076096
+  imports.db.bak_20260916_before_qa_tables_drop            606208
+  linked_sources                                         23041804
+  task_sources                                           49853905

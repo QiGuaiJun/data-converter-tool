@@ -1,0 +1,58 @@
+--- 初始状态 ---
+{
+  "connOptions": [
+    "9c528bd1bafd4533b29be96c5ff2265b|bd-boundary-conn",
+    "90cf153f2aaa4c1c83f6f548ed748323|audit-smoke-conn",
+    "ac6ff1527a09427c9f39baf12bcc51ea|audit-smoke-conn",
+    "__sqlite|本地 SQLite"
+  ],
+  "exportSqlVisible": false,
+  "multiQueryVisible": false,
+  "singleQueryVisible": false,
+  "previewBtnVisible": false,
+  "sourceListVisible": false
+}
+node:internal/process/promises:394
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+page.selectOption: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('#exportConnection')[22m
+[2m    - locator resolved to <select id="exportConnection">…</select>[22m
+[2m  - attempting select option action[22m
+[2m    2 × waiting for element to be visible and enabled[22m
+[2m      - element is not visible[22m
+[2m    - retrying select option action[22m
+[2m    - waiting 20ms[22m
+[2m    2 × waiting for element to be visible and enabled[22m
+[2m      - element is not visible[22m
+[2m    - retrying select option action[22m
+[2m      - waiting 100ms[22m
+[2m    58 × waiting for element to be visible and enabled[22m
+[2m       - element is not visible[22m
+[2m     - retrying select option action[22m
+[2m       - waiting 500ms[22m
+
+    at C:\Users\Administrator\WorkBuddy\2026-09-16-08-06-38\audit\fe_export_ix.js:34:16 {
+  log: [
+    "  - waiting for locator('#exportConnection')",
+    '    - locator resolved to <select id="exportConnection">…</select>',
+    '  - attempting select option action',
+    '    2 × waiting for element to be visible and enabled',
+    '      - element is not visible',
+    '    - retrying select option action',
+    '    - waiting 20ms',
+    '    2 × waiting for element to be visible and enabled',
+    '      - element is not visible',
+    '    - retrying select option action',
+    '      - waiting 100ms',
+    '    58 × waiting for element to be visible and enabled',
+    '       - element is not visible',
+    '     - retrying select option action',
+    '       - waiting 500ms'
+  ],
+  name: 'TimeoutError'
+}
+
+Node.js v22.22.2

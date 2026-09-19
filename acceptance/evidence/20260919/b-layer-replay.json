@@ -1,0 +1,377 @@
+{
+  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2",
+  "results": [
+    {
+      "id": "M4-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 columns=['one'] rowCount=1 truncated=False elapsedMs=4 message=查询执行成功。"
+    },
+    {
+      "id": "M4-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "DELETE→HTTP=400 err=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。；UPDATE→HTTP=400"
+    },
+    {
+      "id": "M4-003",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "两语句→HTTP=400 err=一次只能执行一条 SQL 查询。；尾随单分号→HTTP=200"
+    },
+    {
+      "id": "M4-004",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 rows=1000 rowCount=1000 truncated=True（表内 1200 行，期望返回 1000 + truncated=true）"
+    },
+    {
+      "id": "M4-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 _saved_queries=1 行；代理 job 名=查询：复跑查询A 命中 1 条"
+    },
+    {
+      "id": "M4-007",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请填写查询名称。"
+    },
+    {
+      "id": "M4-008",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请输入要保存的 SQL。"
+    },
+    {
+      "id": "M4-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 共 1 条；命中={\"id\": \"628fef69236c4d59bdef7a09828e6dec\", \"name\": \"复跑查询A\", \"connectionId\": \"\", \"sql\": \"select 1 as one\", \"createdAt\": \"2026-09-19 12:50:08\", \"updated"
+    },
+    {
+      "id": "M4-013",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "同名查询保存 3 次（第 3 次带原 id）→ 代理 job 1 条（期望 1，不产生重复）；_saved_queries 同名 2 条（前两次无 id 各建一条属设计）；按 id 重存后 sql=select 3"
+    },
+    {
+      "id": "M4-011",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 removedJobs=1 残留 query=0 job=0"
+    },
+    {
+      "id": "M6-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 id=dce7adc28e72 steps=2 guard_json={}"
+    },
+    {
+      "id": "M6-007",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请填写作业名称。"
+    },
+    {
+      "id": "M6-008",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请至少添加一个子任务。"
+    },
+    {
+      "id": "M6-018",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=同步模块尚未开放，暂不能保存同步子任务。"
+    },
+    {
+      "id": "M8-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "同一场景（作业中选 sync 步骤）HTTP=400 err=同步模块尚未开放，暂不能保存同步子任务。"
+    },
+    {
+      "id": "M6-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 名称=复跑作业A改 created_at 不变=True 同名(前缀)行数=1（期望 1，即原地更新）"
+    },
+    {
+      "id": "M6-010",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 源 id=dce7adc28e72 新 id=7686e6a549bc 不同=True"
+    },
+    {
+      "id": "M6-012",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 status=成功 message=作业执行成功：2 个步骤成功，0 个步骤未启用。\n产出文件（1 个）：\nD:\\ProjectDevelopment\\data-converter-tool\\acceptance\\r 目标表 b_m6 行数=1 err="
+    },
+    {
+      "id": "M6-013",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "运行状态=成功 导出产物=['m6_export.csv'] outputs_json 含路径=True"
+    },
+    {
+      "id": "M6-014",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "continueOnError=false → 步骤记录 1 条（期望 1，第 2 步未执行），第 1 步状态=失败"
+    },
+    {
+      "id": "M6-015",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "continueOnError=true → 步骤记录 2 条（期望 2），作业最终状态=失败（期望 失败）"
+    },
+    {
+      "id": "M6-016",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "步骤记录 1 条（期望 1，停用步骤不进记录）；message=作业执行成功：1 个步骤成功，1 个步骤未启用。"
+    },
+    {
+      "id": "M6-017",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "保存自引用 HTTP=200；运行 HTTP=400 status=None 命中循环引用=True；err=作业文件更新条件评估失败：检测到作业循环引用，无法评估文件更新条件：866b466244e746ab97bc21327aa32230"
+    },
+    {
+      "id": "M6-020",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "_job_run_steps 样本 status=成功 started=2026-09-19 12:50:10 ended=2026-09-19 12:50:10 elapsed_ms=148"
+    },
+    {
+      "id": "M6-019",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 运行记录 1 条；首条含 steps=2 outputs=1（接口 limit 80 已核对）"
+    },
+    {
+      "id": "M6-021",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "scheduleId=be45c68dee7a last_run_at=2026-09-19 12:50:12 last_status=成功（期望 成功）"
+    },
+    {
+      "id": "M6-029",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "保存 HTTP=200；运行 HTTP=400 提示=作业执行条件评估失败：作业执行条件：日期范围需填写开始与结束日期。 guard_json=[('{\"type\": \"date_match\", \"mode\": \"range\", \"start\": \"\", \"end\": \"\"}',)]"
+    },
+    {
+      "id": "M6-030",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "保存 HTTP=200；运行 HTTP=400 提示=作业执行条件评估失败：作业执行条件：请至少选择一个执行日。"
+    },
+    {
+      "id": "M6-031",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "保存 HTTP=200；运行 HTTP=200 status=失败 提示=作业执行失败：0 个步骤成功，1 个步骤失败，0 个步骤未启用。最后错误：路径不存在：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260（期望 失败 +「作业执行条件评估失败」或明确错误）"
+    },
+    {
+      "id": "M6-022",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "首跑 status=成功（期望 成功）；源文件未改动再跑 status=跳过（期望 跳过）；第二次 message=作业跳过：源文件均无更新（D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\repl"
+    },
+    {
+      "id": "M6-024",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "首跑后写入指纹基线 _job_file_guards 行数=1（期望 ≥1）"
+    },
+    {
+      "id": "M6-023",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "作业含 1 个带 skipIfFileUnchanged 的导入步骤 + 1 个不带的 → 守卫基线 step_index=[0]（期望仅 [0]，即只有该步启用文件守卫）；首跑状态=成功"
+    },
+    {
+      "id": "M6-011",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "删除前关联调度 1 条；删除后 job=0 schedule=0（均期望 0）"
+    },
+    {
+      "id": "M7-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 调度 1 条；字段含 ['enabled', 'lastRunAt', 'lastStatus', 'nextRunAt']=True"
+    },
+    {
+      "id": "M7-007",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 id=3791d070987e enabled=1 next_run_at=2026-09-19 13:20:14"
+    },
+    {
+      "id": "M7-008",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请填写任务名称。"
+    },
+    {
+      "id": "M7-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=400 err=请选择作业。"
+    },
+    {
+      "id": "M7-010",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "启用后 enabled=1 running=0 next_run_at=2026-09-19 13:20:15（期望 1/0/非空）"
+    },
+    {
+      "id": "M7-011",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "禁用后 enabled=0 next_run_at=''（期望 0/空串）"
+    },
+    {
+      "id": "M7-012",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "触发执行 HTTP=200 本次 status=成功；_schedules.last_status=成功（两者应一致）"
+    },
+    {
+      "id": "M7-013",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 残留 schedule=0 载体 job=0（期望 0/0，载体名以「 - 自动作业」结尾）"
+    },
+    {
+      "id": "M7-015",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "调度线程分发=True running=0（期望 0，执行后复位） last_run_at=2026-09-19 12:50:19 last_status=成功 该调度运行记录=1 条"
+    },
+    {
+      "id": "M7-016",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "log_retention_days=3（期望 3）；prune 探针输出=pruned: runs 15->14, steps 15->14, 超期记录残留=0（期望 0）"
+    },
+    {
+      "id": "M7-018",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "注入 running=1 后调用 recover_interrupted_runs → running=0；输出=[recover] 已恢复 1 个僵尸计划 / 1 条运行记录 / 0 条步骤记录（上次进程异常中断）。\r\nrecovered=2 注入前僵尸运行=1 残留 running 调度=0（期望 0）；运行记录 status=失败 message"
+    },
+    {
+      "id": "M9-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 入库密码前缀=fernet: 长度=107 含明文=False"
+    },
+    {
+      "id": "M9-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rc=0 输出=migrated=true 迁移后前缀=fernet: 解回明文匹配=True"
+    },
+    {
+      "id": "M9-004",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "HTTP=200 共 2 条；含 password 键=0（期望 0）；含 hasPassword=2（期望 >0）；明文泄露=0"
+    },
+    {
+      "id": "M9-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "静态 /../server.py → HTTP=404（未回源码=True）；下载越界 → HTTP=400 err=该路径不在允许下载的目录内。"
+    },
+    {
+      "id": "M10-001",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rc=0 输出=D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\backup\\data-converter-backup-20260919-125026；产出 zip=['data-converter-backup-20260919-125026.zip']；归档含 data/imports.db=True；manifest.source.dataDir=D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data（期望 D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data）"
+    },
+    {
+      "id": "M10-002",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rc=0 归档含 uploads=True（源目录 1 个文件）exports=True（1 个）；manifest.includes=['data/imports.db', 'uploads', 'exports']；总条目=4"
+    },
+    {
+      "id": "M10-003",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "用 M10-001 的真实备份回环：rc=0 还原 imports.db 存在=True 字节数一致=True（159744 → 159744）；路径穿越负向对照被拒=True（rc=1）"
+    },
+    {
+      "id": "M10-004",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rc=0 输出=数据库：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\data\\imports.db\r\n密钥文件：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\data\\.secret_key（存在：True）\r\n密钥来源：本地密钥文件\r\n迁移"
+    },
+    {
+      "id": "M10-006",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "rc=0 输出=数据目录 DATA_DIR      = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\launcher\\data\r\n上传目录 UPLOADS_DIR   = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\launcher\\up"
+    },
+    {
+      "id": "M10-008",
+      "result": "MANUAL",
+      "kind": "MANUAL",
+      "detail": "本机无 docker 命令，无法执行 `docker build`；Dockerfile 静态存在且 CMD 为 python server.py。转人工/CI 验证"
+    },
+    {
+      "id": "M10-009",
+      "result": "PASS",
+      "kind": "AUTO",
+      "detail": "railway.json 解析成功 dockerfilePath=Dockerfile healthcheck=/api/ping；render.yaml 含 runtime: docker / dockerfilePath=True"
+    },
+    {
+      "id": "M4-001",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_query_export\": \"PASSED\"}"
+    },
+    {
+      "id": "M6-013",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_query_export\": \"PASSED\"}"
+    },
+    {
+      "id": "M7-004",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_compute_next_run_daily\": \"PASSED\"}"
+    },
+    {
+      "id": "M7-005",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_compute_next_run_weekly\": \"PASSED\", \"test_compute_next_run_monthly\": \"PASSED\", \"test_compute_next_run_yearly\": \"PASSED\"}"
+    },
+    {
+      "id": "M6-012",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_jobs_schedule.py\": \"FILE-OK\"}"
+    },
+    {
+      "id": "M7-016",
+      "result": "PASS",
+      "kind": "UT",
+      "detail": "UT 映射 {\"test_jobs_schedule.py\": \"FILE-OK\"}"
+    },
+    {
+      "id": "_pytest",
+      "result": "INFO",
+      "kind": "INFO",
+      "detail": "passed=95 failed=0"
+    }
+  ]
+}

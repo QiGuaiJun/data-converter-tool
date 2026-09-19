@@ -1,0 +1,79 @@
+{
+  "baseline_id": "v6-baseline-20260919",
+  "captured_at": "2026-09-19T10:44:00+08:00",
+  "project_root": "D:\\ProjectDevelopment\\data-converter-tool",
+  "purpose": "V6 验收基线。后续所有「改善 / 退化」判断以此为唯一比对基准；比对方式为重新采集同名字段逐项对比。",
+  "code": {
+    "head": "93933bebf0ece4281dd01d40fd9a66d4265370a7",
+    "origin_main": "93933bebf0ece4281dd01d40fd9a66d4265370a7",
+    "head_subject": "test: 用例自清理共享 MySQL 库中的夹具表",
+    "dirty_files": 27,
+    "dirty_tree_diff_sha256": "e6240c7d4230578fe8325157ca09d87eb975831defc886960d108be8efd99322",
+    "note": "HEAD 与 origin/main 一致，但工作树脏。打包三件套 DataConverterTool.spec / PACKAGING.md / requirements-packaging.txt 已删除；根目录 6 个 test_*.py 已全部移入 tests/。"
+  },
+  "environment": {
+    "venv_python": "3.13.14",
+    "venv_home": "C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12",
+    "version_dir_mismatch": "目录名为 3.13.12，实际解释器为 3.13.14；编写重建文档时不要照抄目录名",
+    "lock_file": "requirements-lock.txt",
+    "lock_vs_installed": {
+      "lock_count": 34,
+      "installed_count": 35,
+      "missing_in_venv": [],
+      "extra_in_venv": ["pip"],
+      "version_mismatch": {}
+    }
+  },
+  "tests": {
+    "command": ".venv/Scripts/python.exe -m pytest -q",
+    "result": "95 passed",
+    "elapsed_s": 10.51,
+    "captured_at": "2026-09-19T10:43:00+08:00"
+  },
+  "runtime_data": {
+    "db_path": "runtime/data/imports.db",
+    "db_sha256": "db4598b13b928535897932c1809625895f08ab7f6f8efc17c60dc0391613f378",
+    "db_mtime": "2026-09-19 09:00",
+    "drift_reason": "相对迁移验证指纹 85cb899c… 的漂移由 2026-09-19 09:00 定时任务正常写入 _job_runs / _job_file_guards 造成，非测试污染（测试跑在隔离环境，落此库零写入）",
+    "secret_key_mtime": "2026-09-07 16:26"
+  },
+  "schedule": {
+    "id": "01c0f456a92b4989b39cbb85c3b248e4",
+    "name": "中秋试饮活动",
+    "enabled": 1,
+    "next_run_at": "2026-09-20 09:00:00",
+    "precheck_minutes": 5,
+    "last_run_at": "2026-09-19 09:00:12",
+    "last_status": "成功"
+  },
+  "table_counts": {
+    "_jobs": 7,
+    "_schedules": 1,
+    "_job_runs": 22,
+    "_job_file_guards": 2,
+    "_schedule_prechecks": 0,
+    "_db_connections": 3,
+    "_saved_queries": 1,
+    "_import_logs": 4,
+    "export_people": 3,
+    "export_large_people": 20000
+  },
+  "latest_runs": [
+    "2026-09-19 09:00:05 ~ 09:00:11 | 中秋试饮活动全链路 | 6719ms | 成功 | 3 步成功 / 0 未启用",
+    "2026-09-19 09:00:04 ~ 09:00:11 | 中秋试饮活动 - 自动作业 | 7038ms | 成功 | 1 步成功 / 0 未启用",
+    "2026-09-18 09:25:13 ~ 09:25:18 | 中秋试饮活动 - 自动作业 | 5002ms | 成功",
+    "2026-09-18 09:25:13 ~ 09:25:18 | 中秋试饮活动全链路 | 4951ms | 成功"
+  ],
+  "known_observations": [
+    "一次调度到期会触发两条 _job_runs（全链路 3 步 + 自动作业 1 步），各产出 1 个文件；演示与验收时需说清这是嵌套调用而非重复执行。",
+    "_schedule_prechecks 为空是设计结果：_delete_precheck 在每轮执行后删除该轮预检记录，防积压；因此预检的正面证据不留痕，只有「跳过」才会留下 _job_runs 记录。",
+    "runtime/logs/ 目录为空：服务级日志（预检、调度扫描、异常）只走 stdout，不落盘。服务以无控制台方式启动时这些信息全部丢失。",
+    "服务进程 PID 29816 在 127.0.0.1:51978 持续监听，跨会话存活（此前「会话结束即回收」的判断已被推翻）。"
+  ],
+  "not_covered_by_this_baseline": [
+    "功能验收：全功能页面 + 按钮实操走查（未做，无截图/录屏证据）",
+    "质量验收：缺陷分布收敛（未做）",
+    "技术验收：干净环境从零重建（未做）",
+    "商务验收：验收报告与质保条款（未定义，取决于是否存在外部签字方）"
+  ]
+}

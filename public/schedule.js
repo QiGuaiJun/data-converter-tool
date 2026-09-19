@@ -25,8 +25,53 @@ function escapeHtml(value) {
 }
 
 function setStatus(message, type = "") {
-  $("#scheduleStatus").textContent = message;
+  // 运行结果里可能带多行产物路径（每个文件一行），用 textContent 会把换行压成空白，
+  // 用户看不到文件落在哪；这里转义后用 <br> 保留换行。
+  const text = String(message ?? "");
+  $("#scheduleStatus").innerHTML = escapeHtml(text).replace(/\r?\n/g, "<br>");
   $("#scheduleStatus").className = type;
+}
+
+// 状态条只留结论句：run.message 里的「产出文件（N 个）：」表头 + 逐行绝对路径 + 默认目录警告，
+// 是给「查看日志」看的明细（日志侧仍由 mergeScheduleRuns() 从 run.outputs 重建），塞进状态条
+// 会把一行结论撑成多行。这里只把明细块剥掉，结论句与「最后错误：…」一定留在状态条上。
+//
+// 判定依据（刻意不依赖"像路径就当产物"的宽正则，那会把导入失败错误里内联的
+// `D:\input\不存在的源表.xlsx 路径不存在` 误删——上一轮点名的 P2-B）：
+//   1) 「产出文件…」表头行必丢，并从表头里读出它声明的条数 N，记下"后面还有 N 行明细"；
+//   2) 明细块内的每一行，只有**命中 run.outputs 白名单**（经 outputPathKey 归一化后比对）
+//      才丢；命中不了就说明它不属于本次产物 → 立刻结束明细块，这一行照常保留；
+//   3) 历史记录没有 outputs 字段（白名单为空）时退化为"按表头声明的 N 行丢"，且 N 用尽即停，
+//      所以最多只丢表头自己承认的那几行，不会越过明细块去吞结论句或错误文本；
+//   4) 「（警告：…）」行一律丢（警告含义已写进日志侧，状态条不需要）。
+function statusSummary(run) {
+  const source = String(run?.message ?? "");
+  if (!source.trim()) return source;
+  const knownKeys = new Set((Array.isArray(run?.outputs) ? run.outputs : []).map(outputPathKey).filter(Boolean));
+  const kept = [];
+  let pendingPaths = 0; // 明细块内还需要丢掉的产物行数（来自表头声明的 N）
+  for (const line of source.split(/\r?\n/).map((item) => item.trim())) {
+    if (line.startsWith("产出文件")) {
+      const declared = /（\s*(\d+)\s*个/.exec(line);
+      pendingPaths = declared ? Number(declared[1]) : 0;
+      continue;
+    }
+    if (line.startsWith("（警告：")) continue;
+    if (pendingPaths > 0) {
+      if (!line) continue; // 明细块里的空行只当分隔，不消耗 N
+      if (knownKeys.size && !knownKeys.has(outputPathKey(line))) {
+        pendingPaths = 0; // 这一行不在产物白名单里，明细块到此结束，该行按内容保留
+      } else {
+        pendingPaths -= 1;
+        continue;
+      }
+    }
+    kept.push(line);
+  }
+  const summary = kept.join(" ").replace(/\s+/g, " ").trim();
+  if (summary) return summary;
+  // 极端情况（整条 message 只有明细块、没有结论句）：宁可原样显示，也别给用户一片空白
+  return source.replace(/\s+/g, " ").trim() || source;
 }
 
 function normalizeDateTimeValue(value, fallback = "") {
@@ -338,7 +383,8 @@ async function runSelectedScheduleNow() {
   const result = await requestJson("/api/jobs/run", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.jobId, scheduleId: item.id }) });
   await loadRuns();
   await loadSchedules();
-  setStatus(`${result.run.status}：${result.run.message}`, result.run.status === "成功" ? "success" : "error");
+  // 状态条只给结论句，产物清单留给下方「查看日志」（见 statusSummary 注释）
+  setStatus(`${result.run.status}：${statusSummary(result.run)}`, result.run.status === "成功" ? "success" : "error");
 }
 
 async function loadRuns() {
@@ -356,6 +402,18 @@ async function loadRuns() {
   $("#scheduleRuns").innerHTML = mergedRuns.length
     ? mergedRuns.map(renderRunLog).join("")
     : `<div class="schedule-no-runs"><strong>暂无定时任务运行日志</strong><span>任务执行后会在这里统一显示成功或失败信息。</span></div>`;
+}
+
+// 产物路径的去重键（P2-A）：Windows 路径大小写不敏感、\ 与 / 是同一分隔符，同一个真实
+// 文件写成 ...\out\x.csv 与 ...\OUT\x.csv 时必须算成 1 个。语义与服务端
+// server.py::output_dedupe_key（os.path.normcase + normpath）保持一致；展示用的是首次出现
+// 的原始字符串，本函数只用于比较，绝不参与渲染。
+function outputPathKey(path) {
+  const text = String(path ?? "").trim();
+  if (!text) return "";
+  const windowsStyle = /^[A-Za-z]:/.test(text) || text.includes("\\");
+  const unified = text.replace(/\\/g, "/");
+  return windowsStyle ? unified.toLowerCase() : unified;
 }
 
 function mergeScheduleRuns(runs, rootJobId) {
@@ -385,14 +443,70 @@ function mergeScheduleRuns(runs, rootJobId) {
     const allRuns = [root, ...related];
     const failedRuns = allRuns.filter((run) => run.status !== "成功");
     const endedTimes = allRuns.map((run) => run.ended_at).filter(Boolean).sort();
+    // 产物清单优先读服务端 run.outputs 字段（P3-B）：message 文本只是给人看的说明书，
+    // 从文本里正则认路径会把"像路径的行"（如导入失败错误里内联的 D:\input\x.xlsx 路径不存在）
+    // 误当成产物并计入 N（P2-B）。只有历史记录（本次改动前落库、没有该字段）才回退到
+    // 解析 message 的「产出文件」块，保证老日志仍能正常渲染而不是报错。
+    const outputFiles = [];
+    const outputKeys = new Set();
+    const warningLines = [];
+    const addOutput = (item) => {
+      const text = String(item ?? "").trim();
+      const key = outputPathKey(text);
+      if (!text || !key || outputKeys.has(key)) return;
+      outputKeys.add(key);
+      outputFiles.push(text);
+    };
+    const hasStructuredOutputs = (run) => Array.isArray(run.outputs) && run.outputs.length > 0;
+    for (const run of allRuns) {
+      const messageLines = String(run.message || "").split(/\r?\n/).map((line) => line.trim());
+      // 默认目录警告是给用户看的提示，与产物清单来源无关，任何 run 都要收集（否则会漏提示）
+      for (const line of messageLines) {
+        if (line.startsWith("（警告：") && !warningLines.includes(line)) warningLines.push(line);
+      }
+      if (hasStructuredOutputs(run)) {
+        run.outputs.forEach(addOutput);
+        continue;
+      }
+      // 降级路径：老记录没有 outputs 字段，只能在 message 里找，但只认「产出文件」块内的路径行
+      let inBlock = false;
+      for (const line of messageLines) {
+        if (line.startsWith("产出文件")) {
+          inBlock = true;
+          continue;
+        }
+        if (inBlock && line && /^[A-Za-z]:[\\/]/.test(line)) {
+          addOutput(line);
+          continue;
+        }
+        inBlock = false;
+      }
+    }
+    // 汇总 / 失败文本要剔除清单行，否则会与下面重新生成的清单一并显示（表头与路径各出现两遍）。
+    // structured 为真时只按"确属本次产物"的白名单剔除，不动错误文本里的其他路径行。
+    const dropDetailLines = (text, structured) =>
+      String(text || "")
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => {
+          if (!line) return false;
+          if (line.startsWith("产出文件") || line.startsWith("（警告：")) return false;
+          if (outputKeys.has(outputPathKey(line))) return false;
+          if (!structured && /^[A-Za-z]:[\\/]/.test(line)) return false;
+          return true;
+        })
+        .join(" ");
+    const detailLines = [...(outputFiles.length ? [`产出文件（${outputFiles.length} 个）：`, ...outputFiles] : []), ...warningLines];
+    const detailText = detailLines.length ? `\n${detailLines.join("\n")}` : "";
     merged.push({
       ...root,
       ended_at: endedTimes.at(-1) || root.ended_at,
       elapsed_ms: Math.max(...allRuns.map((run) => Number(run.elapsed_ms || 0))),
       status: failedRuns.length ? "失败" : "成功",
+      outputs: outputFiles,
       message: failedRuns.length
-        ? `本次任务执行失败：${failedRuns.map((run) => `${run.job_name}：${run.message}`).join("；")}`
-        : `本次任务执行成功，共完成 ${directSteps.length + childSteps.length} 个实际步骤。`,
+        ? `本次任务执行失败：${failedRuns.map((run) => `${run.job_name}：${dropDetailLines(run.message, hasStructuredOutputs(run))}`).join("；")}${detailText}`
+        : `本次任务执行成功，共完成 ${directSteps.length + childSteps.length} 个实际步骤。${detailText}`,
       steps: [...directSteps, ...childSteps].map((step, index) => ({ ...step, step_index: index + 1 })),
     });
   }
