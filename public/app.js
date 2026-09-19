@@ -990,11 +990,14 @@ async function previewFile() {
     previewColumnTypes = payload.columnTypes || {};
     previewTypeWarnings = payload.typeWarnings || [];
     renderMapping(payload.columns);
+    renderCleaningRules(payload.cleaningRules);
     renderTable(previewTable, payload.columns, payload.preview);
     const sheet = payload.selectedSheet ? ` · Sheet: ${payload.selectedSheet}` : "";
     previewMeta.textContent = `${payload.fileName}${sheet} · ${payload.totalRows} 行 · ${payload.columns.length} 列`;
     mappingDialog.classList.remove("hidden");
     setStatus("预览完成。", "success");
+    // 目标表结构读取失败不应影响预览本身，refreshTargetTableInfo 内部已自行兜底。
+    await refreshTargetTableInfo();
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -1008,7 +1011,9 @@ async function confirmDangerousActions() {
   const actions = [];
   if (mode === "overwrite") actions.push("覆盖会清空目标表数据");
   if (mode === "rebuild") actions.push("重建会删除并重新创建目标表");
-  if ($("#deleteAfterSuccess").checked) actions.push("导入成功后会删除上传的源文件副本");
+  if ($("#deleteAfterSuccess").checked) {
+    actions.push("导入成功后会删除源文件（本地路径导入时删除的是你的原文件，将移入回收站；上传副本直接删除）");
+  }
   if (hasSql) actions.push("将执行你填写的 SQL");
   if (!actions.length) return true;
   return showConfirmDialog(`${actions.join("；")}。确认继续？`);
@@ -1035,8 +1040,18 @@ async function importFiles(event) {
     const summary = payload.summary;
     const exportInfo = payload.exportPath ? ` 查询结果已导出：${payload.exportPath}` : "";
     const skipInfo = summary.skippedFiles ? `，跳过未变更文件 ${summary.skippedFiles} 个` : "";
+    // 改进C：有跳过行时必须说清「哪一行、为什么」，否则用户只看到一个数字无从下手。
+    const details = payload.skipDetails || [];
+    const detailInfo = details.length
+      ? ` 跳过明细：${details
+          .slice(0, 3)
+          .map((item) => `第 ${item.dataRow} 行（${item.reason}）`)
+          .join("；")}${details.length > 3 ? ` 等共 ${details.length} 条` : ""}。`
+      : "";
+    const deleteNote = (payload.results || []).map((item) => item.deleteNote).find(Boolean) || "";
+    const deleteInfo = deleteNote && deleteNote !== "上传副本已删除" ? ` ${deleteNote}。` : "";
     setStatus(
-      `成功 ${summary.successFiles}/${summary.totalFiles} 个文件，写入 ${summary.rowsWritten} 行，更新 ${summary.rowsUpdated} 行，跳过 ${summary.rowsSkipped} 行${skipInfo}。${exportInfo}`,
+      `成功 ${summary.successFiles}/${summary.totalFiles} 个文件，写入 ${summary.rowsWritten} 行，更新 ${summary.rowsUpdated} 行，跳过 ${summary.rowsSkipped} 行${skipInfo}。${exportInfo}${detailInfo}${deleteInfo}`,
       summary.failedFiles ? "warn" : "success",
     );
     await Promise.all([loadTables(), loadLogs()]);
@@ -1051,6 +1066,86 @@ async function importFiles(event) {
     importButton.disabled = false;
     previewButton.disabled = false;
   }
+}
+
+// P3-20：预览必须告知「本次导入会实际应用哪些转换规则」（含默认开启项），
+// 否则用户看到值被裁剪、列名被改小写会误判成数据出错。
+function renderCleaningRules(rules) {
+  const box = $("#cleaningRules");
+  if (!box) return;
+  const items = Array.isArray(rules) ? rules : [];
+  if (!items.length) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <strong>本次导入会应用的转换规则（${items.length} 条）</strong>
+    <ul>
+      ${items
+        .map(
+          (item) =>
+            `<li>${escapeHtml(item.rule || "")}：${escapeHtml(item.detail || "")}` +
+            `<span class="rule-source">${escapeHtml(item.source || "")}</span></li>`,
+        )
+        .join("")}
+    </ul>
+  `;
+}
+
+// 改进A：预览同时展示目标表现有结构，并标出源列能否对上（原先 /api/target-table-details 是死接口）。
+async function refreshTargetTableInfo() {
+  const box = $("#targetTableInfo");
+  if (!box) return;
+  const name = (tableName.value || "").trim();
+  if (!name) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  let table = null;
+  try {
+    const payload = await postJson("/api/target-table-details", {
+      ...Object.fromEntries(connectionParams()),
+      name,
+    });
+    table = payload.table || null;
+  } catch (error) {
+    box.classList.remove("hidden");
+    box.innerHTML = `<strong>目标表结构</strong><div class="meta">读取失败：${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  const columns = (table && table.columns) || [];
+  if (!columns.length) {
+    box.classList.remove("hidden");
+    box.innerHTML = `<strong>目标表结构</strong><div class="meta">目标表「${escapeHtml(name)}」尚不存在，将按预览的列结构新建。</div>`;
+    return;
+  }
+  const matchBy = ($("#matchBy") && $("#matchBy").value) || "name";
+  const targetNames = columns.map((item) => item.name);
+  const sourceColumns = currentColumns || [];
+  const rows = sourceColumns
+    .map((column, index) => {
+      const matched =
+        matchBy === "order"
+          ? targetNames[index] || ""
+          : targetNames.includes(column)
+            ? column
+            : "";
+      const note = matched ? "已存在" : "目标表没有 → 将自动扩展或需调整匹配方式";
+      return `<tr><td>${escapeHtml(column)}</td><td>${escapeHtml(matched || "—")}</td><td>${escapeHtml(note)}</td></tr>`;
+    })
+    .join("");
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <strong>目标表结构（${escapeHtml(name)} · ${columns.length} 列）</strong>
+    <span class="match-note">当前匹配方式：${escapeHtml(matchBy === "order" ? "按顺序" : matchBy === "custom" ? "自定义" : "按名称")}</span>
+    <table>
+      <thead><tr><th>源列</th><th>目标列</th><th>匹配情况</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 }
 
 function renderMapping(columns) {
@@ -1160,15 +1255,23 @@ function escapeHtml(value) {
 }
 
 async function loadTables() {
-  const payload = await postJson("/api/tables", Object.fromEntries(connectionParams()));
-  tableMeta.textContent = `${payload.tables.length} 张表`;
-  tables.innerHTML = payload.tables.length ? "" : "暂无导入表";
-  for (const name of payload.tables) {
-    const button = document.createElement("button");
-    button.textContent = name;
-    button.title = name;
-    button.addEventListener("click", () => loadTable(name));
-    tables.append(button);
+  try {
+    const payload = await postJson("/api/tables", Object.fromEntries(connectionParams()));
+    tableMeta.textContent = `${payload.tables.length} 张表`;
+    tables.innerHTML = payload.tables.length ? "" : "暂无导入表";
+    for (const name of payload.tables) {
+      const button = document.createElement("button");
+      button.textContent = name;
+      button.title = name;
+      button.addEventListener("click", () => loadTable(name));
+      tables.append(button);
+    }
+  } catch (error) {
+    // P1-2：读取失败时不能继续沿用「0 张表」——那会让用户误以为库里真没有表。
+    // 与 loadTable() 的失败态保持一致，并向上抛出供初始化流程提示。
+    tableMeta.textContent = "已导入表读取失败";
+    tables.innerHTML = "";
+    throw error;
   }
 }
 
@@ -1239,6 +1342,14 @@ document.querySelector('input[name="targetMode"][value="manual"]').addEventListe
 });
 previewButton.addEventListener("click", previewFile);
 importForm.addEventListener("submit", importFiles);
+// 切换「按名称 / 按顺序」时刷新目标表对照表，让匹配方式的差别当场可见。
+$("#matchBy").addEventListener("change", () => {
+  refreshTargetTableInfo().catch(() => {});
+});
+// 目标表名改了也要重新对照（表可能换成另一张）。
+tableName.addEventListener("change", () => {
+  refreshTargetTableInfo().catch(() => {});
+});
 ensureImportTaskButton();
 openMapping.addEventListener("click", () => mappingDialog.classList.remove("hidden"));
 closeMapping.addEventListener("click", () => mappingDialog.classList.add("hidden"));
@@ -1423,11 +1534,11 @@ async function initImportPage() {
     setStatus(connectionError.message, "error");
   }
   const settled = await Promise.allSettled([loadTables(), loadLogs(), loadImportTaskJobs()]);
-  if (!draftRestored) {
-    const firstError = settled.find((item) => item.status === "rejected");
-    if (firstError) {
-      setStatus((firstError.reason && firstError.reason.message) || String(firstError.reason), "error");
-    }
+  // P1-2：草稿提示只是「提示」，读取失败是「错误」。错误不能被草稿提示吞掉，
+  // 否则有草稿时面板会静默停在「0 张表」，用户完全看不出请求失败了。
+  const firstError = settled.find((item) => item.status === "rejected");
+  if (firstError) {
+    setStatus((firstError.reason && firstError.reason.message) || String(firstError.reason), "error");
   }
 }
 

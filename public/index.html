@@ -280,7 +280,7 @@
 
           <section class="tab-panel" data-panel="other">
             <label><input id="clearLogBeforeImport" type="checkbox" checked /> 导入前清空日志文件</label>
-            <label><input id="deleteAfterSuccess" type="checkbox" /> 删除导入成功的Excel文件</label>
+            <label><input id="deleteAfterSuccess" type="checkbox" /> 导入成功后删除源文件（本地路径导入时删除的是原文件，将移入回收站）</label>
             <label>全部导入开始前运行：</label>
             <div class="script-row"><select><option>SQL语句或文件</option></select><textarea id="beforeAllSql"></textarea><button type="button">...</button></div>
             <label>每次导入成功后运行：</label>
@@ -308,6 +308,8 @@
           <button id="closeMapping" type="button">×</button>
         </div>
         <div id="previewMeta" class="meta">暂无预览</div>
+        <div id="cleaningRules" class="cleaning-rules hidden"></div>
+        <div id="targetTableInfo" class="target-table-info hidden"></div>
         <div id="mappingTable" class="mapping-empty">预览文件后可调整字段名、跳过字段、设置默认值和更新匹配键</div>
         <div id="previewTable" class="table-wrap empty">选择文件后可预览前 20 行</div>
       </div>
@@ -353,5 +355,5 @@
     <script src="/app.js?v=20260911_sql_editor"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
-  </body>
+  <script src="/shell.js?v=20260919_plain_and_close"></script></body>
 </html>

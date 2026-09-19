@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-09-19T07:07:49.130Z",
+  "base": "http://127.0.0.1:51986",
+  "pageErrors": [],
+  "aggregate": {
+    "FAIL": 1,
+    "PASS": 4,
+    "MANUAL": 2
+  },
+  "results": [
+    {
+      "id": "P1-2",
+      "verdict": "FAIL",
+      "detail": "导入 HTTP=200（写出 1 行）后刷新页面：#tableMeta=\"已导入表读取失败\"、#tables 子元素=0（原缺陷为永远 0 张表；期望 >0）"
+    },
+    {
+      "id": "P3-24",
+      "verdict": "PASS",
+      "detail": "像素采样 5 处文本：最低对比度 4.77:1（侧边栏标题 rgb(108, 106, 100) 底 rgb(245,240,232)）；低于 WCAG AA 4.5:1 的有 0 处 → "
+    },
+    {
+      "id": "P3-29",
+      "verdict": "PASS",
+      "detail": "侧边栏 .module-tree 条目=8 个 → [DB 新建连接 / IN 导入 / OUT 导出 / SYNC 同步 / SQL 查询 / TAB 表 / JOB 作业 / TIME 定时任务]；含任务名特征=0（期望 0）；全部为模块入口=true"
+    },
+    {
+      "id": "P2-15",
+      "verdict": "MANUAL",
+      "detail": "自定义确认框 #confirmDialog 出现=false；点「确认继续」后提交按钮 disabled=false（期望 false；原缺陷为走原生 window.confirm 后按钮永久禁用）"
+    },
+    {
+      "id": "P3-22",
+      "verdict": "PASS",
+      "detail": "保存后列表出现该任务=true（列表=2 项）；点开后 #importTaskPath 回显=\"D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-\""
+    },
+    {
+      "id": "BUG-31",
+      "verdict": "PASS",
+      "detail": "弹窗内 select=[]；疑似死连接下拉/禁用项=0（期望 0）——原缺陷「连接下拉死组件」应表现为弹窗内混入禁用或指向库的连接选择器"
+    },
+    {
+      "id": "P3-23",
+      "verdict": "MANUAL",
+      "detail": "「任务/作业/查询/调度混合显示语义不清」是主观可读性问题：本轮已确认列表过滤与候选类型分离（M6-001/M7-002/BUG-32 实测通过），但是否\"语义清晰\"需人工目视判断"
+    }
+  ]
+}

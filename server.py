@@ -636,17 +636,20 @@ def connect_target_db(fields: dict[str, str]):
                 ssl_config["cert"] = fields["sslCert"]
             if fields.get("sslKey"):
                 ssl_config["key"] = fields["sslKey"]
-        return pymysql.connect(
-            host=fields.get("dbHost", "127.0.0.1"),
-            port=parse_int(fields, "dbPort", 3306),
-            user=fields.get("dbUser", ""),
-            password=fields.get("dbPassword", ""),
-            database=fields.get("dbName", ""),
-            charset=fields.get("dbCharset", "utf8mb4") or "utf8mb4",
-            autocommit=fields.get("commitMode") == "auto",
-            local_infile=fields.get("writeMode") == "load",
-            ssl=ssl_config,
-        )
+        try:
+            return pymysql.connect(
+                host=fields.get("dbHost", "127.0.0.1"),
+                port=parse_int(fields, "dbPort", 3306),
+                user=fields.get("dbUser", ""),
+                password=fields.get("dbPassword", ""),
+                database=fields.get("dbName", ""),
+                charset=fields.get("dbCharset", "utf8mb4") or "utf8mb4",
+                autocommit=fields.get("commitMode") == "auto",
+                local_infile=fields.get("writeMode") == "load",
+                ssl=ssl_config,
+            )
+        except Exception as exc:  # noqa: BLE001
+            raise friendly_mysql_error(exc) from exc
     return connect_db()
 
 
@@ -703,6 +706,13 @@ MYSQL_SYSTEM_DATABASES = {"information_schema", "performance_schema", "mysql", "
 
 def test_mysql_connection(config: dict[str, object]) -> dict[str, object]:
     normalized = normalize_connection_payload(config)
+    try:
+        return _test_mysql_connection(normalized)
+    except Exception as exc:  # noqa: BLE001
+        raise friendly_mysql_error(exc, "测试数据库连接") from exc
+
+
+def _test_mysql_connection(normalized: dict[str, object]) -> dict[str, object]:
     with pymysql.connect(**mysql_connection_args(normalized, include_database=False)) as conn:
         with conn.cursor() as cursor:
             cursor.execute("select version()")
@@ -1233,7 +1243,44 @@ def apply_column_filter(columns: list[str], rows: list[list[str]], filter_value:
     return [columns[i] for i in indexes], [[row[i] if i < len(row) else "" for i in indexes] for row in rows]
 
 
+# 读取阶段第三方库异常的「类型名 → 中文提示」映射。
+# 用类型名而不是 isinstance，是为了避免为 xlrd/dbfread 的私有异常模块增加硬依赖。
+_BAD_FILE_HINTS: tuple[tuple[str, str], ...] = (
+    ("BadZipFile", "文件不是有效的 xlsx/xlsm（可能已损坏，或实际不是 Excel 文件）"),
+    ("InvalidFileException", "文件不是有效的 Excel 文件（扩展名与实际内容不符）"),
+    ("XLRDError", "文件不是有效的 xls（可能已损坏，或实际不是旧版 Excel 文件）"),
+    ("JSONDecodeError", "文件不是有效的 JSON（格式错误或内容已损坏）"),
+    ("ParseError", "文件不是有效的 XML（格式错误或内容已损坏）"),
+    ("DbfError", "文件不是有效的 DBF（可能已损坏或版本不受支持）"),
+    ("InvalidOperationError", "文件不是有效的 DBF（可能已损坏或版本不受支持）"),
+    ("UnicodeDecodeError", "文件编码无法识别，请手动指定编码后重试"),
+)
+
+
+def friendly_read_error(exc: Exception, path: Path) -> Exception:
+    """把读取阶段的第三方英文异常翻译成面向用户的中文提示。
+
+    缺陷背景：坏文件曾被直接抛出 `File is not a zip file`、
+    `Unsupported format, or corrupt file: Expected BOF record` 等驱动原文。
+    这里统一转成「文件名 + 中文结论（原始错误：异常类名）」；
+    无法识别且已是 ValueError（即我们自己抛出的中文提示）时原样透传。
+    """
+    for name, message in _BAD_FILE_HINTS:
+        if type(exc).__name__ == name:
+            return ValueError(f"{path.name} {message}。原始错误：{type(exc).__name__}")
+    if isinstance(exc, ValueError):
+        return exc
+    return ValueError(f"读取 {path.name} 失败：{exc}")
+
+
 def read_tabular_file(path: Path, fields: dict[str, str]) -> TabularData:
+    try:
+        return _read_tabular_file(path, fields)
+    except Exception as exc:  # noqa: BLE001
+        raise friendly_read_error(exc, path) from exc
+
+
+def _read_tabular_file(path: Path, fields: dict[str, str]) -> TabularData:
     suffix = path.suffix.lower()
     if suffix in {".csv", ".txt"}:
         rows = read_csv_rows(path, fields.get("encoding", "auto"), fields.get("delimiter", ""), decode_escaped(fields.get("lineDelimiter", "")))
@@ -1264,6 +1311,13 @@ def read_tabular_file(path: Path, fields: dict[str, str]) -> TabularData:
 
 
 def read_tabular_tasks(path: Path, fields: dict[str, str]) -> list[TabularData]:
+    try:
+        return _read_tabular_tasks(path, fields)
+    except Exception as exc:  # noqa: BLE001
+        raise friendly_read_error(exc, path) from exc
+
+
+def _read_tabular_tasks(path: Path, fields: dict[str, str]) -> list[TabularData]:
     suffix = path.suffix.lower()
     if fields.get("sheetMode", "specified") != "all" or suffix not in {".xlsx", ".xlsm", ".xls"}:
         return [read_tabular_file(path, fields)]
@@ -1374,7 +1428,16 @@ def parse_date_column_formats(columns: list[str], selector: str) -> dict[int, st
     return result
 
 
-def apply_cleaning(columns: list[str], rows: list[list[str]], fields: dict[str, str]) -> tuple[list[str], list[list[str]], int]:
+# 行级跳过明细最多回传多少条：够定位问题即可，避免大文件把响应体撑爆。
+MAX_SKIP_DETAILS = 200
+
+
+def apply_cleaning(
+    columns: list[str],
+    rows: list[list[str]],
+    fields: dict[str, str],
+    skip_details: list[dict[str, object]] | None = None,
+) -> tuple[list[str], list[list[str]], int]:
     trim_values = parse_bool(fields, "trimValues", True)
     empty_as_null = parse_bool(fields, "emptyAsNull", False)
     zero_for_number = parse_bool(fields, "zeroForNumber", False)
@@ -1392,7 +1455,7 @@ def apply_cleaning(columns: list[str], rows: list[list[str]], fields: dict[str, 
     skipped = 0
     seen: set[tuple[str, ...]] = set()
 
-    for row in rows:
+    for row_number, row in enumerate(rows, start=1):
         values: list[str | None] = []
         for index, raw in enumerate(row):
             value = raw or ""
@@ -1423,6 +1486,15 @@ def apply_cleaning(columns: list[str], rows: list[list[str]], fields: dict[str, 
             key = tuple("" if values[i] is None else str(values[i]) for i in dedupe_indexes)
             if key in seen:
                 skipped += 1
+                # 改进C：行级跳过原先只回计数，用户不知道「哪一行、为什么被丢掉」。
+                if skip_details is not None and len(skip_details) < MAX_SKIP_DETAILS:
+                    skip_details.append(
+                        {
+                            "dataRow": row_number,
+                            "reason": "按「去重列」判定为重复行",
+                            "key": " | ".join(str(part) for part in key),
+                        }
+                    )
                 continue
             seen.add(key)
         cleaned.append(values)
@@ -1430,7 +1502,77 @@ def apply_cleaning(columns: list[str], rows: list[list[str]], fields: dict[str, 
     return columns, cleaned, skipped
 
 
-def build_target_data(tabular: TabularData, fields: dict[str, str], file_name: str) -> tuple[list[str], list[list[object]], list[str], int]:
+def describe_cleaning_rules(fields: dict[str, str]) -> list[dict[str, str]]:
+    """列出本次导入**实际会生效**的数据转换规则（含默认开启项）。
+
+    缺陷背景（P3-20）：`trimValues` 默认开启、列名默认转小写、类型默认自动识别，
+    但预览页从不告知，用户看到值被改动会误判成数据出错。
+    这里只描述会改变数据/列名的规则，纯开关类（如 disableLog）不列。
+    """
+    rules: list[dict[str, str]] = []
+
+    def add(name: str, detail: str, source: str) -> None:
+        rules.append({"rule": name, "detail": detail, "source": source})
+
+    if parse_bool(fields, "trimValues", True):
+        add("裁掉首尾空格", "每个单元格值的首尾空格会被去掉", "默认开启")
+    if parse_bool(fields, "emptyAsNull", False):
+        add("空值写为 NULL", "空字符串写入数据库时转为 NULL", "已开启")
+    if parse_bool(fields, "zeroForNumber", False):
+        add("空值写为 0", "空的数值单元格会补 0", "已开启")
+    if fields.get("replaceBlankWith", ""):
+        add("空值替换", f"空值统一替换为「{fields['replaceBlankWith']}」", "已开启")
+    if fields.get("removeText", ""):
+        add("移除指定文本", f"删除值中的「{fields['removeText']}」", "已开启")
+    if fields.get("replaceTextFrom", ""):
+        add(
+            "文本替换",
+            f"把「{fields['replaceTextFrom']}」替换为「{fields.get('replaceTextTo', '')}」",
+            "已开启",
+        )
+    if fields.get("blankCellValues", "").strip():
+        add("视为空白的值", f"以下值会被当作空：{fields['blankCellValues']}", "已开启")
+    if fields.get("fillDownColumns", "").strip():
+        add("向下填充", f"列 {fields['fillDownColumns']} 的空白单元格沿用上一行值", "已开启")
+    if fields.get("dedupeColumns", "").strip():
+        add("按列去重", f"按列 {fields['dedupeColumns']} 去重，重复行将被跳过", "已开启")
+    if fields.get("dateColumns", "").strip():
+        add("按指定格式解析日期", f"列 {fields['dateColumns']} 按配置格式转换为日期", "已开启")
+
+    field_case = fields.get("fieldCase", "lower")
+    if field_case == "upper":
+        add("列名转大写", "字段名统一转为大写", "已开启")
+    else:
+        add("列名转小写", "字段名统一转为小写", "默认开启")
+    if parse_bool(fields, "fieldPinyin", False):
+        add("列名转拼音首字母", "字段名会替换为拼音首字母", "已开启")
+    if fields.get("fieldReplaceFrom") == "symbol":
+        add("列名符号替换", "字段名中的符号会被替换为下划线", "已开启")
+    elif fields.get("fieldReplaceFrom") == "space":
+        add("列名空格替换", "字段名中的空格会被替换为下划线", "已开启")
+
+    type_mode = fields.get("typeMode", "auto")
+    if type_mode == "text":
+        add("全部按文本写入", "所有列都会以文本类型建表", "已开启")
+    else:
+        add(
+            "自动识别列类型",
+            "数值/日期列会自动识别为对应类型；超出 64 位整数范围的列按文本处理",
+            "默认开启",
+        )
+    if fields.get("autoPkField", "").strip():
+        add("自动主键", f"会自动生成主键列「{fields['autoPkField']}」", "已开启")
+    if fields.get("defaultForEmpty", "") and parse_bool(fields, "defaultForEmpty", False):
+        add("空值填默认值", "空单元格会使用字段映射里配置的默认值", "已开启")
+    return rules
+
+
+def build_target_data(
+    tabular: TabularData,
+    fields: dict[str, str],
+    file_name: str,
+    skip_details: list[dict[str, object]] | None = None,
+) -> tuple[list[str], list[list[object]], list[str], int]:
     mapping = [item for item in parse_mapping(fields.get("mapping"), tabular.columns) if item.get("enabled")]
     if not mapping:
         raise ValueError("至少需要启用一个字段。")
@@ -1448,7 +1590,7 @@ def build_target_data(tabular: TabularData, fields: dict[str, str], file_name: s
         raw_rows.append(values)
 
     transformed_columns = unique_names([transform_field_name(name, fields, f"column_{i + 1}") for i, name in enumerate(raw_columns)])
-    transformed_columns, cleaned_rows, skipped = apply_cleaning(transformed_columns, raw_rows, fields)
+    transformed_columns, cleaned_rows, skipped = apply_cleaning(transformed_columns, raw_rows, fields, skip_details)
 
     match_keys = [
         transformed_columns[index]
@@ -1702,6 +1844,22 @@ def convert_date_columns(columns: list[str], rows: list[list[object]], fields: d
     return converted
 
 
+INT64_MIN = -(2**63)
+INT64_MAX = 2**63 - 1
+
+
+def fits_int64_literal(text: str) -> bool:
+    """判断纯数字字面量能否被 64 位有符号整数精确容纳。
+
+    SQLite 的 INTEGER 亲和性会把超范围整数静默转成 REAL（丢精度），
+    MySQL 的 bigint 则直接报 1264 越界，因此这类列必须改用文本承载。
+    """
+    try:
+        return INT64_MIN <= int(text) <= INT64_MAX
+    except (TypeError, ValueError):
+        return False
+
+
 def infer_column_types(columns: list[str], rows: list[list[object]], fields: dict[str, str]) -> dict[str, str]:
     db_type = target_db_type(fields)
     text_type = "text" if db_type == "sqlite" else "text"
@@ -1721,7 +1879,12 @@ def infer_column_types(columns: list[str], rows: list[list[object]], fields: dic
                 else:
                     types[column] = "date"
             elif values and all(re.fullmatch(r"[-+]?\d+", str(value)) for value in values):
-                types[column] = int_type
+                # 订单号/身份证号这类超长数字超出 int64 时不能声明成 integer/bigint：
+                # SQLite 会转 REAL 丢精度、MySQL 会越界报错，因此降级为文本原样保留。
+                if all(fits_int64_literal(str(value)) for value in values):
+                    types[column] = int_type
+                else:
+                    types[column] = text_type
             elif values and all(re.fullmatch(r"[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d+)?", str(value)) for value in values):
                 types[column] = real_type
             else:
@@ -1796,6 +1959,12 @@ def detect_type_warnings(columns: list[str], rows: list[list[object]], column_ty
             continue
         values = [row[index] for row in rows if index < len(row) and row[index] not in (None, "")]
         if not values:
+            continue
+        digits = [str(value).strip() for value in values]
+        if all(re.fullmatch(r"[-+]?\d+", text) for text in digits) and any(
+            not fits_int64_literal(text) for text in digits
+        ):
+            warnings.append({"column": column, "reason": "该列数值超出 64 位整数范围，已按文本处理以保留精度"})
             continue
         numeric_like = 0
         date_like = 0
@@ -1953,6 +2122,52 @@ def mysql_error_code(exc: Exception) -> int:
     if args and isinstance(args[0], int):
         return int(args[0])
     return 0
+
+
+# 常见 MySQL 错误码 → 可操作的中文提示。缺陷背景：断连时前端看到的是
+# `(2003, "Can't connect to MySQL server on '127.0.0.1' ([WinError 10061] ...)")`
+# 这类以驱动原文开头的消息，用户无法判断该改哪里。
+_MYSQL_ERROR_HINTS: dict[int, str] = {
+    2002: "无法连接到目标数据库服务器，请确认地址与端口是否正确、服务是否已启动",
+    2003: "无法连接到目标数据库服务器，请确认地址与端口是否正确、服务是否已启动",
+    2005: "无法解析目标数据库的主机名，请检查连接地址是否为 IP 或可解析的域名",
+    1045: "目标数据库认证失败，请检查用户名与密码",
+    1044: "当前数据库账号无权访问该数据库，请检查账号授权",
+    1049: "目标数据库不存在，请确认数据库名",
+    1130: "目标数据库服务器不允许本机连接，请在服务器端放开本机 IP 的访问权限",
+    1146: "目标表不存在，请检查目标表名或改用「重建」模式新建",
+    1054: "目标表中不存在该字段，请检查字段映射或开启自动扩展",
+    1264: "数值超出目标列允许的范围，请调整字段类型后重试",
+    1064: "SQL 语法错误，请检查所填写的自定义 SQL",
+    1213: "目标数据库出现死锁，请稍后重试",
+    1205: "等待目标数据库锁超时，请稍后重试",
+}
+
+
+def mysql_error_detail(exc: Exception) -> str:
+    """取出 pymysql 异常的「消息」部分，剥掉 `(errno, ...)` 的元组外壳。"""
+    args = getattr(exc, "args", ())
+    if len(args) >= 2 and isinstance(args[0], int):
+        return str(args[1])
+    return str(exc)
+
+
+def friendly_mysql_error(exc: Exception, action: str = "连接目标数据库") -> Exception:
+    """把 pymysql 异常翻译成「中文主句 + 错误码」，不再以驱动原文开头。
+
+    已是我们自己抛出的中文 ValueError 原样透传，避免二次包装。
+    """
+    if isinstance(exc, ValueError) and not getattr(exc, "args", ()):
+        return exc
+    code = mysql_error_code(exc)
+    if code == 0:
+        if isinstance(exc, ValueError):
+            return exc
+        return ValueError(f"{action}失败：{exc}")
+    hint = _MYSQL_ERROR_HINTS.get(code)
+    if hint:
+        return ValueError(f"{action}失败：{hint}。（错误码 {code}）")
+    return ValueError(f"{action}失败：数据库返回错误（错误码 {code}）：{mysql_error_detail(exc)}")
 
 
 def wrap_mysql_insert_error(exc: Exception) -> Exception:
@@ -4042,6 +4257,86 @@ def compute_next_run(rule: dict[str, object], start_at: str = "", end_at: str = 
     return candidate.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def is_app_managed_file(path: Path) -> bool:
+    """判断文件是否由本工具自己生成（上传副本 / 任务副本 / 链接快照）。
+
+    这类文件删掉无风险。反之则是用户在「本地路径导入」里指定的**真实文件**，
+    删除必须走系统回收站，否则就是不可恢复的数据丢失。
+    """
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    for root in (UPLOADS, TASK_SOURCES, LINKED_SOURCES):
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def move_to_recycle_bin(path: Path) -> bool:
+    """Windows：把文件移入回收站（可恢复）。非 Windows 或失败返回 False。
+
+    依据 win-recycle-delete 技能里已实测的 ctypes 实现：
+    `shell32.SHFileOperationW` + `FOF_ALLOWUNDO(0x0040)`——
+    **FOF_ALLOWUNDO 是「进回收站」的唯一开关**，不加就是永久删除。
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class SHFILEOPSTRUCTW(ctypes.Structure):
+            _fields_ = [
+                ("hwnd", wintypes.HWND),
+                ("wFunc", ctypes.c_uint),
+                ("pFrom", wintypes.LPCWSTR),
+                ("pTo", wintypes.LPCWSTR),
+                ("fFlags", ctypes.c_uint16),
+                ("fAnyOperationsAborted", wintypes.BOOL),
+                ("hNameMappings", ctypes.c_void_p),
+                ("lpszProgressTitle", wintypes.LPCWSTR),
+            ]
+
+        op = SHFILEOPSTRUCTW()
+        op.hwnd = None
+        op.wFunc = 0x0003  # FO_DELETE
+        # pFrom 必须是「\0 分隔、\0\0 结尾」的多字符串
+        op.pFrom = str(path) + "\0\0"
+        op.pTo = None
+        op.fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400 | 0x0200
+        op.fAnyOperationsAborted = False
+        op.hNameMappings = None
+        op.lpszProgressTitle = None
+        result = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+        return result == 0 and not op.fAnyOperationsAborted
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def safe_delete_source_file(path: Path) -> str:
+    """按文件归属选择删除方式，返回给用户看的说明（永不抛错）。
+
+    改进F：原先不论文件来源一律 `unlink`。用「本地路径导入」时上传对象直接
+    指向用户的真实源文件，一次误勾选就永久删掉了原始数据。现在改为：
+    工具自管副本直接删；用户真实文件进回收站；两者都不成立时**保留不删**。
+    """
+    try:
+        if not path.exists():
+            return ""
+        if is_app_managed_file(path):
+            path.unlink(missing_ok=True)
+            return "上传副本已删除"
+        if move_to_recycle_bin(path):
+            return "源文件已移入回收站（可从回收站恢复）"
+    except OSError as exc:
+        return f"源文件删除失败，已原样保留：{exc}"
+    return f"为防误删，源文件已保留（不在工具副本目录内且无法移入回收站）：{path}"
+
+
 def collect_local_files(path_text: str) -> list[UploadedFile]:
     path_text = path_text.strip().strip('"')
     if not path_text:
@@ -5401,6 +5696,9 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
             else:
                 per_sheet["tableNameRule"] = "sheet"
             results.append(import_uploaded_file(uploaded, per_sheet))
+        sheet_details = [
+            detail for item in results for detail in (item.get("skipDetails") or [])
+        ][:MAX_SKIP_DETAILS]
         return {
             "fileName": uploaded.filename,
             "tableName": results[0]["tableName"] if results else "",
@@ -5409,12 +5707,14 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
             "rowsWritten": sum(int(item["rowsWritten"]) for item in results),
             "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
             "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
+            "skipDetails": sheet_details,
             "message": f"已导入 {len(results)} 个 Sheet",
             "sheetResults": results,
         }
 
     tabular = read_tabular_file(uploaded.path, fields)
-    columns, rows, match_keys, skipped = build_target_data(tabular, fields, uploaded.filename)
+    skip_details: list[dict[str, object]] = []
+    columns, rows, match_keys, skipped = build_target_data(tabular, fields, uploaded.filename, skip_details)
     rows = convert_date_columns(columns, rows, fields)
     table_name = normalize_target_name(uploaded, tabular, fields)
     mode = fields.get("importMode", "append")
@@ -5439,6 +5739,13 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
                 "rowsWritten": 0,
                 "rowsUpdated": 0,
                 "rowsSkipped": len(rows),
+                "skipDetails": [
+                    {
+                        "dataRow": 0,
+                        "reason": f"目标表 {table_name} 已存在，重复表名策略为「跳过」，整个文件未导入",
+                        "key": "",
+                    }
+                ],
                 "message": "目标表重复，已跳过",
             }
         if target_table_exists(conn, table_name, fields) and mode == "append" and duplicate_mode == "suffix":
@@ -5543,8 +5850,9 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
     finally:
         conn.close()
 
+    delete_note = ""
     if parse_bool(fields, "deleteAfterSuccess", False):
-        uploaded.path.unlink(missing_ok=True)
+        delete_note = safe_delete_source_file(uploaded.path)
 
     return {
         "fileName": uploaded.filename,
@@ -5555,6 +5863,8 @@ def import_uploaded_file(uploaded: UploadedFile, fields: dict[str, str]) -> dict
         "rowsUpdated": updated,
         "rowsSkipped": skipped,
         "verifiedRows": verified_rows,
+        "skipDetails": skip_details,
+        "deleteNote": delete_note,
         "message": "导入完成",
     }
 
@@ -5906,6 +6216,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 "selectedSheet": tabular.selected_sheet,
                 "columnTypes": column_types,
                 "typeWarnings": type_warnings,
+                # P3-20：预览必须告知「本次会实际应用哪些清洗/重命名规则」，含默认开启项。
+                "cleaningRules": describe_cleaning_rules(fields),
             },
         )
 
@@ -5958,6 +6270,13 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                     "rowsUpdated": sum(int(item["rowsUpdated"]) for item in results),
                     "rowsSkipped": sum(int(item["rowsSkipped"]) for item in results),
                 },
+                # 改进C：把行级跳过明细汇总到顶层，用户能看到「哪一行、为什么没进库」。
+                "skipDetails": [
+                    dict(detail, fileName=item.get("fileName", ""))
+                    for item in results
+                    for detail in (item.get("skipDetails") or [])
+                ][:MAX_SKIP_DETAILS],
+                "cleaningRules": describe_cleaning_rules(fields),
                 "results": results,
                 "failures": failures,
                 "exportPath": export_path,
@@ -6045,7 +6364,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             try:
                 tables = target_table_names(fields)
             except Exception as exc:
-                raise ValueError(f"无法读取目标数据库的表列表，请检查连接配置：{exc}")
+                raise friendly_mysql_error(exc, "读取目标数据库的表列表") from exc
             json_response(self, {"ok": True, "tables": tables, "targetDbType": "mysql"})
             return
         with connect_db() as conn:
@@ -6099,7 +6418,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         try:
             conn = connect_target_db(fields)
         except Exception as exc:
-            raise ValueError(f"无法连接目标数据库，请检查连接配置：{exc}")
+            raise friendly_mysql_error(exc) from exc
         try:
             with conn.cursor() as cursor:
                 cursor.execute(f"select count(*) as total from {db_quote(table_name, fields)}")
@@ -6108,7 +6427,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 columns = [str(item[0]) for item in cursor.description or []]
                 rows = cursor.fetchall()
         except Exception as exc:
-            raise ValueError(f"读取表数据失败，请确认表存在且账号有权限：{exc}")
+            raise friendly_mysql_error(exc, "读取表数据")
         finally:
             conn.close()
         json_response(

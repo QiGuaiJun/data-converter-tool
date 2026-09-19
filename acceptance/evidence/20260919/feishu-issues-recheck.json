@@ -1,0 +1,165 @@
+{
+  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-feishu-fix2",
+  "results": [
+    {
+      "id": "P1-1",
+      "verdict": "PASS",
+      "detail": "MySQL typeMode=auto 导入日期列 HTTP=200 → 真实列类型={'日期': 'date', '金额': 'bigint'}（期望 date/datetime；SQLite 侧为设计上固定 text，不作判据）"
+    },
+    {
+      "id": "P2-11",
+      "verdict": "PASS",
+      "detail": "dateColumns='d' 且源为 2026/01/02（MySQL）HTTP=200 → 真实列类型={'d': 'date', '金额': 'bigint'}（期望 d 为 date/datetime）"
+    },
+    {
+      "id": "P2-6",
+      "verdict": "PASS",
+      "detail": "导入超大整数/科学计数法 → 落库值=['12345678901234567890', '1.2345678901234e+30']（期望原样 ['12345678901234567890', '1.2345678901234e+30']）；声明类型={'big': 'text', 'sci': 'real'}"
+    },
+    {
+      "id": "P2-10",
+      "verdict": "PASS",
+      "detail": "autoPkField=id HTTP=200 主键列=['id'] 值=[1, 2]（期望 id / [1,2]）；err="
+    },
+    {
+      "id": "P3-27",
+      "verdict": "PASS",
+      "detail": "UT（SQLite 文本 + MySQL datetime）→ 2 passed in 1.20s；MySQL 实测 imported_at 类型=datetime（期望 datetime）"
+    },
+    {
+      "id": "P2-12",
+      "verdict": "PASS",
+      "detail": "同名同内容文件连导两次 → 第二次 summary={\"totalFiles\": 1, \"successFiles\": 1, \"failedFiles\": 0, \"skippedFiles\": 1, \"rowsRead\": 0, \"rowsWritten\": 0, \"rowsUpdated\": 0, \"rowsSkipped\": 0}（期望 skippedFiles≥1）"
+    },
+    {
+      "id": "改进C",
+      "verdict": "PASS",
+      "detail": "dedupeColumns=a 去重 → summary.rowsSkipped=1（期望 1）；顶层 skipDetails=1 条，样例=[{\"dataRow\": 3, \"reason\": \"按「去重列」判定为重复行\", \"key\": \"1\", \"fileName\": \"gc.csv\"}]"
+    },
+    {
+      "id": "改进A",
+      "verdict": "PASS",
+      "detail": "预览 columnTypes={\"a\": \"integer\", \"b\": \"text\"}；目标表结构接口 HTTP=200 列=['a', 'b']；前端已接线（源列→目标列对照）=True"
+    },
+    {
+      "id": "P3-20",
+      "verdict": "PASS",
+      "detail": "预览响应键=['cleaningRules', 'columnTypes', 'columns', 'fileName', 'ok', 'preview', 'selectedSheet', 'sheets', 'suggestedTable', 'totalRows', 'typeWarnings']；清洗/规则类键=['cleaningRules']（空 = 预览页仍不展示将应用的清洗规则 → 未闭环）"
+    },
+    {
+      "id": "P3-17",
+      "verdict": "PASS",
+      "detail": "伪文件错误文案={\"fake.xlsx\": \"1789801588_2b56da96755647f4a5d329aa6f40a57a_fake.xlsx 文件不是有效的 xlsx/xls\", \"fake.xls\": \"1789801588_d9dcd0eb904b4c73b379851c56ddb693_fake.xls 文件不是有效的 xls（可能已损坏\", \"fake.json\": \"1789801588_f9e6734e08e1429ab183b7bbcbab3a7f_fake.json 文件不是有效的 JSON（格式错\"}（仍为纯英文的=[] → 未闭环）"
+    },
+    {
+      "id": "P3-18",
+      "verdict": "PASS",
+      "detail": "MySQL 断连 HTTP=400 error=测试数据库连接失败：无法连接到目标数据库服务器，请确认地址与端口是否正确、服务是否已启动。（错误码 2003）（以驱动原文开头=False，含中文=True → 未闭环）"
+    },
+    {
+      "id": "改进F",
+      "verdict": "PASS",
+      "detail": "deleteAfterSuccess 后源文件已消失=True；是否走回收站=True（直接 unlink、无回收站无二次确认 → 未闭环）"
+    },
+    {
+      "id": "P1-5",
+      "verdict": "PASS",
+      "detail": "2500 行 / batchRows=1000 → 产出 3 个文件，累计数据行=2500（期望 3 个 / 2500 行，无静默丢失）；err="
+    },
+    {
+      "id": "P2-7",
+      "verdict": "PASS",
+      "detail": "SQLite 源行数=2500 rowsApproximate=False（期望 2500 / False）"
+    },
+    {
+      "id": "P2-8",
+      "verdict": "PASS",
+      "detail": "导出到不存在的多级目录 → HTTP=200 目录已创建且落盘=True"
+    },
+    {
+      "id": "P2-13",
+      "verdict": "PASS",
+      "detail": "MySQL 侧用例存在=True 实跑=1 passed"
+    },
+    {
+      "id": "P1-3",
+      "verdict": "PASS",
+      "detail": "前端 js 中出现的敏感词=无；connections.js 是否把密码拼进 URL=False（密码走 POST body、GET 列表不含 password 键）"
+    },
+    {
+      "id": "P1-4",
+      "verdict": "PASS",
+      "detail": "入库前缀=fernet: 含明文=False；GET 列表含 password 键=False（期望 False）"
+    },
+    {
+      "id": "P2-14",
+      "verdict": "PASS",
+      "detail": "越界下载 HTTP=400 err=该路径不在允许下载的目录内。"
+    },
+    {
+      "id": "BUG-29",
+      "verdict": "PASS",
+      "detail": "引用 task_sources 副本执行 → HTTP=200 命中「一次性副本」提示=True；文案=作业执行失败：0 个步骤成功，1 个步骤失败，0 个步骤未启用。最后错误：该导入任务的源文件仍是软件一次性副本（task_sources），定时/作业执行不读取它。请打开这条导入任务，点击「关联本机原文件」选择电脑中的真"
+    },
+    {
+      "id": "改进B",
+      "verdict": "PASS",
+      "detail": "importJobId 引用导入任务 → 运行 status=成功 目标表行数=1（期望 成功 / 1）；err="
+    },
+    {
+      "id": "BUG-30",
+      "verdict": "PASS",
+      "detail": "带 scheduleId 立即执行 → last_run_at=2026-09-19 15:06:35 last_status=成功（期望均非空）"
+    },
+    {
+      "id": "P2-9",
+      "verdict": "PASS",
+      "detail": "注入 running=1 后调用 recover_interrupted_runs → running=0；recovered=2 注入前僵尸运行=1 残留 running 调度=0（期望 0）；运行记录 status=失败 message=进程异常中断，已自动恢复（上次执行未完成）。"
+    },
+    {
+      "id": "P3-25",
+      "verdict": "PASS",
+      "detail": "大文件导入进行中并发请求 /api/ping → 延迟(ms)={200: 2}（最快 2ms，期望 <3000ms）"
+    },
+    {
+      "id": "改进E",
+      "verdict": "PASS",
+      "detail": "前端是否存在关闭确认钩子（beforeunload）→ ['shell.js']（无 = 仍未闭环）"
+    },
+    {
+      "id": "P3-26",
+      "verdict": "PASS",
+      "detail": "/favicon.ico HTTP=404、/favicon.svg HTTP=200；index.html 已声明 favicon=True"
+    },
+    {
+      "id": "P3-21",
+      "verdict": "PASS",
+      "detail": "仍用 module-pages.js 渲染的占位页=3 个（按设计保留）；已标注「未开放」的模块数=3（期望 ≥3）、徽标渲染已接入=True；docs.js 体积=21885B、像占位页=False"
+    },
+    {
+      "id": "改进D",
+      "verdict": "PARTIAL",
+      "detail": "docs.js 体积=19540B，可辨识的条目字段数≈46（备注称「docs.html 无实质内容、仅占位句」已过时；但内容是否覆盖核心场景需人工判断）"
+    },
+    {
+      "id": "改进H",
+      "verdict": "PASS",
+      "detail": "tests/ 用例文件=10 个、acceptance/ 脚本=8 个；`pytest -q` → 103 passed in 11.38s（备注称「tests/ 未建立、AI 改动无护栏」已过时）"
+    },
+    {
+      "id": "改进G",
+      "verdict": "PASS",
+      "detail": "版本号入口=True（/api/meta.appVersion=1.4.0）；素色模式 CSS 规则=True、开关+持久化=True（键 dc_plain_mode_v1）；已引入全站外观脚本的页面=11 个（期望 11）"
+    },
+    {
+      "id": "P3-19",
+      "verdict": "PASS",
+      "detail": "UT test_p3_19_test_connection_filters_system_databases → 1 passed"
+    },
+    {
+      "id": "P2-16",
+      "verdict": "PASS",
+      "detail": "导入草稿键存在=True；导出侧使用 localStorage=True"
+    }
+  ]
+}

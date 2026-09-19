@@ -5131,6 +5131,99 @@ body {
     url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
 }
 
+/* 改进G「素色模式」：关闭背景壁纸改用纯色画布。
+   body.plain-mode 的选择器权重高于 body，故无论主题文件何时加载都能覆盖上面的壁纸。 */
+body.plain-mode {
+  background: var(--canvas, #faf9f5);
+}
+
+.plain-mode-toggle {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 60;
+  padding: 6px 12px;
+  border: 1px solid var(--hairline, #e6dfd8);
+  border-radius: 999px;
+  background: var(--surface-card, #efe9de);
+  color: var(--body, #3d3d3a);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0.72;
+}
+
+.plain-mode-toggle:hover,
+.plain-mode-toggle:focus-visible {
+  opacity: 1;
+  border-color: var(--primary, #cc785c);
+}
+
+/* P3-20：预览页展示「本次导入会应用的转换规则」 */
+.cleaning-rules,
+.target-table-info {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline, #e6dfd8);
+  border-radius: var(--r-sm, 8px);
+  background: var(--panel, #f4efe6);
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--body, #3d3d3a);
+}
+
+.cleaning-rules ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.cleaning-rules li {
+  margin: 2px 0;
+}
+
+.cleaning-rules .rule-source,
+.target-table-info .match-note {
+  margin-left: 6px;
+  color: var(--muted-soft, #8e8b82);
+  font-size: 12px;
+}
+
+.target-table-info table {
+  width: 100%;
+  margin-top: 6px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.target-table-info th,
+.target-table-info td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--hairline-soft, #ebe6df);
+  text-align: left;
+}
+
+.target-table-info th {
+  color: var(--muted, #6c6a64);
+  font-weight: 600;
+}
+
+/* P3-21：占位页必须显式标注「未开放」，避免用户误以为功能已可用 */
+.module-status {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--warning, #8a5a00);
+  border-radius: 999px;
+  background: var(--warning-bg, #f7ecd7);
+  color: var(--warning, #8a5a00);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .desktop-shell {
   background: transparent;
 }
