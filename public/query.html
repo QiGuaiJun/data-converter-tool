@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SQL 查询 - 数据导表工具</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/styles.css?v=20260715_fixed_query_result" />
+    <link rel="stylesheet" href="/styles.css?v=20260921_sql_console" />
     <link rel="stylesheet" href="/sql-editor.css?v=20260911_sql_editor" />
     <link rel="stylesheet" href="/theme.css?v=20260912_claude" />
   </head>
@@ -55,22 +55,24 @@
                 <div id="savedQueryList" class="query-list empty">暂无保存的查询</div>
               </aside>
               <section class="query-editor-panel">
-                <div class="query-name-row"><label>查询名称：<input id="queryName" placeholder="例如 销售明细查询" /></label><span>仅允许只读 SQL</span></div>
-                <textarea id="querySql" spellcheck="false" placeholder="请输入 SELECT、SHOW、DESCRIBE 或 EXPLAIN 查询">SELECT 1 AS value</textarea>
-                <div class="query-shortcut">快捷键：Ctrl + Enter 执行查询</div>
+                <div class="query-name-row"><label>查询名称：<input id="queryName" placeholder="例如 销售明细查询" /></label><span>支持任意 SQL（SELECT / DDL / DML，多语句用分号分隔）</span></div>
+                <textarea id="querySql" spellcheck="false" placeholder="可执行任意 SQL：SELECT / CREATE / ALTER / INSERT / UPDATE / DELETE；多条语句用分号分隔">SELECT 1 AS value</textarea>
+                <div class="query-shortcut">快捷键：Ctrl + Enter 执行全部（选中文本时只执行选中部分）　·　高危语句会先弹确认框</div>
               </section>
             </section>
             <section class="query-result-panel">
-              <header><strong>查询结果</strong><span id="queryResultMeta">尚未执行</span></header>
-              <div id="queryResult" class="table-wrap empty">执行查询后在这里显示结果</div>
+              <header><strong>执行结果</strong><span id="queryResultMeta">尚未执行</span></header>
+              <div id="queryStatementSummary" class="query-statement-summary hidden"></div>
+              <div id="queryResultTabs" class="query-result-tabs hidden"></div>
+              <div id="queryResult" class="table-wrap empty">执行 SQL 后在这里显示结果</div>
             </section>
           </main>
         </section>
       </div>
     </div>
     <script src="/sql-editor.js?v=20260911_sql_editor"></script>
-    <script src="/query.js?v=20260914_defect_fix"></script>
+    <script src="/query.js?v=20260921_sql_console"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
-  <script src="/shell.js?v=20260919_plain_and_close"></script></body>
+  <script src="/shell.js?v=20260921_sql_console"></script></body>
 </html>

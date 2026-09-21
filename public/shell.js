@@ -4,6 +4,9 @@
  *    默认仍是壁纸（保持与历史外观一致），只是把开关交到用户手里。
  * 2) 改进E「关闭提醒」：有启用中的定时任务时，关闭/离开页面给出提示，
  *    避免用户以为「关掉页面任务还在跑」。站内跳转不提示（见 internalNavigation）。
+ * 3) window.dcConfirm({title, lines, okText}) → Promise<boolean>
+ *    全站通用确认框（按需注入，复用 index.html 的 .dialog / .confirm-card 样式）。
+ *    查询页执行高危 SQL 前用它做二次确认——服务端仍会校验一次性令牌，前端只是第一道门。
  */
 (function () {
   "use strict";
@@ -109,6 +112,74 @@
         /* 拿不到定时任务列表时不打扰用户 */
       });
   }
+
+  // ---------------------------------------------------------------- 通用确认框
+
+  function ensureConfirmDialog() {
+    var dialog = document.getElementById("dcConfirmDialog");
+    if (dialog) {
+      return dialog;
+    }
+    dialog = document.createElement("section");
+    dialog.id = "dcConfirmDialog";
+    dialog.className = "dialog hidden";
+    dialog.innerHTML =
+      '<div class="dialog-card confirm-card">' +
+      '<div class="dialog-title"><strong>操作确认</strong>' +
+      '<button id="dcConfirmClose" type="button">×</button></div>' +
+      '<div id="dcConfirmBody"></div>' +
+      '<div class="confirm-actions">' +
+      '<button id="dcConfirmCancel" type="button" class="button">取消</button>' +
+      '<button id="dcConfirmOk" type="button" class="primary">确认继续</button>' +
+      "</div></div>";
+    document.body.appendChild(dialog);
+    return dialog;
+  }
+
+  /**
+   * @param {{title?: string, lines?: string[], okText?: string, cancelText?: string}} options
+   * @returns {Promise<boolean>} 用户是否确认
+   */
+  window.dcConfirm = function (options) {
+    var config = options || {};
+    var dialog = ensureConfirmDialog();
+    var titleEl = dialog.querySelector(".dialog-title strong");
+    var bodyEl = dialog.querySelector("#dcConfirmBody");
+    var okButton = dialog.querySelector("#dcConfirmOk");
+    var cancelButton = dialog.querySelector("#dcConfirmCancel");
+    var closeButton = dialog.querySelector("#dcConfirmClose");
+
+    titleEl.textContent = config.title || "操作确认";
+    okButton.textContent = config.okText || "确认继续";
+    cancelButton.textContent = config.cancelText || "取消";
+    bodyEl.innerHTML = "";
+    (config.lines || []).forEach(function (line) {
+      var paragraph = document.createElement("p");
+      paragraph.className = "confirm-message";
+      paragraph.textContent = line;
+      bodyEl.appendChild(paragraph);
+    });
+
+    dialog.classList.remove("hidden");
+    return new Promise(function (resolve) {
+      function finish(result) {
+        dialog.classList.add("hidden");
+        okButton.removeEventListener("click", onOk);
+        cancelButton.removeEventListener("click", onCancel);
+        closeButton.removeEventListener("click", onCancel);
+        resolve(result);
+      }
+      function onOk() {
+        finish(true);
+      }
+      function onCancel() {
+        finish(false);
+      }
+      okButton.addEventListener("click", onOk);
+      cancelButton.addEventListener("click", onCancel);
+      closeButton.addEventListener("click", onCancel);
+    });
+  };
 
   function boot() {
     try {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import base64
 import datetime as dt
+import hashlib
 import hmac
 import json
 import mimetypes
@@ -80,7 +81,7 @@ DATA = env_path("DATA_DIR", runtime_path("data"))
 UPLOADS = env_path("UPLOADS_DIR", runtime_path("uploads"))
 EXPORTS = env_path("EXPORTS_DIR", runtime_path("exports"))
 # 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 TASK_SOURCES = DATA / "task_sources"
 LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
@@ -2870,7 +2871,32 @@ def export_header_labels(item: dict[str, object], columns: list[str], fields: di
     return [comments.get(column) or column for column in columns]
 
 
+EXPORT_SOURCE_KEYWORDS = {"select", "with", "show", "describe", "desc", "explain", "table", "values"}
+
+
+def ensure_query_source(sql: str, action: str = "导出") -> str:
+    """导出源 / 预览源必须是**查询语句**。
+
+    查询模块已放开写权限，但导出链路会把 SQL 包成 ``select * from (<sql>) limit N``，
+    写语句（INSERT/UPDATE/DELETE/DDL）塞进去只会得到一个看不懂的语法错误。
+    这里提前拦下并给出可操作提示，而不是让用户在包装后报错里猜。
+    """
+    statements = split_sql_statements(sql)
+    if not statements:
+        raise ValueError(f"{action}源的 SQL 为空，请先填写查询语句。")
+    if len(statements) > 1:
+        raise ValueError(f"{action}源只能是一条查询语句，当前有 {len(statements)} 条（导出不支持多语句脚本）。")
+    keyword = sql_first_keyword(statements[0])
+    if keyword not in EXPORT_SOURCE_KEYWORDS:
+        raise ValueError(
+            f"{action}源只支持查询语句（SELECT / WITH / SHOW / DESCRIBE / EXPLAIN），"
+            f"当前是 {keyword.upper() or '未知'}。如需先改数据，请在「查询」页面执行后再导出。"
+        )
+    return statements[0]
+
+
 def fetch_export_rows(conn, sql: str, fields: dict[str, str], limit: int = 0) -> tuple[list[str], list[list[object]]]:
+    ensure_query_source(sql)
     query = sql.strip().rstrip(";")
     if limit > 0:
         if target_db_type(fields) == "mysql":
@@ -2889,6 +2915,7 @@ def fetch_export_rows(conn, sql: str, fields: dict[str, str], limit: int = 0) ->
 
 
 def export_row_batches(conn, sql: str, fields: dict[str, str], fetch_size: int = EXPORT_FETCH_SIZE) -> Iterator[tuple[list[str], list[list[object]]]]:
+    ensure_query_source(sql)
     query = sql.strip().rstrip(";")
     if target_db_type(fields) == "mysql":
         cursor = conn.cursor(pymysql.cursors.SSCursor)
@@ -3822,44 +3849,403 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+# ---------------------------------------------------------------------------
+# 查询模块：SQL 控制台
+#
+# 产品口径（2026-09-21 业主拍板）：查询页 = 完整 SQL 控制台，不限语句类型，
+# 写权限完全交给连接账号（本机连接用的是 root，数据库层没有兜底），
+# 因此**危险语句必须在服务端做一次性令牌确认**，不靠前端自觉。
+#
+# 与旧实现（只允许 SELECT/SHOW/DESCRIBE/EXPLAIN/WITH + 一次一条）的差异：
+#   * 支持多语句脚本，按「引号/注释感知」切分后逐条执行（不是 MySQL 的 allowMultiQueries）
+#   * 显式事务语义：默认逐条提交；显式 BEGIN/START TRANSACTION 开启后交给用户 COMMIT/ROLLBACK
+#   * 每条语句都回报 kind（resultset/affected/ddl）+ affectedRows + warnings + elapsedMs
+#   * MySQL 用 nextset() 收集多结果集（CALL 存储过程不再丢结果）
+# ---------------------------------------------------------------------------
+
+SQL_SAFE_KEYWORDS = {
+    "select", "show", "desc", "describe", "explain", "with", "use",
+    "begin", "commit", "rollback", "start", "savepoint", "release", "do", "help",
+}
+SQL_WRITE_KEYWORDS = {
+    "insert", "replace", "update", "delete", "create", "alter", "drop", "truncate",
+    "rename", "load", "call", "set", "grant", "revoke", "analyze", "optimize",
+    "repair", "flush", "lock", "unlock", "prepare", "execute", "deallocate", "kill",
+    "install", "uninstall", "reset", "purge", "change", "handler", "xa", "import",
+}
+SQL_DDL_KEYWORDS = {
+    "create", "alter", "drop", "truncate", "rename", "grant", "revoke",
+    "analyze", "optimize", "repair", "flush", "use", "set", "call",
+}
+SQL_TX_BEGIN_KEYWORDS = {"begin", "start"}
+SQL_TX_END_KEYWORDS = {"commit", "rollback"}
+
+QUERY_MAX_STATEMENTS = 200
+QUERY_MAX_ROWS = 1000
+_QUERY_CONFIRM_TTL = 300
+_QUERY_CONFIRM_LOCK = threading.Lock()
+_QUERY_CONFIRM_TOKENS: dict[str, dict[str, object]] = {}
+
+
+def strip_sql_literals(sql: str) -> str:
+    """把字符串字面量 / 引号标识符 / 注释替换成等长空白，只留可扫描的代码骨架。
+
+    用于安全判定（例如「DELETE 有没有 WHERE」）——避免把 ``delete from t where a = 'drop'``
+    里的字面量当成关键字。长度保持不变，便于按位置回溯原文。
+    """
+    out: list[str] = []
+    index = 0
+    length = len(sql)
+    quote_char = ""
+    while index < length:
+        char = sql[index]
+        if quote_char:
+            if char == "\\" and quote_char != "`" and index + 1 < length:
+                out.append("  ")
+                index += 2
+                continue
+            if char == quote_char:
+                if index + 1 < length and sql[index + 1] == quote_char:
+                    out.append("  ")
+                    index += 2
+                    continue
+                quote_char = ""
+            out.append(" ")
+            index += 1
+            continue
+        if char in {"'", '"', "`"}:
+            quote_char = char
+            out.append(" ")
+            index += 1
+            continue
+        if char == "/" and sql.startswith("/*", index):
+            closing = sql.find("*/", index + 2)
+            end = length if closing < 0 else closing + 2
+            out.append(" " * (end - index))
+            index = end
+            continue
+        if char == "#" or (char == "-" and sql.startswith("--", index) and (index + 2 >= length or sql[index + 2].isspace())):
+            newline = sql.find("\n", index)
+            end = length if newline < 0 else newline
+            out.append(" " * (end - index))
+            index = end
+            continue
+        out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def sql_first_keyword(sql: str) -> str:
+    head = sql_after_leading_comments(sql)
+    match = re.match(r"^[\s(]*([a-zA-Z_]+)", head)
+    return match.group(1).lower() if match else ""
+
+
+def classify_sql_risk(sql: str) -> dict[str, object]:
+    """给单条语句定危险级别。
+
+    * ``safe``   —— 只读：SELECT / SHOW / DESC / EXPLAIN / 只读 WITH / 事务控制
+    * ``write``  —— 会改数据但可预期：INSERT / UPDATE/DELETE 带 WHERE / CREATE ...
+    * ``danger`` —— 需要二次确认：DROP / TRUNCATE / ALTER / GRANT / REVOKE /
+                    无 WHERE 的 UPDATE/DELETE / SELECT ... INTO OUTFILE / 无法识别的语句
+    """
+    keyword = sql_first_keyword(sql)
+    skeleton = strip_sql_literals(sql).lower()
+    reasons: list[str] = []
+    level = "safe"
+
+    if keyword in {"drop", "truncate", "grant", "revoke", "rename"}:
+        level = "danger"
+        reasons.append(f"{keyword.upper()} 会不可逆地删除对象或改动权限")
+    elif keyword == "alter":
+        level = "danger"
+        reasons.append("ALTER 会改动表结构，可能丢列或丢数据")
+    elif keyword in {"update", "delete"}:
+        if re.search(r"\bwhere\b", skeleton):
+            level = "write"
+        else:
+            level = "danger"
+            reasons.append(f"{keyword.upper()} 没有 WHERE 条件，会作用于整张表")
+    elif keyword in {"with", "select"}:
+        level = "safe"
+        # WITH ... DELETE / INSERT 这类「CTE 打头、实际是写」的语句要提级
+        if re.search(r"\)\s*(delete|update|insert|replace)\b", skeleton):
+            level = "write"
+    elif keyword == "set":
+        if re.search(r"\bset\s+(global|persist|@@global)", skeleton):
+            level = "danger"
+            reasons.append("SET GLOBAL / PERSIST 会改动服务器级参数")
+        else:
+            level = "write"
+    elif keyword in {"call", "load", "execute", "handler", "kill", "install", "uninstall", "purge", "change"}:
+        level = "danger"
+        reasons.append(f"{keyword.upper()} 属于管理类/过程类语句，可能产生副作用")
+    elif keyword in SQL_SAFE_KEYWORDS:
+        level = "safe"
+    elif keyword in SQL_WRITE_KEYWORDS:
+        level = "write"
+    else:
+        level = "danger"
+        reasons.append("无法识别的语句类型，按高危处理")
+
+    if re.search(r"\binto\s+(outfile|dumpfile)\b", skeleton):
+        level = "danger"
+        reasons.append("INTO OUTFILE / DUMPFILE 会写服务器文件系统")
+    return {"level": level, "keyword": keyword, "reasons": reasons}
+
+
+def _query_fingerprint(fields: dict[str, str], sql: str) -> str:
+    target = "|".join([
+        fields.get("connectionId", ""), fields.get("targetDbType", ""),
+        fields.get("dbHost", ""), fields.get("dbName", ""), fields.get("dbUser", ""),
+    ])
+    return hashlib.sha256(f"{target}\n{sql}".encode("utf-8")).hexdigest()
+
+
+def issue_query_confirm_token(fields: dict[str, str], sql: str) -> dict[str, object]:
+    """为「含高危语句的脚本」签发一次性确认令牌（默认 5 分钟有效，用后作废）。"""
+    fingerprint = _query_fingerprint(fields, sql)
+    token = hashlib.sha256(f"{fingerprint}{time.time()}{uuid.uuid4().hex}".encode("utf-8")).hexdigest()[:32]
+    now = time.time()
+    with _QUERY_CONFIRM_LOCK:
+        for key, item in list(_QUERY_CONFIRM_TOKENS.items()):
+            if float(item.get("expiresAt") or 0) <= now:
+                _QUERY_CONFIRM_TOKENS.pop(key, None)
+        _QUERY_CONFIRM_TOKENS[token] = {"fingerprint": fingerprint, "expiresAt": now + _QUERY_CONFIRM_TTL}
+    return {"token": token, "expiresIn": _QUERY_CONFIRM_TTL}
+
+
+def consume_query_confirm_token(token: str, fields: dict[str, str], sql: str) -> bool:
+    """校验并作废令牌。令牌只对「同一连接 + 同一 SQL 原文」有效。"""
+    if not token:
+        return False
+    with _QUERY_CONFIRM_LOCK:
+        item = _QUERY_CONFIRM_TOKENS.pop(token, None)
+    if not item:
+        return False
+    if float(item.get("expiresAt") or 0) <= time.time():
+        return False
+    return str(item.get("fingerprint") or "") == _query_fingerprint(fields, sql)
+
+
+def _mysql_warnings(conn) -> list[str]:
+    """读连接级 warning 列表（如 1265 Data truncated），失败不影响主流程。"""
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("show warnings")
+            return [str(row[2]) for row in cursor.fetchall() if len(row) > 2][:20]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _collect_mysql_result_sets(cursor, max_rows: int) -> list[dict[str, object]]:
+    """收集 MySQL 的全部结果集（CALL 存储过程会返回多个）。"""
+    sets: list[dict[str, object]] = []
+    while True:
+        if cursor.description:
+            raw = cursor.fetchmany(max_rows + 1)
+            truncated = len(raw) > max_rows
+            sets.append({
+                "columns": [str(item[0]) for item in cursor.description],
+                "rows": [[cell_to_text(cell) for cell in row] for row in raw[:max_rows]],
+                "rowCount": min(len(raw), max_rows),
+                "truncated": truncated,
+            })
+        try:
+            if not cursor.nextset():
+                break
+        except Exception:  # noqa: BLE001
+            break
+    return sets
+
+
+def execute_sql_script(
+    fields: dict[str, str],
+    sql_text: str,
+    *,
+    max_rows: int = QUERY_MAX_ROWS,
+    max_statements: int = QUERY_MAX_STATEMENTS,
+) -> dict[str, object]:
+    """执行一段 SQL 脚本（可含多条语句），逐条上报结果。
+
+    事务语义：默认**逐条提交**（等价于客户端的 autocommit 行为）；脚本里显式写
+    ``BEGIN`` / ``START TRANSACTION`` 后进入用户事务，直到 ``COMMIT`` / ``ROLLBACK``
+    才结束——此时中间的语句不会被自动提交。注意 MySQL 的 DDL 会隐式提交，
+    这是服务端行为，工具无法回滚。
+    """
+    statements = split_sql_statements(sql_text)
+    if not statements:
+        raise ValueError("请输入要执行的 SQL。")
+    if len(statements) > max_statements:
+        raise ValueError(f"一次最多执行 {max_statements} 条语句（当前 {len(statements)} 条），请拆分后再执行。")
+
+    is_mysql = target_db_type(fields) == "mysql"
+    started = time.time()
+    conn = connect_target_db(fields)
+    results: list[dict[str, object]] = []
+    failed_index = 0
+    failed_error = ""
+    in_transaction = False
+    try:
+        if is_mysql:
+            try:
+                conn.autocommit(False)
+            except Exception:  # noqa: BLE001
+                pass
+        for index, statement in enumerate(statements, start=1):
+            keyword = sql_first_keyword(statement)
+            entry: dict[str, object] = {
+                "index": index,
+                "sql": statement.strip(),
+                "keyword": keyword,
+                "kind": "empty",
+                "resultSets": [],
+                "affectedRows": None,
+                "warnings": [],
+                "elapsedMs": 0,
+                "error": None,
+            }
+            t0 = time.time()
+            try:
+                cursor = conn.cursor()
+                try:
+                    cursor.execute(statement)
+                    if is_mysql:
+                        result_sets = _collect_mysql_result_sets(cursor, max_rows)
+                        warnings = _mysql_warnings(conn) if (getattr(getattr(cursor, "_result", None), "warning_count", 0) or 0) else []
+                    else:
+                        if cursor.description:
+                            raw = cursor.fetchall()
+                            truncated = len(raw) > max_rows
+                            result_sets = [{
+                                "columns": [str(item[0]) for item in cursor.description],
+                                "rows": [[cell_to_text(cell) for cell in row] for row in raw[:max_rows]],
+                                "rowCount": min(len(raw), max_rows),
+                                "truncated": truncated,
+                            }]
+                        else:
+                            result_sets = []
+                        warnings = []
+                    affected = None if result_sets else (int(cursor.rowcount) if (cursor.rowcount or 0) >= 0 else 0)
+                finally:
+                    cursor.close()
+                entry["resultSets"] = result_sets
+                entry["affectedRows"] = affected
+                entry["warnings"] = warnings
+                if result_sets:
+                    entry["kind"] = "resultset"
+                elif keyword in SQL_DDL_KEYWORDS:
+                    entry["kind"] = "ddl"
+                else:
+                    entry["kind"] = "affected"
+                # 事务控制
+                if keyword in SQL_TX_BEGIN_KEYWORDS and not re.search(r"\bcommit\b", statement.lower()):
+                    in_transaction = True
+                elif keyword in SQL_TX_END_KEYWORDS:
+                    in_transaction = False
+                elif not in_transaction:
+                    conn.commit()
+            except Exception as exc:  # noqa: BLE001
+                entry["elapsedMs"] = int((time.time() - t0) * 1000)
+                entry["error"] = str(friendly_mysql_error(exc, f"执行第 {index} 条语句")) if is_mysql else f"第 {index} 条语句执行失败：{exc}"
+                results.append(entry)
+                failed_index = index
+                failed_error = str(entry["error"])
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+                break
+            entry["elapsedMs"] = int((time.time() - t0) * 1000)
+            results.append(entry)
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+    flat_sets: list[dict[str, object]] = [item for row in results for item in row["resultSets"]]  # type: ignore[union-attr]
+    first = flat_sets[0] if flat_sets else None
+    succeeded = sum(1 for row in results if not row["error"])
+    affected_total = sum(int(row["affectedRows"] or 0) for row in results)
+    if failed_index:
+        message = f"共 {len(statements)} 条语句，第 {failed_index} 条失败，已回滚该语句：{failed_error}"
+    elif len(results) > 1:
+        message = f"共执行 {len(results)} 条语句，全部成功。"
+    else:
+        single = results[0] if results else {}
+        if single.get("kind") == "resultset":
+            message = "查询执行成功。"
+        elif single.get("kind") == "ddl":
+            message = "语句执行成功（结构变更）。"
+        else:
+            message = f"语句执行成功，影响 {int(single.get('affectedRows') or 0)} 行。"
+    return {
+        "statements": results,
+        "totals": {
+            "statements": len(statements),
+            "executed": len(results),
+            "succeeded": succeeded,
+            "failed": 1 if failed_index else 0,
+            "affectedRows": affected_total,
+            "resultSets": len(flat_sets),
+        },
+        "resultSetCount": len(flat_sets),
+        "affectedRows": affected_total,
+        "failedIndex": failed_index,
+        # 兼容旧调用方（页面/复跑脚本依赖这几个顶层字段）
+        "columns": first["columns"] if first else [],
+        "rows": first["rows"] if first else [],
+        "rowCount": first["rowCount"] if first else 0,
+        "truncated": bool(first["truncated"]) if first else False,
+        "elapsedMs": int((time.time() - started) * 1000),
+        "message": message,
+    }
+
+
 def run_readonly_query(payload: dict[str, object]) -> dict[str, object]:
+    """查询模块入口：支持任意 SQL（含 DDL / DML / 多语句）。
+
+    函数名保留是为了兼容既有调用方与测试；语义已从「只读」放宽为「SQL 控制台」。
+    危险语句（DROP / TRUNCATE / ALTER / 无 WHERE 的删改 …）必须携带一次性确认令牌，
+    否则返回 ``needConfirm: true`` 而不是直接执行。
+    """
     raw_sql = str(payload.get("sql") or "").strip()
-    # 复用与导出模块同一套「引号感知 + 注释感知」切分：
-    # 不再把注释内部、字符串字面量内部的分号误判为「多条语句」，
-    # 并且天然支持以注释（-- / # / /* */）开头的合法查询。
+    if not raw_sql:
+        raise ValueError("请输入要执行的 SQL。")
+    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
     statements = split_sql_statements(raw_sql)
     if not statements:
         raise ValueError("请输入要执行的 SQL。")
-    if len(statements) > 1:
-        raise ValueError("一次只能执行一条 SQL 查询。")
-    sql = statements[0]
-    head = sql_after_leading_comments(sql)
-    first_word = re.match(r"^[\s(]*([a-zA-Z]+)", head)
-    command = first_word.group(1).lower() if first_word else ""
-    if command not in {"select", "show", "describe", "desc", "explain", "with"}:
-        raise ValueError("查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。")
 
-    fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
-    started = time.time()
-    message = "查询执行成功。"
-    columns: list[str] = []
-    rows: list[list[str]] = []
-    truncated = False
-    conn = connect_target_db(fields)
-    try:
-        cursor = conn.cursor()
-        try:
-            cursor.execute(sql)
-            columns = [str(item[0]) for item in cursor.description or []]
-            raw_rows = cursor.fetchmany(1001) if cursor.description else []
-            truncated = len(raw_rows) > 1000
-            rows = [[cell_to_text(cell) for cell in row] for row in raw_rows[:1000]]
-        finally:
-            cursor.close()
-    finally:
-        conn.close()
-    elapsed_ms = int((time.time() - started) * 1000)
-    return {"columns": columns, "rows": rows, "rowCount": len(rows), "elapsedMs": elapsed_ms, "truncated": truncated, "message": message}
+    dangerous = []
+    for index, statement in enumerate(statements, start=1):
+        risk = classify_sql_risk(statement)
+        if risk["level"] == "danger":
+            first_line = statement.strip().splitlines()[0] if statement.strip() else ""
+            dangerous.append({
+                "index": index,
+                "keyword": risk["keyword"],
+                "reasons": risk["reasons"] or ["该语句被判定为高危"],
+                "preview": first_line[:160],
+            })
+    if dangerous:
+        token = str(payload.get("confirmToken") or "").strip()
+        if not consume_query_confirm_token(token, fields, raw_sql):
+            issued = issue_query_confirm_token(fields, raw_sql)
+            return {
+                "needConfirm": True,
+                "dangerous": dangerous,
+                "confirmToken": issued["token"],
+                "expiresIn": issued["expiresIn"],
+                "columns": [],
+                "rows": [],
+                "rowCount": 0,
+                "elapsedMs": 0,
+                "truncated": False,
+                "message": "该脚本包含高危语句，需要确认后才会执行。",
+            }
+    return execute_sql_script(fields, raw_sql)
 
 
 def saved_query_public(row: sqlite3.Row) -> dict[str, object]:
@@ -4375,22 +4761,18 @@ def execute_query_step(config: dict[str, object]) -> dict[str, object]:
             fields["connectionId"] = str(row["connection_id"])
     if not sql:
         raise ValueError("查询 SQL 不能为空。")
-    conn = connect_target_db(fields)
-    try:
-        count = 0
-        for statement in [item.strip() for item in sql.split(";") if item.strip()]:
-            if target_db_type(fields) == "mysql":
-                with conn.cursor() as cursor:
-                    cursor.execute(statement)
-                    count += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else len(cursor.fetchall() if cursor.description else [])
-            else:
-                cursor = conn.execute(statement)
-                count += cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else len(cursor.fetchall() if cursor.description else [])
-        if target_db_type(fields) != "mysql":
-            conn.commit()
-        return {"rows": count}
-    finally:
-        conn.close()
+    # 与查询页共用同一执行器：多语句按「引号/注释感知」切分（旧实现按裸分号切分，
+    # 字符串里出现分号就会切错），DDL/DML 一律可用。
+    # 作业是用户预先配置、可能定时自动跑的动作，配置本身即确认，因此不要求二次令牌。
+    result = execute_sql_script(fields, sql)
+    if result.get("failedIndex"):
+        failed_index = int(result["failedIndex"])
+        failed = next((item for item in result["statements"] if item.get("index") == failed_index), {})
+        raise ValueError(str(failed.get("error") or f"第 {failed_index} 条语句执行失败。"))
+    totals = result.get("totals") or {}
+    affected = int(totals.get("affectedRows") or 0)
+    # 纯查询步骤按结果行数计入（沿用旧语义），写语句按影响行数
+    return {"rows": affected or int(result.get("rowCount") or 0), "message": result.get("message"), "statements": result.get("statements")}
 
 
 def resolve_import_step_config(config: dict[str, object], visited: set[str] | None = None) -> dict[str, object]:

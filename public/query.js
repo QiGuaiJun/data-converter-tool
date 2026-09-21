@@ -62,31 +62,162 @@ function openSavedQuery(id) {
   setStatus(`已打开：${item.name}`, "success");
 }
 
-function renderResult(columns, rows) {
-  const container = $("#queryResult");
+function renderResultSet(container, resultSet) {
+  const columns = (resultSet && resultSet.columns) || [];
+  const rows = (resultSet && resultSet.rows) || [];
   if (!columns.length) {
     container.className = "table-wrap empty";
-    container.textContent = "查询没有返回字段";
+    container.textContent = "该结果集没有字段";
     return;
   }
   container.className = "table-wrap";
   container.innerHTML = `<table><thead><tr>${columns.map((column) => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
+// 每条语句一句话结论：结果集 / 结构变更 / 影响行数 / 失败原因
+function statementSummaryText(item) {
+  if (item.error) return `失败：${item.error}`;
+  if (item.kind === "resultset") {
+    const sets = item.resultSets || [];
+    const rows = sets.reduce((sum, set) => sum + (set.rowCount || 0), 0);
+    return `返回 ${sets.length} 个结果集 / ${rows} 行`;
+  }
+  if (item.kind === "ddl") return "结构变更成功";
+  return `影响 ${item.affectedRows ?? 0} 行`;
+}
+
+function renderExecution(result) {
+  const statements = result.statements || [];
+  const sets = [];
+  statements.forEach((item) => {
+    (item.resultSets || []).forEach((set) => {
+      sets.push({ ...set, label: `结果集 ${sets.length + 1}`, statementIndex: item.index });
+    });
+  });
+
+  const summary = $("#queryStatementSummary");
+  if (statements.length) {
+    summary.classList.remove("hidden");
+    summary.innerHTML = statements
+      .map((item) => {
+        const preview = String(item.sql || "").split("\n")[0].slice(0, 100);
+        const warn = (item.warnings || []).length ? ` · 警告 ${item.warnings.length}` : "";
+        return (
+          `<div class="query-statement-row${item.error ? " error" : ""}">` +
+          `<span class="query-statement-index">${item.index}</span>` +
+          `<code>${escapeHtml(preview)}</code>` +
+          `<span class="query-statement-meta">${escapeHtml(statementSummaryText(item))} · ${item.elapsedMs} ms${warn}</span>` +
+          `</div>`
+        );
+      })
+      .join("");
+  } else {
+    summary.classList.add("hidden");
+    summary.innerHTML = "";
+  }
+
+  const tabs = $("#queryResultTabs");
+  const container = $("#queryResult");
+  if (sets.length > 1) {
+    tabs.classList.remove("hidden");
+    tabs.innerHTML = sets
+      .map((set, index) => `<button type="button" class="query-tab${index === 0 ? " active" : ""}" data-set="${index}">${escapeHtml(set.label)}（${set.rowCount} 行）</button>`)
+      .join("");
+    tabs.querySelectorAll("[data-set]").forEach((button) => {
+      button.addEventListener("click", () => {
+        tabs.querySelectorAll(".query-tab").forEach((item) => item.classList.toggle("active", item === button));
+        renderResultSet(container, sets[Number(button.dataset.set)]);
+      });
+    });
+  } else {
+    tabs.classList.add("hidden");
+    tabs.innerHTML = "";
+  }
+
+  if (sets.length) {
+    renderResultSet(container, sets[0]);
+  } else {
+    container.className = "table-wrap empty";
+    container.textContent = result.failedIndex ? "执行失败，没有结果集" : "语句执行完成，没有返回结果集（DDL / DML 结果见上方摘要）";
+  }
+
+  const totals = result.totals || {};
+  const meta = [
+    `${totals.statements ?? statements.length} 条语句`,
+    `结果集 ${totals.resultSets ?? sets.length}`,
+    `影响 ${totals.affectedRows ?? 0} 行`,
+    `${result.elapsedMs} ms`,
+  ];
+  if (result.truncated) meta.push("仅显示前 1000 行");
+  if (result.failedIndex) meta.push(`第 ${result.failedIndex} 条失败`);
+  $("#queryResultMeta").textContent = meta.join(" · ");
+
+  const warnings = statements.flatMap((item) => (item.warnings || []).map((text) => `第 ${item.index} 条：${text}`));
+  if (result.failedIndex) {
+    const failed = statements.find((item) => item.index === result.failedIndex);
+    setStatus(`执行失败：${(failed && failed.error) || result.message}`, "error");
+  } else if (warnings.length) {
+    setStatus(warnings.slice(0, 3).join("；"), "error");
+  } else {
+    setStatus(result.message || "执行成功", "success");
+  }
+}
+
+// 有选中文本时只执行选中部分（便于在大脚本里单独跑一条）
+function selectedSql() {
+  const editor = $("#querySql");
+  const value = editor.value || "";
+  const start = editor.selectionStart ?? 0;
+  const end = editor.selectionEnd ?? 0;
+  if (end > start && value.slice(start, end).trim()) return value.slice(start, end);
+  return value;
+}
+
+async function postQuery(payload) {
+  return requestJson("/api/query/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+function confirmLines(result) {
+  const lines = ["以下语句被判定为高危，确认后才会真正执行："];
+  (result.dangerous || []).forEach((item) => {
+    lines.push(`第 ${item.index} 条：${item.preview}`);
+    (item.reasons || []).forEach((reason) => lines.push(`　· ${reason}`));
+  });
+  lines.push("执行后无法通过本工具撤销，请确认目标库和条件无误。");
+  return lines;
+}
+
 async function runQuery() {
   if (!$("#queryConnection").value) throw new Error("请先保存并选择数据库连接。");
   const button = $("#runQuery");
   button.disabled = true;
-  setStatus("正在执行查询...");
+  setStatus("正在执行...");
   try {
-    const result = await requestJson("/api/query/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ connectionId: $("#queryConnection").value, targetDbType: selectedDbType("#queryConnection"), sql: $("#querySql").value }),
-    });
-    renderResult(result.columns || [], result.rows || []);
-    $("#queryResultMeta").textContent = `${result.rowCount} 行 · ${result.elapsedMs} ms${result.truncated ? " · 仅显示前 1000 行" : ""}`;
-    setStatus("查询执行成功", "success");
+    const payload = {
+      connectionId: $("#queryConnection").value,
+      targetDbType: selectedDbType("#queryConnection"),
+      sql: selectedSql(),
+    };
+    let result = await postQuery(payload);
+    if (result.needConfirm) {
+      const ok = await window.dcConfirm({
+        title: "高危 SQL 确认",
+        lines: confirmLines(result),
+        okText: "确认执行",
+      });
+      if (!ok) {
+        $("#queryResultMeta").textContent = "已取消执行";
+        setStatus("已取消（未执行任何语句）", "");
+        return;
+      }
+      result = await postQuery({ ...payload, confirmToken: result.confirmToken });
+      if (result.needConfirm) throw new Error("确认令牌已失效，请重新执行。");
+    }
+    renderExecution(result);
   } catch (error) {
     $("#queryResultMeta").textContent = "执行失败";
     setStatus(error.message, "error");

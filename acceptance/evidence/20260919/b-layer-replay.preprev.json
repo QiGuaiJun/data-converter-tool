@@ -1,23 +1,23 @@
 {
-  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919",
+  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2",
   "results": [
     {
       "id": "M4-001",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "HTTP=200 columns=['one'] rowCount=1 truncated=False elapsedMs=5 message=查询执行成功。"
+      "detail": "HTTP=200 columns=['one'] rowCount=1 truncated=False elapsedMs=4 message=查询执行成功。"
     },
     {
       "id": "M4-002",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "INSERT→HTTP=200 影响 1 行；无 WHERE 的 DELETE 首调 needConfirm=True（令牌 True）；带令牌执行影响 1 行；令牌复用被拒 needConfirm=True"
+      "detail": "DELETE→HTTP=400 err=查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。；UPDATE→HTTP=400"
     },
     {
       "id": "M4-003",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "两语句→HTTP=200 语句数=2 结果集=2；字符串内含分号→语句数=2（期望 2，证明切分感知引号）；尾随单分号→HTTP=200"
+      "detail": "两语句→HTTP=400 err=一次只能执行一条 SQL 查询。；尾随单分号→HTTP=200"
     },
     {
       "id": "M4-004",
@@ -47,7 +47,7 @@
       "id": "M4-009",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "HTTP=200 共 1 条；命中={\"id\": \"c6033aadfc6c408caf08490f3e2de507\", \"name\": \"复跑查询A\", \"connectionId\": \"\", \"sql\": \"select 1 as one\", \"createdAt\": \"2026-09-21 17:33:59\", \"updated"
+      "detail": "HTTP=200 共 1 条；命中={\"id\": \"628fef69236c4d59bdef7a09828e6dec\", \"name\": \"复跑查询A\", \"connectionId\": \"\", \"sql\": \"select 1 as one\", \"createdAt\": \"2026-09-19 12:50:08\", \"updated"
     },
     {
       "id": "M4-013",
@@ -65,7 +65,7 @@
       "id": "M6-006",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "HTTP=200 id=58428f944071 steps=2 guard_json={}"
+      "detail": "HTTP=200 id=dce7adc28e72 steps=2 guard_json={}"
     },
     {
       "id": "M6-007",
@@ -101,7 +101,7 @@
       "id": "M6-010",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "HTTP=200 源 id=58428f944071 新 id=82be262bd1b3 不同=True"
+      "detail": "HTTP=200 源 id=dce7adc28e72 新 id=7686e6a549bc 不同=True"
     },
     {
       "id": "M6-012",
@@ -137,13 +137,13 @@
       "id": "M6-017",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "保存自引用 HTTP=200；运行 HTTP=400 status=None 命中循环引用=True；err=作业文件更新条件评估失败：检测到作业循环引用，无法评估文件更新条件：a36e97ba0cd14284b61266299829cf5b"
+      "detail": "保存自引用 HTTP=200；运行 HTTP=400 status=None 命中循环引用=True；err=作业文件更新条件评估失败：检测到作业循环引用，无法评估文件更新条件：866b466244e746ab97bc21327aa32230"
     },
     {
       "id": "M6-020",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "_job_run_steps 样本 status=成功 started=2026-09-21 17:34:00 ended=2026-09-21 17:34:00 elapsed_ms=129"
+      "detail": "_job_run_steps 样本 status=成功 started=2026-09-19 12:50:10 ended=2026-09-19 12:50:10 elapsed_ms=148"
     },
     {
       "id": "M6-019",
@@ -155,7 +155,7 @@
       "id": "M6-021",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "scheduleId=161b4f05c648 last_run_at=2026-09-21 17:34:02 last_status=成功（期望 成功）"
+      "detail": "scheduleId=be45c68dee7a last_run_at=2026-09-19 12:50:12 last_status=成功（期望 成功）"
     },
     {
       "id": "M6-029",
@@ -209,7 +209,7 @@
       "id": "M7-007",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "HTTP=200 id=1b1acdd35339 enabled=1 next_run_at=2026-09-21 18:04:04"
+      "detail": "HTTP=200 id=3791d070987e enabled=1 next_run_at=2026-09-19 13:20:14"
     },
     {
       "id": "M7-008",
@@ -227,7 +227,7 @@
       "id": "M7-010",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "启用后 enabled=1 running=0 next_run_at=2026-09-21 18:04:04（期望 1/0/非空）"
+      "detail": "启用后 enabled=1 running=0 next_run_at=2026-09-19 13:20:15（期望 1/0/非空）"
     },
     {
       "id": "M7-011",
@@ -251,7 +251,7 @@
       "id": "M7-015",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "调度线程分发=True running=0（期望 0，执行后复位） last_run_at=2026-09-21 17:34:08 last_status=成功 该调度运行记录=1 条"
+      "detail": "调度线程分发=True running=0（期望 0，执行后复位） last_run_at=2026-09-19 12:50:19 last_status=成功 该调度运行记录=1 条"
     },
     {
       "id": "M7-016",
@@ -293,7 +293,7 @@
       "id": "M10-001",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "rc=0 输出=D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919\\backup\\data-converter-backup-20260921-173414.zip；产出 zip=['data-converter-backup-20260921-173414.zip']；归档含 data/imports.db=True；manifest.source.dataDir=D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data（期望 D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data）"
+      "detail": "rc=0 输出=D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\backup\\data-converter-backup-20260919-125026；产出 zip=['data-converter-backup-20260919-125026.zip']；归档含 data/imports.db=True；manifest.source.dataDir=D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data（期望 D:\\ProjectDevelopment\\data-converter-tool\\runtime\\data）"
     },
     {
       "id": "M10-002",
@@ -305,19 +305,19 @@
       "id": "M10-003",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "用 M10-001 的真实备份回环：rc=0 还原 imports.db 存在=True 字节数一致=True（3076096 → 3076096）；路径穿越负向对照被拒=True（rc=1）"
+      "detail": "用 M10-001 的真实备份回环：rc=0 还原 imports.db 存在=True 字节数一致=True（159744 → 159744）；路径穿越负向对照被拒=True（rc=1）"
     },
     {
       "id": "M10-004",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "rc=0 输出=数据库：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919\\data\\imports.db\r\n密钥文件：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919\\data\\.secret_key（存在：True）\r\n密钥来源：本地密钥文件\r\n迁移完成：连接密码 0 "
+      "detail": "rc=0 输出=数据库：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\data\\imports.db\r\n密钥文件：D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\data\\.secret_key（存在：True）\r\n密钥来源：本地密钥文件\r\n迁移"
     },
     {
       "id": "M10-006",
       "result": "PASS",
       "kind": "AUTO",
-      "detail": "rc=0 输出=数据目录 DATA_DIR      = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919\\launcher\\data\r\n上传目录 UPLOADS_DIR   = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919\\launcher\\uploads\r\n导出目"
+      "detail": "rc=0 输出=数据目录 DATA_DIR      = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\launcher\\data\r\n上传目录 UPLOADS_DIR   = D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-b-20260919-fix2\\launcher\\up"
     },
     {
       "id": "M10-008",
@@ -371,7 +371,7 @@
       "id": "_pytest",
       "result": "INFO",
       "kind": "INFO",
-      "detail": "passed=118 failed=0"
+      "detail": "passed=95 failed=0"
     }
   ]
 }

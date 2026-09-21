@@ -220,25 +220,44 @@ def phase_m4() -> None:
     except Exception as e:  # noqa: BLE001
         rec("M4-001", False, f"异常 {e}")
 
-    # M4-002 写语句被拒
+    # M4-002 写语句可用 + 高危语句一次性令牌（2026-09-21 口径变更：查询页=完整 SQL 控制台）
     try:
-        st, b = jhttp("POST", "/api/query/run", {"sql": "delete from b_people", "targetDbType": "sqlite"})
-        st2, b2 = jhttp("POST", "/api/query/run", {"sql": "update b_x set a=1", "targetDbType": "sqlite"})
-        err = str(b.get("error") or "")
-        ok = (st == 400 and "只允许" in err and "SELECT" in err and st2 == 400)
-        rec("M4-002", ok, f"DELETE→HTTP={st} err={err[:70]}；UPDATE→HTTP={st2}")
+        jhttp("POST", "/api/query/run", {"sql": "create table if not exists m4_write (id int)", "targetDbType": "sqlite"})
+        jhttp("POST", "/api/query/run", {"sql": "delete from m4_write", "targetDbType": "sqlite", "confirmToken": ""})
+        st_ins, b_ins = jhttp("POST", "/api/query/run", {"sql": "insert into m4_write (id) values (1)", "targetDbType": "sqlite"})
+        st_first, b_first = jhttp("POST", "/api/query/run", {"sql": "delete from m4_write", "targetDbType": "sqlite"})
+        token = str(b_first.get("confirmToken") or "")
+        st_second, b_second = jhttp("POST", "/api/query/run",
+                                    {"sql": "delete from m4_write", "targetDbType": "sqlite", "confirmToken": token})
+        st_reuse, b_reuse = jhttp("POST", "/api/query/run",
+                                  {"sql": "delete from m4_write", "targetDbType": "sqlite", "confirmToken": token})
+        affected = (b_second.get("totals") or {}).get("affectedRows")
+        ok = (st_ins == 200 and (b_ins.get("totals") or {}).get("affectedRows") == 1
+              and st_first == 200 and b_first.get("needConfirm") is True and bool(token)
+              and st_second == 200 and not b_second.get("needConfirm") and affected == 1
+              and st_reuse == 200 and b_reuse.get("needConfirm") is True)
+        rec("M4-002", ok, f"INSERT→HTTP={st_ins} 影响 {(b_ins.get('totals') or {}).get('affectedRows')} 行；"
+                          f"无 WHERE 的 DELETE 首调 needConfirm={b_first.get('needConfirm')}（令牌 {bool(token)}）；"
+                          f"带令牌执行影响 {affected} 行；令牌复用被拒 needConfirm={b_reuse.get('needConfirm')}")
     except Exception as e:  # noqa: BLE001
         rec("M4-002", False, f"异常 {e}")
 
-    # M4-003 多语句拦截（尾随单分号应放行）
+    # M4-003 多语句脚本（2026-09-21 口径变更：按引号/注释感知切分后逐条执行）
     try:
         st_multi, b_multi = jhttp("POST", "/api/query/run",
                                   {"sql": "select 1; select 2", "targetDbType": "sqlite"})
+        st_quoted, b_quoted = jhttp("POST", "/api/query/run",
+                                    {"sql": "select ';' as semi; select 2", "targetDbType": "sqlite"})
         st_tail, b_tail = jhttp("POST", "/api/query/run",
                                 {"sql": "select 1;", "targetDbType": "sqlite"})
-        err = str(b_multi.get("error") or "")
-        ok = st_multi == 400 and "一次只能执行一条 SQL" in err and st_tail == 200
-        rec("M4-003", ok, f"两语句→HTTP={st_multi} err={err[:60]}；尾随单分号→HTTP={st_tail}")
+        mt = b_multi.get("totals") or {}
+        qt = b_quoted.get("totals") or {}
+        ok = (st_multi == 200 and mt.get("statements") == 2 and mt.get("resultSets") == 2
+              and st_quoted == 200 and qt.get("statements") == 2
+              and st_tail == 200 and (b_tail.get("totals") or {}).get("statements") == 1)
+        rec("M4-003", ok, f"两语句→HTTP={st_multi} 语句数={mt.get('statements')} 结果集={mt.get('resultSets')}；"
+                          f"字符串内含分号→语句数={qt.get('statements')}（期望 2，证明切分感知引号）；"
+                          f"尾随单分号→HTTP={st_tail}")
     except Exception as e:  # noqa: BLE001
         rec("M4-003", False, f"异常 {e}")
 

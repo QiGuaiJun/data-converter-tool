@@ -1,0 +1,210 @@
+{
+  "generatedAt": "2026-09-21T17:27:16",
+  "base": "http://127.0.0.1:51993",
+  "tag": "after",
+  "results": [
+    {
+      "case": "纯 SELECT",
+      "sql": "select 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "子查询(派生表)",
+      "sql": "select * from (select 1 as a union all select 2) t order by a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "标量子查询",
+      "sql": "select (select 1) as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "IN 子查询",
+      "sql": "select 1 as a where 1 in (select 1)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "CTE(WITH)",
+      "sql": "with t as (select 1 as a) select * from t",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "CTE+子查询",
+      "sql": "with t as (select 1 as a) select * from t where a in (select a from t)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "EXPLAIN",
+      "sql": "explain select 1",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "带行注释",
+      "sql": "-- 注释\nselect 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "带块注释",
+      "sql": "/* c */ select 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "尾分号单句",
+      "sql": "select 1;",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=1 影响行=0 失败=0"
+    },
+    {
+      "case": "多语句",
+      "sql": "select 1; select 2",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=2 结果集=2 影响行=0 失败=0"
+    },
+    {
+      "case": "多语句(读写混合)",
+      "sql": "select 1; select 2; select 3",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=3 结果集=3 影响行=0 失败=0"
+    },
+    {
+      "case": "CREATE TABLE",
+      "sql": "create table if not exists q_dml (id int)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0"
+    },
+    {
+      "case": "CREATE TABLE AS SELECT",
+      "sql": "create table if not exists q_dml2 as select 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0"
+    },
+    {
+      "case": "ALTER TABLE",
+      "sql": "alter table q_dml add column b int",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0｜已确认(ALTER 会改动表结构，可能丢列或丢数据)"
+    },
+    {
+      "case": "INSERT",
+      "sql": "insert into q_dml (id) values (1)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=1 失败=0"
+    },
+    {
+      "case": "INSERT ... SELECT(子查询)",
+      "sql": "insert into q_dml (id) select 2",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=1 失败=0"
+    },
+    {
+      "case": "UPDATE(带 WHERE)",
+      "sql": "update q_dml set id = 3 where id = 1",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=1 失败=0"
+    },
+    {
+      "case": "UPDATE(无 WHERE)",
+      "sql": "update q_dml set id = 9",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=2 失败=0｜已确认(UPDATE 没有 WHERE 条件，会作用于整张表)"
+    },
+    {
+      "case": "DELETE(带 WHERE)",
+      "sql": "delete from q_dml where id = 3",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0"
+    },
+    {
+      "case": "DELETE(无 WHERE)",
+      "sql": "delete from q_dml",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=2 失败=0｜已确认(DELETE 没有 WHERE 条件，会作用于整张表)"
+    },
+    {
+      "case": "DELETE + IN 子查询",
+      "sql": "delete from q_dml where id in (select 1)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0"
+    },
+    {
+      "case": "DROP TABLE",
+      "sql": "drop table if exists q_drop_me",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "语句=1 结果集=0 影响行=0 失败=0｜已确认(DROP 会不可逆地删除对象或改动权限)"
+    },
+    {
+      "case": "TRUNCATE",
+      "sql": "truncate table q_dml",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"truncate\": syntax error｜已确认(TRUNCATE 会不可逆地删除对象或改动权限)"
+    },
+    {
+      "case": "SHOW TABLES",
+      "sql": "show tables",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"show\": syntax error"
+    },
+    {
+      "case": "CALL 存储过程",
+      "sql": "call some_proc()",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"call\": syntax error｜已确认(CALL 属于管理类/过程类语句，可能产生副作用)"
+    },
+    {
+      "case": "SET 变量",
+      "sql": "set @x = 1",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"set\": syntax error"
+    },
+    {
+      "case": "USE 库",
+      "sql": "use mysql",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"use\": syntax error"
+    },
+    {
+      "case": "GRANT",
+      "sql": "grant select on *.* to 'x'@'%'",
+      "http": 200,
+      "verdict": "SQLite 不支持(非工具限制)",
+      "detail": "第 1 条语句执行失败：near \"grant\": syntax error｜已确认(GRANT 会不可逆地删除对象或改动权限)"
+    }
+  ]
+}

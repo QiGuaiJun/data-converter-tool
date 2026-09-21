@@ -5327,3 +5327,25 @@ body.plain-mode {
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   查询页：SQL 控制台（2026-09-21）
+   支持多语句 / 多结果集后，结果区要容纳「语句摘要 + 结果集切换 + 表格」三层，
+   原来的 grid-template-rows: auto 1fr 无法自适应，这里改纵向 flex。
+--------------------------------------------------------------------------- */
+.query-result-panel { display: flex; flex-direction: column; }
+.query-result-panel > header { flex: 0 0 auto; }
+.query-result-panel #queryResult { flex: 1 1 auto; min-height: 0; height: auto; }
+#queryStatementSummary.hidden,
+#queryResultTabs.hidden { display: none; }
+.query-statement-summary { padding: 8px 14px 0; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow: auto; }
+.query-statement-row { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-radius: 8px; background: rgba(67, 105, 156, 0.07); font-size: 13px; color: #2f2c27; }
+.query-statement-row.error { background: rgba(211, 59, 79, 0.12); }
+.query-statement-index { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: #6c6a64; color: #fff; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.query-statement-row.error .query-statement-index { background: #d33b4f; }
+.query-statement-row code { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: Consolas, "Courier New", monospace; }
+.query-statement-meta { flex: 0 0 auto; color: #6e8099; white-space: nowrap; }
+.query-result-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 14px 0; }
+.query-tab { padding: 4px 12px; border-radius: 14px; border: 1px solid #d9e6f5; background: #fff; color: #2f2c27; font-size: 13px; cursor: pointer; }
+.query-tab:hover { border-color: #6e8099; }
+.query-tab.active { background: #2f2c27; border-color: #2f2c27; color: #fff; }

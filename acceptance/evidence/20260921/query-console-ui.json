@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-09-21T09:33:32.909Z",
+  "base": "http://127.0.0.1:51994",
+  "pageErrors": [],
+  "aggregate": {
+    "PASS": 6
+  },
+  "results": [
+    {
+      "id": "Q-UI-01",
+      "verdict": "PASS",
+      "detail": "语句摘要容器=true 结果集 tab 容器=true 初始隐藏=true；dcConfirm=function renderExecution=function；编辑器提示=\"支持任意 SQL（SELECT / DDL / DML，多语句用分号分隔）\""
+    },
+    {
+      "id": "Q-UI-02",
+      "verdict": "PASS",
+      "detail": "结果集 tab=[\"结果集 1（1 行）\",\"结果集 2（1 行）\"]；语句摘要行=2；当前表格列=[\"one\"]；meta=\"2 条语句 · 结果集 2 · 影响 0 行 · 12 ms\"；状态=\"共执行 2 条语句，全部成功。\""
+    },
+    {
+      "id": "Q-UI-03",
+      "verdict": "PASS",
+      "detail": "摘要=\"1update t set a=1影响 3 行 · 4 ms\"；结果区=\"语句执行完成，没有返回结果集（DDL / DML 结果见上方摘要）\"；meta=\"1 条语句 · 结果集 0 · 影响 3 行 · 4 ms\"；tabs 隐藏=true"
+    },
+    {
+      "id": "Q-UI-04",
+      "verdict": "PASS",
+      "detail": "失败行标记=1；状态栏=\"执行失败：第 2 条语句执行失败：no such table\"（class=error）；meta=\"2 条语句 · 结果集 1 · 影响 0 行 · 9 ms · 第 2 条失败\""
+    },
+    {
+      "id": "Q-UI-05",
+      "verdict": "PASS",
+      "detail": "确认框可见=true（文案含 DROP=true）；点确认返回=true；关闭后隐藏=true"
+    },
+    {
+      "id": "Q-UI-06",
+      "verdict": "PASS",
+      "detail": "点取消返回=false（期望 false）"
+    }
+  ]
+}

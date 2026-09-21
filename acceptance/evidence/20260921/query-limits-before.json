@@ -1,0 +1,188 @@
+{
+  "generatedAt": "2026-09-21T17:20:19",
+  "base": "http://127.0.0.1:51992",
+  "results": [
+    {
+      "case": "纯 SELECT",
+      "sql": "select 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "子查询(派生表)",
+      "sql": "select * from (select 1 as a union all select 2) t order by a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=2"
+    },
+    {
+      "case": "标量子查询",
+      "sql": "select (select 1) as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "IN 子查询",
+      "sql": "select 1 as a where 1 in (select 1)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "CTE(WITH)",
+      "sql": "with t as (select 1 as a) select * from t",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "CTE+子查询",
+      "sql": "with t as (select 1 as a) select * from t where a in (select a from t)",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "EXPLAIN",
+      "sql": "explain select 1",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['addr', 'opcode', 'p1', 'p2', 'p3', 'p4', 'p5', 'comment'] 行数=5"
+    },
+    {
+      "case": "带行注释",
+      "sql": "-- 注释\nselect 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "带块注释",
+      "sql": "/* c */ select 1 as a",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['a'] 行数=1"
+    },
+    {
+      "case": "尾分号单句",
+      "sql": "select 1;",
+      "http": 200,
+      "verdict": "执行通过",
+      "detail": "列=['1'] 行数=1"
+    },
+    {
+      "case": "多语句",
+      "sql": "select 1; select 2",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "一次只能执行一条 SQL 查询。"
+    },
+    {
+      "case": "CREATE TABLE",
+      "sql": "create table q_probe (id int)",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "CREATE TABLE AS SELECT",
+      "sql": "create table q_probe2 as select 1 as a",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "ALTER TABLE",
+      "sql": "alter table q_probe add column b int",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "DROP TABLE",
+      "sql": "drop table if exists q_probe",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "TRUNCATE",
+      "sql": "truncate table q_probe",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "INSERT",
+      "sql": "insert into q_probe (id) values (1)",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "INSERT ... SELECT(子查询)",
+      "sql": "insert into q_probe (id) select 1",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "UPDATE",
+      "sql": "update q_probe set id = 2 where id = 1",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "DELETE",
+      "sql": "delete from q_probe where id = 1",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "DELETE + IN 子查询",
+      "sql": "delete from q_probe where id in (select 1)",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "SHOW TABLES",
+      "sql": "show tables",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "near \"show\": syntax error"
+    },
+    {
+      "case": "CALL 存储过程",
+      "sql": "call some_proc()",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "SET 变量",
+      "sql": "set @x = 1",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "USE 库",
+      "sql": "use mysql",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    },
+    {
+      "case": "GRANT",
+      "sql": "grant select on *.* to 'x'@'%'",
+      "http": 400,
+      "verdict": "被拒/报错",
+      "detail": "查询模块当前只允许 SELECT、SHOW、DESCRIBE、EXPLAIN 和只读 WITH 查询。"
+    }
+  ]
+}
