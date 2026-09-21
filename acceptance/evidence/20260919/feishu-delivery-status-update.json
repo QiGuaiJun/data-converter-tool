@@ -1,0 +1,29 @@
+{
+  "update_records": {
+    "recvvE4Wvr5BZQ": {
+      "状态": ["已完成"],
+      "结论": "修复后复跑：31 通过 / 0 不通过 / 1 部分（改进D 手册覆盖度需人工）。复核时发现 8 条待修项（P3-17/P3-18/P3-20/P3-21、改进C/E/F/G）已随 effdf58 全部修复；判定脚本可复跑",
+      "证据出处": "acceptance/replay_feishu_issues.py；evidence/20260919/feishu-issues-recheck.json（提交 effdf58）"
+    },
+    "recvvE4WvrJdgx": {
+      "状态": ["已完成"],
+      "结论": "2026-09-21 补跑：5 通过 / 0 不通过 / 2 需人工（P2-15、P3-23），pageerror=0。P1-2 由「不通过」转为通过；含 P3-24 对比度像素级实测。修复前基线留档 feishu-ui-recheck.prefix.json",
+      "证据出处": "acceptance/ui_replay_feishu.js；evidence/20260919/feishu-ui-recheck.json（提交 692ff84）"
+    },
+    "recvvE4WvrEnRT": {
+      "状态": ["已修复"],
+      "结论": "已在 effdf58 修复：infer_column_types 增加 int64 越界校验，超范围整数降级 text，不再声明 integer，从根上避免 SQLite 的 INTEGER 亲和性把它转成 REAL。复跑实测 12345678901234567890 与 1.2345678901234e+30 均原样落库 → 通过",
+      "证据出处": "提交 effdf58；acceptance/evidence/20260919/feishu-issues-recheck.json"
+    },
+    "recvvE4WvrcIdH": {
+      "状态": ["已修复"],
+      "结论": "已在 effdf58 修复：app.js 改用 Promise.allSettled 且失败时显式置「已导入表读取失败」，不再沿用「0 张表」；面板目标库默认项与未选连接时的 400 不再被静默吞掉。2026-09-21 UI 复跑实测：默认态显示「已导入表读取失败」，切到本地 SQLite 后「1 张表」、#tables 子元素=1 → 通过",
+      "证据出处": "提交 effdf58；acceptance/evidence/20260919/feishu-ui-recheck.json（补跑 692ff84）"
+    },
+    "recvvE4WvrrIhO": {
+      "状态": ["已完成"],
+      "结论": "交付版本链：5358abe（A/B/C 三层闭合 + 备份脚本与按顺序匹配修复）→ effdf58（飞书问题清单全部待修项，后端+前端）→ 692ff84（UI 7 条补跑、P1-2 销号 + 进展文档回写）。工作树与 HEAD 零差异，已推送 GitHub，甲方可用任一 sha 复现",
+      "证据出处": "git log 692ff84；git ls-remote origin main"
+    }
+  }
+}

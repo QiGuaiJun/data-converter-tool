@@ -1,0 +1,84 @@
+{
+  "update_records": {
+    "recvuI2NExiM5V": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "d0a4504 + effdf58",
+      "备注": "2026-09-19 复核发现旧修复不彻底：超 int64 整数被 SQLite 的 INTEGER 亲和性转成 REAL，精度丢失。effdf58 为 infer_column_types 增加 int64 越界校验，越界降级 text，从根上不再声明 integer。复跑实测：12345678901234567890 与 1.2345678901234e+30 均原样落库，声明类型 {big: text, sci: real} → PASS。"
+    },
+    "recvuI2NExkPSJ": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "70c8f7c + 2f702d2 + effdf58",
+      "备注": "2026-09-19 复核发现前端残留：面板目标库默认 MySQL、未选连接时 /api/tables 返回 400，且 app.js 用 Promise.allSettled 接住异常后静默吞错，#tableMeta 沿用「0 张表」（后端本身已正确返回）。effdf58 修正：失败时显式置「已导入表读取失败」并保留错误提示。2026-09-21 UI 复跑：默认态 #tableMeta=「已导入表读取失败」（静默=false），切到本地 SQLite 后「1 张表」、#tables 子元素=1 → PASS。"
+    },
+    "recvuI2NExrICe": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：read_tabular_file / read_tabular_tasks 错误信息中文化。复跑实测：伪 xlsx/xls/json 三种坏文件全部返回中文提示，无英文残留 → PASS。"
+    },
+    "recvuI2NEx6XFW": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：connect_target_db / test_mysql_connection / wrap_mysql_insert_error 错误中文化。复跑实测断连返回「测试数据库连接失败：无法连接到目标数据库服务器，请确认地址与端口是否正确、服务是否已启动。（错误码 2003）」→ PASS。"
+    },
+    "recvuI2NEx9CYM": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：handle_preview 输出 cleaningRules，前端预览区渲染将应用的清洗规则（空串转 NULL / 裁空格等）。复跑实测预览响应含 cleaningRules 键且前端已接线 → PASS。"
+    },
+    "recvuI2NExN2mM": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：sync / api / feedback 三个占位页标注「未开放」徽标（按设计保留为占位）。复跑实测已标注模块数=3、徽标渲染已接入；操作手册 docs.html 已由 docs.js 渲染为独立帮助中心，不再是占位句 → PASS。"
+    },
+    "recvuI2NExA2v8": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "无需修复（实测已达标）",
+      "备注": "2026-09-21 像素级复跑：截图后对元素矩形内缘采样背景像素，与计算样式 color 算 WCAG 对比度。5 处文本最低对比度 4.77:1（侧边栏标题 rgb(108,106,100) 底 rgb(245,240,232)），低于 AA 4.5:1 的 0 处 → 原「待复测」不成立，无需修复。"
+    },
+    "recvuI2NExrz76": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：预览返回 columnTypes 与目标表结构，前端接线源列→目标列对照。复跑实测预览 columnTypes={a: integer, b: text}，目标表结构接口 HTTP=200 列=[a, b]，前端已接线 → PASS。"
+    },
+    "recvuI2NExcGuj": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：apply_cleaning 返回 skip_details，build_target_data / import_uploaded_file 透出 skipDetails + cleaningRules。复跑实测去重后 rowsSkipped=1、顶层 skipDetails=1 条，含 dataRow / reason / key / fileName → PASS。"
+    },
+    "recvuI2NEx33zM": {
+      "修复状态": ["已修复待回归"],
+      "修复提交": "docs.js（历史提交）",
+      "备注": "2026-09 复核：docs.html 已不是占位句，而是 docs.js 渲染的独立帮助中心（19.5KB、约 46 个条目，含目录/搜索/正文），旧备注「无任何核心场景操作文档」已过时。但「是否覆盖核心场景、新用户能否按引导完成首导入」属人工判断，自动化只能证伪旧备注 → 需人工确认覆盖面后转为已验证。"
+    },
+    "recvuI2NExmDoL": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：新增 public/shell.js，beforeunload 在存在启用中的定时任务时弹出关闭提醒，全站 11 个页面引入 → 复跑 PASS。"
+    },
+    "recvuI2NExcXrg": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：collect_local_files + deleteAfterSuccess 走回收站保护（可恢复），本地路径导入不再直接 unlink 用户真实源文件。复跑实测删除后源文件消失且确经回收站 → PASS。"
+    },
+    "recvuI2NExLax2": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "effdf58",
+      "备注": "effdf58：/api/meta.appVersion=1.4.0 版本号入口 + 素色模式 CSS 规则与开关（localStorage 键 dc_plain_mode_v1，可持久化），全站 11 个页面引入 shell.js → PASS。"
+    },
+    "recvuI2NExB7aX": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "5358abe",
+      "备注": "tests/ 已入库 10 个用例文件，acceptance/ 建成 A/B/C 三层复跑套件（5358abe），pytest -q 103 passed。旧备注「AI 迭代无护栏」已过时 → PASS。"
+    },
+    "recvuI2NEx5i5t": {
+      "修复状态": ["待复测"],
+      "修复提交": "e2a394a",
+      "备注": "2026-09-21 UI 复跑：自定义确认框 #confirmDialog 在该自动化路径下未被稳定触发（appeared=false），无法自动判定确认/取消双路径；提交按钮 disabled=false，未复现「永久禁用」。需在浏览器人工走一次「重建/覆盖」确认流程后确认。"
+    },
+    "recvuI2NExAceX": {
+      "修复状态": ["已修复已验证"],
+      "修复提交": "b4c76fc",
+      "备注": "2026-09-21 复跑：列表过滤与候选类型分离已实测通过（M6-001 / M7-002 / BUG-32）。「语义是否清晰」属主观可读性，需人工目视确认，不计为未通过。"
+    }
+  }
+}
