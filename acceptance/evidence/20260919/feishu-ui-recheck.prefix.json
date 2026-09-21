@@ -1,16 +1,18 @@
 {
-  "generatedAt": "2026-09-21T08:52:02.262Z",
-  "base": "http://127.0.0.1:51987",
+  "note": "修复前基线（UI 7 条最后一次完整复跑，2026-09-19T07:07:49Z，端口 51986）。保留用于对照，修复后的新证据覆盖 feishu-ui-recheck.json。",
+  "generatedAt": "2026-09-19T07:07:49.130Z",
+  "base": "http://127.0.0.1:51986",
   "pageErrors": [],
   "aggregate": {
-    "PASS": 5,
+    "FAIL": 1,
+    "PASS": 4,
     "MANUAL": 2
   },
   "results": [
     {
       "id": "P1-2",
-      "verdict": "PASS",
-      "detail": "导入 HTTP=200（写出 1 行）；默认 MySQL 无连接时 #tableMeta=\"已导入表读取失败\"（不得再静默显示「0 张表」→ 静默=false，状态栏：「已新建导入任务，请配置文件、目标表和导入选项。」）；切到本地 SQLite 后 #tableMeta=\"1 张表\"、#tables 子元素=1"
+      "verdict": "FAIL",
+      "detail": "导入 HTTP=200（写出 1 行）后刷新页面：#tableMeta=\"已导入表读取失败\"、#tables 子元素=0（原缺陷为永远 0 张表；期望 >0）"
     },
     {
       "id": "P3-24",
