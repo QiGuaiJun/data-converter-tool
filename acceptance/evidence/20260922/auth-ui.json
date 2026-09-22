@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-22T06:24:25",
-  "base": "http://127.0.0.1:51992",
-  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-auth-ui-final",
+  "generatedAt": "2026-09-22T07:31:42",
+  "base": "http://127.0.0.1:51993",
+  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-auth-ui-export",
   "counts": {
-    "PASS": 20
+    "PASS": 21
   },
   "pageErrors": [],
   "results": [
@@ -101,6 +101,11 @@
       "id": "AUTH-19",
       "verdict": "PASS",
       "detail": "匿名访问接口 → HTTP 401"
+    },
+    {
+      "id": "AUTH-21",
+      "verdict": "PASS",
+      "detail": "导出文件名=账号清单-20260922-1531.csv；含表头=true；含口令痕迹=false；行数=3"
     },
     {
       "id": "AUTH-20",

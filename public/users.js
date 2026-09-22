@@ -18,6 +18,80 @@
   ];
   var state = { users: [], roles: [], currentUserId: "" };
 
+  // 导出用的列定义：[字段, 表头]。顺序即 CSV 列顺序。
+  // 注意：**不含 password_hash** —— 服务端本来也不返回它，这里再显式约束一次。
+  var EXPORT_COLUMNS = [
+    ["username", "用户名"],
+    ["displayName", "显示名"],
+    ["role", "角色"],
+    ["enabled", "状态"],
+    ["activeSessions", "在线会话"],
+    ["lastLoginAt", "最近登录"],
+    ["createdAt", "创建时间"],
+    ["createdBy", "创建来源"],
+    ["lockedUntil", "锁定至"],
+  ];
+
+  function pad2(value) {
+    return (value < 10 ? "0" : "") + value;
+  }
+
+  function csvCell(value) {
+    var text = String(value == null ? "" : value);
+    // 含逗号/引号/换行的值必须整体加引号，否则 Excel 会串列
+    if (/[",\r\n]/.test(text)) {
+      text = '"' + text.replace(/"/g, '""') + '"';
+    }
+    return text;
+  }
+
+  function exportCsv() {
+    if (!state.users.length) {
+      setStatus("当前没有可导出的账号", "error");
+      return;
+    }
+    var rows = [EXPORT_COLUMNS.map(function (item) { return item[1]; })];
+    state.users.forEach(function (user) {
+      rows.push(EXPORT_COLUMNS.map(function (item) {
+        if (item[0] === "role") {
+          return roleLabels[user.role] || user.role;
+        }
+        if (item[0] === "enabled") {
+          return user.enabled ? "启用" : "停用";
+        }
+        return user[item[0]];
+      }));
+    });
+    var csv = rows
+      .map(function (row) {
+        return row.map(csvCell).join(",");
+      })
+      .join("\r\n");
+    // BOM 必须加，否则 Excel 打开中文会乱码（这是最常被投诉的一个坑）
+    var blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+    var now = new Date();
+    var fileName =
+      "账号清单-" +
+      now.getFullYear() +
+      pad2(now.getMonth() + 1) +
+      pad2(now.getDate()) +
+      "-" +
+      pad2(now.getHours()) +
+      pad2(now.getMinutes()) +
+      ".csv";
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.setTimeout(function () {
+      URL.revokeObjectURL(url);
+    }, 1000);
+    setStatus("已导出 " + state.users.length + " 个账号（不含口令）：" + fileName, "success");
+  }
+
   function escapeHtml(value) {
     return String(value == null ? "" : value)
       .replace(/&/g, "&amp;")
@@ -308,6 +382,7 @@
   function boot() {
     $("#refreshUsers").addEventListener("click", load);
     $("#newUser").addEventListener("click", openCreateDialog);
+    $("#exportUsers").addEventListener("click", exportCsv);
     $("#userRows").addEventListener("click", onRowClick);
     load();
   }

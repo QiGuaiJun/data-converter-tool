@@ -318,6 +318,32 @@ async function main() {
     const anonResponse = await fetch(BASE + '/api/connections');
     rec('AUTH-19', anonResponse.status === 401 ? 'PASS' : 'FAIL', `匿名访问接口 → HTTP ${anonResponse.status}`);
 
+    // ---------------------------------------------------------- 21 账号清单导出（改回管理员）
+    await page.evaluate(() => fetch('/api/auth/logout', { method: 'POST' }));
+    await page.goto(BASE + '/login.html', { waitUntil: 'domcontentloaded' });
+    await fillLogin(page, ADMIN_USER, ADMIN_PWD);
+    await sleep(1200);
+    await page.goto(BASE + '/users.html', { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('#exportUsers', { timeout: 15000 }).catch(() => {});
+    const downloadPromise = page.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+    await page.click('#exportUsers').catch(() => {});
+    const download = await downloadPromise;
+    if (!download) {
+      rec('AUTH-21', 'FAIL', '点击「导出 CSV」后没有触发下载');
+    } else {
+      const suggested = download.suggestedFilename();
+      const target = path.join(SANDBOX, 'users-export.csv');
+      await download.saveAs(target);
+      const text = fs.readFileSync(target, 'utf8');
+      const hasHeader = text.indexOf('用户名') >= 0;
+      const leaksSecret = text.indexOf('scrypt') >= 0 || text.indexOf('password') >= 0;
+      rec(
+        'AUTH-21',
+        /\.csv$/.test(suggested) && hasHeader && !leaksSecret ? 'PASS' : 'FAIL',
+        `导出文件名=${suggested}；含表头=${hasHeader}；含口令痕迹=${leaksSecret}；行数=${text.trim().split('\n').length}`
+      );
+    }
+
     rec('AUTH-20', pageErrors.length === 0 ? 'PASS' : 'FAIL', `页面 JS 异常 ${pageErrors.length} 条 ${pageErrors.join(' | ')}`);
   } catch (error) {
     rec('RUNNER', 'FAIL', `执行异常：${error && error.message}`);
