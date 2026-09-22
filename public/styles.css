@@ -5349,3 +5349,12 @@ body.plain-mode {
 .query-tab { padding: 4px 12px; border-radius: 14px; border: 1px solid #d9e6f5; background: #fff; color: #2f2c27; font-size: 13px; cursor: pointer; }
 .query-tab:hover { border-color: #6e8099; }
 .query-tab.active { background: #2f2c27; border-color: #2f2c27; color: #fff; }
+
+/* ---------------------------------------------------------------------------
+   全站用户区（P1 登录模块，2026-09-22）：显示当前用户与角色，提供退出入口
+--------------------------------------------------------------------------- */
+.auth-user-box { position: fixed; top: 10px; right: 16px; z-index: 60; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.92); border: 1px solid #d8d2c6; box-shadow: 0 4px 14px rgba(60, 55, 45, 0.08); font-size: 13px; color: #2f2c27; }
+.auth-user-name { font-weight: 600; }
+.auth-user-role { color: #8a8578; font-size: 12px; }
+.auth-user-box .auth-logout { border: 1px solid #d8d2c6; background: #fff; border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; color: #2f2c27; }
+.auth-user-box .auth-logout:hover { border-color: #8a8578; }

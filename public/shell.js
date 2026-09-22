@@ -181,6 +181,93 @@
     });
   };
 
+  // ---------------------------------------------------------------- 登录态与用户区
+
+  var AUTH_ME_URL = "/api/auth/me";
+  var currentUser = null;
+
+  function redirectToLogin() {
+    if (window.location.pathname === "/login.html") {
+      return;
+    }
+    var here = window.location.pathname + window.location.search;
+    window.location.href = "/login.html?next=" + encodeURIComponent(here);
+  }
+
+  // 接口返回 401（未登录 / 会话过期）时统一跳登录页。
+  // 用 rawFetch 发出真实请求，避免递归。
+  var rawFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    return rawFetch(input, init).then(function (response) {
+      if (response.status !== 401) {
+        return response;
+      }
+      var url = typeof input === "string" ? input : (input && input.url) || "";
+      // /api/auth/me 与 /api/auth/logout 的 401 属于正常语义，交给调用方处理
+      if (url.indexOf("/api/auth/me") >= 0 || url.indexOf("/api/auth/logout") >= 0) {
+        return response;
+      }
+      redirectToLogin();
+      return response;
+    });
+  };
+
+  function roleLabel(role) {
+    var labels = { admin: "管理员", operator: "可写", viewer: "只读" };
+    return labels[role] || role || "";
+  }
+
+  function renderUserBox(user) {
+    var box = document.createElement("div");
+    box.className = "auth-user-box";
+    box.innerHTML =
+      '<span class="auth-user-name"></span>' +
+      '<span class="auth-user-role"></span>' +
+      '<button type="button" class="auth-logout">退出</button>';
+    box.querySelector(".auth-user-name").textContent = user.displayName || user.username;
+    box.querySelector(".auth-user-role").textContent = roleLabel(user.role);
+    box.querySelector(".auth-logout").addEventListener("click", function () {
+      window.dcConfirm({
+        title: "退出登录",
+        lines: ["确认退出当前账号？"],
+        okText: "退出",
+      }).then(function (confirmed) {
+        if (!confirmed) {
+          return;
+        }
+        rawFetch("/api/auth/logout", { method: "POST" }).then(function () {
+          window.location.href = "/login.html";
+        });
+      });
+    });
+    document.body.appendChild(box);
+  }
+
+  function initAuth() {
+    rawFetch(AUTH_ME_URL, { headers: { Accept: "application/json" } })
+      .then(function (response) {
+        if (response.status === 401) {
+          redirectToLogin();
+          return null;
+        }
+        return response.ok ? response.json() : null;
+      })
+      .then(function (payload) {
+        // authEnabled=false 表示本机未启用认证，不显示用户区、不跳转
+        if (!payload || !payload.ok || payload.authEnabled === false) {
+          return;
+        }
+        currentUser = payload.user || null;
+        document.documentElement.setAttribute("data-user-role", (currentUser && currentUser.role) || "");
+        if (currentUser) {
+          renderUserBox(currentUser);
+        }
+      })
+      .catch(function () {
+        /* 探测登录态失败不打扰用户 */
+      });
+  }
+
   function boot() {
     try {
       initAppearance();
@@ -188,6 +275,11 @@
       /* 外观开关失败不能影响主流程 */
     }
     initCloseWarning();
+    try {
+      initAuth();
+    } catch (_) {
+      /* 登录态探测失败不影响页面本身 */
+    }
   }
 
   if (document.readyState === "loading") {

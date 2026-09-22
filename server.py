@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import re
+import secrets
 import sqlite3
 import tempfile
 import threading
@@ -81,7 +82,7 @@ DATA = env_path("DATA_DIR", runtime_path("data"))
 UPLOADS = env_path("UPLOADS_DIR", runtime_path("uploads"))
 EXPORTS = env_path("EXPORTS_DIR", runtime_path("exports"))
 # 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 TASK_SOURCES = DATA / "task_sources"
 LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
@@ -162,6 +163,56 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    # ---- 认证相关（P1，2026-09-22）：用户 / 会话 / 审计 ----
+    conn.execute(
+        """
+        create table if not exists _users (
+            id text primary key,
+            username text not null unique,
+            display_name text not null default '',
+            password_hash text not null,
+            role text not null default 'viewer',
+            enabled integer not null default 1,
+            created_at text not null,
+            created_by text not null default '',
+            last_login_at text,
+            failed_count integer not null default 0,
+            locked_until text
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _sessions (
+            id text primary key,
+            token_hash text not null unique,
+            user_id text not null,
+            created_at text not null,
+            expires_at text not null,
+            last_seen_at text,
+            ip text not null default '',
+            user_agent text not null default ''
+        )
+        """
+    )
+    conn.execute("create index if not exists idx_sessions_token on _sessions(token_hash)")
+    conn.execute("create index if not exists idx_sessions_expires on _sessions(expires_at)")
+    conn.execute(
+        """
+        create table if not exists _audit_logs (
+            id text primary key,
+            created_at text not null,
+            user_id text not null default '',
+            username text not null default '',
+            action text not null,
+            target text not null default '',
+            detail text not null default '',
+            ip text not null default '',
+            status text not null default 'ok'
+        )
+        """
+    )
+    conn.execute("create index if not exists idx_audit_created on _audit_logs(created_at)")
     conn.execute(
         """
         create table if not exists _db_connections (
@@ -761,11 +812,18 @@ def clear_checkpoint(key: str) -> None:
         conn.execute("delete from _import_checkpoints where key = ?", (key,))
 
 
-def json_response(handler: SimpleHTTPRequestHandler, payload: object, status: int = 200) -> None:
+def json_response(
+    handler: SimpleHTTPRequestHandler,
+    payload: object,
+    status: int = 200,
+    extra_headers: list[tuple[str, str]] | None = None,
+) -> None:
     body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json; charset=utf-8")
     handler.send_header("Content-Length", str(len(body)))
+    for name, value in extra_headers or []:
+        handler.send_header(name, value)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -6297,6 +6355,239 @@ def read_json_body(handler: SimpleHTTPRequestHandler) -> dict[str, object]:
     return payload
 
 
+# ---------------------------------------------------------------------------
+# 认证内核（P1，2026-09-22）
+#
+# 双通道设计：
+#   * Cookie 会话（浏览器）—— 登录页换取 dc_session；支持登出、超时、按角色
+#   * HTTP Basic（脚本 / 健康检查）—— 沿用 ADMIN_USER / ADMIN_PASSWORD，
+#     使既有 acceptance/ 复跑脚本与 /api/ping 探测**零改造**
+#
+# 安全约定：密码一律 scrypt 加盐哈希（不存明文）；会话 token 只在库里保存 sha256。
+# ---------------------------------------------------------------------------
+
+AUTH_COOKIE_NAME = "dc_session"
+AUTH_SESSION_HOURS = 8
+AUTH_REMEMBER_DAYS = 7
+AUTH_MAX_FAILED = 5
+AUTH_LOCK_MINUTES = 5
+AUTH_ROLES = ("admin", "operator", "viewer")
+AUTH_EXEMPT_PATHS = {"/api/ping", "/api/auth/login", "/api/auth/register", "/api/auth/signup-info"}
+AUTH_STATIC_SUFFIXES = (
+    ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".ico", ".gif",
+    ".woff", ".woff2", ".ttf", ".map", ".txt",
+)
+
+
+def signup_code() -> str:
+    """开放注册的邀请码；未配置则注册不需要邀请码（见设计文档第十三节）。"""
+    return os.environ.get("DC_SIGNUP_CODE", "").strip()
+
+
+def hash_password(password: str) -> str:
+    """scrypt 加盐哈希，格式：scrypt$n$r$p$salt_hex$hash_hex"""
+    n, r, p = 2 ** 14, 8, 1
+    salt = os.urandom(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=n, r=r, p=p, dklen=32)
+    return f"scrypt${n}${r}${p}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """常量时间校验；任何解析异常一律视为不匹配。"""
+    try:
+        scheme, n_text, r_text, p_text, salt_hex, hash_hex = str(stored).split("$")
+        if scheme != "scrypt":
+            return False
+        digest = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=bytes.fromhex(salt_hex),
+            n=int(n_text),
+            r=int(r_text),
+            p=int(p_text),
+            dklen=len(hash_hex) // 2,
+        )
+    except Exception:  # noqa: BLE001
+        return False
+    return hmac.compare_digest(digest.hex(), hash_hex)
+
+
+def parse_cookie_header(header_value: str) -> dict[str, str]:
+    cookies: dict[str, str] = {}
+    for part in str(header_value or "").split(";"):
+        name, separator, value = part.partition("=")
+        if separator:
+            cookies[name.strip()] = value.strip()
+    return cookies
+
+
+def request_is_https(handler) -> bool:
+    return str(handler.headers.get("X-Forwarded-Proto", "")).strip().lower() == "https"
+
+
+def _expiry_text(seconds: int) -> str:
+    return (dt.datetime.now() + dt.timedelta(seconds=seconds)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def session_cookie_header(token: str, max_age: int, https: bool) -> str:
+    cookie = f"{AUTH_COOKIE_NAME}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}"
+    return cookie + "; Secure" if https else cookie
+
+
+def expired_cookie_header(https: bool) -> str:
+    cookie = f"{AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+    return cookie + "; Secure" if https else cookie
+
+
+def create_session(user_id: str, ip: str, user_agent: str, remember: bool) -> tuple[str, int]:
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    seconds = AUTH_REMEMBER_DAYS * 86400 if remember else AUTH_SESSION_HOURS * 3600
+    stamp = now_text()
+    with connect_db() as conn:
+        conn.execute(
+            "insert into _sessions (id, token_hash, user_id, created_at, expires_at, last_seen_at, ip, user_agent)"
+            " values (?, ?, ?, ?, ?, ?, ?, ?)",
+            (uuid.uuid4().hex, token_hash, user_id, stamp, _expiry_text(seconds), stamp, ip, str(user_agent)[:300]),
+        )
+    return token, seconds
+
+
+def resolve_session(token: str) -> dict[str, object] | None:
+    """校验会话并返回用户；过期 / 被停用 / 不存在都返回 None（顺带清理）。"""
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with connect_db() as conn:
+        row = conn.execute(
+            """
+            select s.id as session_id, s.expires_at, u.id as user_id, u.username,
+                   u.display_name, u.role, u.enabled
+            from _sessions s join _users u on u.id = s.user_id
+            where s.token_hash = ?
+            """,
+            (token_hash,),
+        ).fetchone()
+        if not row:
+            return None
+        if str(row["expires_at"]) <= now_text() or not int(row["enabled"] or 0):
+            conn.execute("delete from _sessions where id = ?", (row["session_id"],))
+            return None
+        conn.execute("update _sessions set last_seen_at = ? where id = ?", (now_text(), row["session_id"]))
+    return {
+        "id": row["user_id"],
+        "username": row["username"],
+        "displayName": row["display_name"] or row["username"],
+        "role": row["role"],
+    }
+
+
+def destroy_session(token: str) -> None:
+    if not token:
+        return
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    with connect_db() as conn:
+        conn.execute("delete from _sessions where token_hash = ?", (token_hash,))
+
+
+def destroy_user_sessions(user_id: str) -> int:
+    with connect_db() as conn:
+        cursor = conn.execute("delete from _sessions where user_id = ?", (user_id,))
+        return cursor.rowcount or 0
+
+
+def prune_expired_sessions() -> int:
+    with connect_db() as conn:
+        cursor = conn.execute("delete from _sessions where expires_at <= ?", (now_text(),))
+        return cursor.rowcount or 0
+
+
+def current_user(handler) -> dict[str, object] | None:
+    cookies = parse_cookie_header(handler.headers.get("Cookie", ""))
+    return resolve_session(cookies.get(AUTH_COOKIE_NAME, ""))
+
+
+def audit_log(
+    user: dict[str, object] | None,
+    action: str,
+    target: str = "",
+    detail: str = "",
+    ip: str = "",
+    status: str = "ok",
+) -> None:
+    """写审计；任何异常都不影响主流程（审计不是关键路径）。"""
+    try:
+        with connect_db() as conn:
+            conn.execute(
+                "insert into _audit_logs (id, created_at, user_id, username, action, target, detail, ip, status)"
+                " values (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    uuid.uuid4().hex,
+                    now_text(),
+                    str((user or {}).get("id") or ""),
+                    str((user or {}).get("username") or ""),
+                    action,
+                    str(target)[:200],
+                    str(detail)[:500],
+                    str(ip),
+                    status,
+                ),
+            )
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def find_user(username: str) -> sqlite3.Row | None:
+    with connect_db() as conn:
+        return conn.execute("select * from _users where username = ?", (username,)).fetchone()
+
+
+def count_users() -> int:
+    with connect_db() as conn:
+        return int(conn.execute("select count(*) from _users").fetchone()[0])
+
+
+def has_enabled_admin() -> bool:
+    with connect_db() as conn:
+        return bool(
+            conn.execute("select 1 from _users where role = 'admin' and enabled = 1 limit 1").fetchone()
+        )
+
+
+def bootstrap_admin_from_env() -> None:
+    """管理员引导：配置了 ADMIN_PASSWORD 且**没有任何启用中的 admin** 时，用它建一个。
+
+    判定条件不是「用户表为空」——注册用户（viewer）可能先存在，但那不解决
+    「没人能登录管理」的问题；只要不存在可用的管理员就补建，保证任何部署都不会被锁在门外。
+    同名账号已存在时不再重复创建（幂等），也不会覆盖既有密码。
+    """
+    password = os.environ.get("ADMIN_PASSWORD", "").strip()
+    if not password:
+        return
+    username = os.environ.get("ADMIN_USER", "admin").strip() or "admin"
+    if find_user(username) or has_enabled_admin():
+        return
+    with connect_db() as conn:
+        conn.execute(
+            "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by)"
+            " values (?, ?, ?, ?, 'admin', 1, ?, 'bootstrap')",
+            (uuid.uuid4().hex, username, username, hash_password(password), now_text()),
+        )
+    print(f"[auth] 已按 ADMIN_USER/ADMIN_PASSWORD 创建首个管理员账号：{username}", flush=True)
+
+
+def user_public(row: sqlite3.Row) -> dict[str, object]:
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "displayName": row["display_name"] or row["username"],
+        "role": row["role"],
+        "enabled": bool(row["enabled"]),
+        "createdAt": row["created_at"],
+        "lastLoginAt": row["last_login_at"] or "",
+        "lockedUntil": row["locked_until"] or "",
+    }
+
+
 def public_auth_enabled() -> bool:
     enabled_value = os.environ.get("APP_AUTH_ENABLED", "").strip().lower()
     return enabled_value in {"1", "true", "yes", "on"} and bool(os.environ.get("ADMIN_PASSWORD", "").strip())
@@ -6372,19 +6663,46 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             message = " ".join(str(arg) for arg in args)
         print(f"{self.address_string()} - {redact_log_text(message)}", flush=True)
 
+    def request_ip(self) -> str:
+        forwarded = str(self.headers.get("X-Forwarded-For", "")).split(",")[0].strip()
+        return forwarded or self.address_string()
+
     def require_auth(self) -> bool:
+        """双通道认证：HTTP Basic（脚本 / 健康检查）与 Cookie 会话（浏览器）。
+
+        · 未启用认证（本机桌面模式）→ 直接放行，保持原有使用习惯
+        · 页面请求且未登录 → 302 跳登录页并携带 next，登录后跳回原页面
+        · 接口请求且未登录 → 401 JSON（带 needLogin 标记，前端统一处理）
+        · 静态资源（css/js/图片）放行，否则登录页自身的样式脚本会被拦
+        """
         if not public_auth_enabled():
             return True
-        if urlparse(self.path).path == "/api/ping":
+        parsed = urlparse(self.path)
+        path = parsed.path
+        if path in AUTH_EXEMPT_PATHS:
             return True
         if check_basic_auth(self.headers.get("Authorization", "")):
             return True
-        self.send_response(HTTPStatus.UNAUTHORIZED)
-        self.send_header("WWW-Authenticate", 'Basic realm="Data Converter"')
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.end_headers()
-        self.wfile.write("Authentication required.".encode("utf-8"))
-        return False
+        user = current_user(self)
+        if user:
+            self.auth_user = user  # type: ignore[attr-defined]
+            return True
+        if path.startswith("/api/"):
+            json_response(
+                self,
+                {"ok": False, "needLogin": True, "error": "未登录或会话已过期，请重新登录。"},
+                HTTPStatus.UNAUTHORIZED,
+            )
+            return False
+        if path == "/" or path.endswith(".html"):
+            target = path + (f"?{parsed.query}" if parsed.query else "")
+            self.send_response(HTTPStatus.FOUND)
+            self.send_header("Location", "/login.html?next=" + quote(target, safe=""))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return False
+        # 静态资源与其它路径交给静态文件处理器
+        return True
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
@@ -6410,6 +6728,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/auth/me":
+                self.handle_auth_me()
+                return
+            if parsed.path == "/api/auth/signup-info":
+                self.handle_auth_signup_info()
+                return
             if parsed.path == "/api/tables":
                 self.handle_tables(parsed.query)
                 return
@@ -6470,6 +6794,18 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             return
         try:
             post_path = urlparse(self.path).path
+            if post_path == "/api/auth/login":
+                self.handle_auth_login()
+                return
+            if post_path == "/api/auth/logout":
+                self.handle_auth_logout()
+                return
+            if post_path == "/api/auth/register":
+                self.handle_auth_register()
+                return
+            if post_path == "/api/auth/password":
+                self.handle_auth_password()
+                return
             # Read-only connection lookups accept POST + JSON body so connection
             # credentials are no longer required to travel in a GET query string.
             if post_path == "/api/tables":
@@ -7091,6 +7427,159 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             runs_payload.append(item)
         json_response(self, {"ok": True, "runs": runs_payload})
 
+    # ------------------------------------------------------------ 认证接口（P1）
+
+    def handle_auth_me(self) -> None:
+        user = getattr(self, "auth_user", None) or current_user(self)
+        if not user:
+            json_response(self, {"ok": False, "needLogin": True, "error": "未登录。"}, HTTPStatus.UNAUTHORIZED)
+            return
+        json_response(self, {
+            "ok": True,
+            "user": user,
+            "authEnabled": public_auth_enabled(),
+            "signupCodeRequired": bool(signup_code()),
+        })
+
+    def handle_auth_signup_info(self) -> None:
+        """登录页用它决定是否显示「注册」入口与邀请码输入框。"""
+        json_response(self, {
+            "ok": True,
+            "authEnabled": public_auth_enabled(),
+            "signupCodeRequired": bool(signup_code()),
+            "userCount": count_users(),
+            "appVersion": APP_VERSION,
+        })
+
+    def handle_auth_login(self) -> None:
+        payload = read_json_body(self)
+        username = str(payload.get("username") or "").strip()
+        password = str(payload.get("password") or "")
+        remember = bool(payload.get("remember"))
+        ip = self.request_ip()
+        if not username or not password:
+            raise ValueError("请填写用户名与密码。")
+        row = find_user(username)
+        # 用户不存在与密码错误使用同一文案，避免暴露账号是否存在
+        if not row:
+            audit_log({"username": username}, "login", "", "用户不存在", ip, "denied")
+            json_response(self, {"ok": False, "error": "用户名或密码不正确。"}, HTTPStatus.UNAUTHORIZED)
+            return
+        if row["locked_until"] and str(row["locked_until"]) > now_text():
+            audit_log({"username": username}, "login", "", "账号锁定中", ip, "denied")
+            json_response(self, {
+                "ok": False,
+                "error": f"连续失败次数过多，账号已锁定，请约 {AUTH_LOCK_MINUTES} 分钟后再试。",
+            }, HTTPStatus.UNAUTHORIZED)
+            return
+        if not int(row["enabled"] or 0):
+            audit_log({"username": username}, "login", "", "账号已停用", ip, "denied")
+            json_response(self, {"ok": False, "error": "该账号已被停用，请联系管理员。"}, HTTPStatus.UNAUTHORIZED)
+            return
+        if not verify_password(password, str(row["password_hash"])):
+            failed = int(row["failed_count"] or 0) + 1
+            locked_until = _expiry_text(AUTH_LOCK_MINUTES * 60) if failed >= AUTH_MAX_FAILED else None
+            with connect_db() as conn:
+                conn.execute(
+                    "update _users set failed_count = ?, locked_until = ? where id = ?",
+                    (failed, locked_until, row["id"]),
+                )
+            audit_log({"username": username}, "login", "", f"密码错误（第 {failed} 次）", ip, "denied")
+            message = "用户名或密码不正确。"
+            if locked_until:
+                message = f"连续失败 {failed} 次，账号已锁定 {AUTH_LOCK_MINUTES} 分钟。"
+            json_response(self, {"ok": False, "error": message}, HTTPStatus.UNAUTHORIZED)
+            return
+        with connect_db() as conn:
+            conn.execute(
+                "update _users set failed_count = 0, locked_until = NULL, last_login_at = ? where id = ?",
+                (now_text(), row["id"]),
+            )
+        token, seconds = create_session(row["id"], ip, str(self.headers.get("User-Agent", "")), remember)
+        user = {
+            "id": row["id"],
+            "username": row["username"],
+            "displayName": row["display_name"] or row["username"],
+            "role": row["role"],
+        }
+        audit_log(user, "login", username, "登录成功", ip, "ok")
+        json_response(
+            self,
+            {"ok": True, "user": user},
+            extra_headers=[("Set-Cookie", session_cookie_header(token, seconds, request_is_https(self)))],
+        )
+
+    def handle_auth_logout(self) -> None:
+        cookies = parse_cookie_header(self.headers.get("Cookie", ""))
+        token = cookies.get(AUTH_COOKIE_NAME, "")
+        user = getattr(self, "auth_user", None) or resolve_session(token)
+        destroy_session(token)
+        if user:
+            audit_log(user, "logout", str(user.get("username") or ""), "", self.request_ip(), "ok")
+        json_response(self, {"ok": True}, extra_headers=[("Set-Cookie", expired_cookie_header(request_is_https(self)))])
+
+    def handle_auth_register(self) -> None:
+        """开放注册（业主 2026-09-22 决策）：默认 viewer，可选邀请码。"""
+        payload = read_json_body(self)
+        username = str(payload.get("username") or "").strip()
+        password = str(payload.get("password") or "")
+        display_name = str(payload.get("displayName") or "").strip()
+        code = str(payload.get("code") or "").strip()
+        ip = self.request_ip()
+        if not username or not password:
+            raise ValueError("请填写用户名与密码。")
+        if len(username) < 3:
+            raise ValueError("用户名至少 3 个字符。")
+        if len(password) < 8:
+            raise ValueError("密码至少 8 位。")
+        expected = signup_code()
+        if expected and not hmac.compare_digest(code, expected):
+            audit_log({"username": username}, "register", "", "邀请码不正确", ip, "denied")
+            json_response(self, {"ok": False, "error": "邀请码不正确。"}, HTTPStatus.FORBIDDEN)
+            return
+        if find_user(username):
+            raise ValueError("该用户名已被占用。")
+        user_id = uuid.uuid4().hex
+        with connect_db() as conn:
+            conn.execute(
+                "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
+                " values (?, ?, ?, ?, 'viewer', 1, ?, 'self-register', 0)",
+                (user_id, username, display_name or username, hash_password(password), now_text()),
+            )
+        user = {"id": user_id, "username": username, "displayName": display_name or username, "role": "viewer"}
+        audit_log(user, "register", username, "开放注册，默认角色 viewer", ip, "ok")
+        token, seconds = create_session(user_id, ip, str(self.headers.get("User-Agent", "")), False)
+        json_response(
+            self,
+            {"ok": True, "user": user},
+            extra_headers=[("Set-Cookie", session_cookie_header(token, seconds, request_is_https(self)))],
+        )
+
+    def handle_auth_password(self) -> None:
+        payload = read_json_body(self)
+        user = getattr(self, "auth_user", None) or current_user(self)
+        if not user:
+            json_response(self, {"ok": False, "needLogin": True, "error": "未登录。"}, HTTPStatus.UNAUTHORIZED)
+            return
+        old_password = str(payload.get("oldPassword") or "")
+        new_password = str(payload.get("newPassword") or "")
+        if len(new_password) < 8:
+            raise ValueError("新密码至少 8 位。")
+        row = find_user(str(user["username"]))
+        if not row or not verify_password(old_password, str(row["password_hash"])):
+            audit_log(user, "password", str(user["username"]), "原密码不正确", self.request_ip(), "denied")
+            json_response(self, {"ok": False, "error": "原密码不正确。"}, HTTPStatus.BAD_REQUEST)
+            return
+        with connect_db() as conn:
+            conn.execute("update _users set password_hash = ? where id = ?", (hash_password(new_password), row["id"]))
+        destroy_user_sessions(str(row["id"]))
+        audit_log(user, "password", str(user["username"]), "修改密码成功", self.request_ip(), "ok")
+        json_response(
+            self,
+            {"ok": True, "message": "密码已更新，请使用新密码重新登录。", "relogin": True},
+            extra_headers=[("Set-Cookie", expired_cookie_header(request_is_https(self)))],
+        )
+
     def handle_queries(self) -> None:
         with connect_db() as conn:
             rows = conn.execute("select * from _saved_queries order by updated_at desc, name").fetchall()
@@ -7255,6 +7744,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
 def main() -> None:
     ensure_dirs()
+    # 首个管理员引导（幂等：_users 非空时直接返回）。放在起服务之前，
+    # 保证启用认证的部署不会出现"没有任何账号可登录"的死锁。
+    try:
+        bootstrap_admin_from_env()
+        pruned = prune_expired_sessions()
+        if pruned:
+            print(f"[auth] 清理过期会话 {pruned} 条", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: 认证初始化跳过：{exc}", flush=True)
     # 启动即把三个运行数据落点打出来：定时任务无人值守跑，出问题时第一件事就是
     # 确认进程到底读的哪个 imports.db —— 数据目录一旦分裂成两份，症状是"数据没更新"
     # 而不是报错，极难排查。这里让路径一眼可见。
