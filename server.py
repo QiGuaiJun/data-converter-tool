@@ -82,7 +82,7 @@ DATA = env_path("DATA_DIR", runtime_path("data"))
 UPLOADS = env_path("UPLOADS_DIR", runtime_path("uploads"))
 EXPORTS = env_path("EXPORTS_DIR", runtime_path("exports"))
 # 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.8.0"
 TASK_SOURCES = DATA / "task_sources"
 LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
@@ -6556,9 +6556,35 @@ def audit_log(
         pass
 
 
+# ---- 账号名称规则（业主 2026-09-22 决策）----
+# 1) 账号名称即显示名称，不再单独维护「显示名」；
+# 2) 允许任意字符（中文、空格、符号、emoji 均可），只约束长度与不可见控制字符；
+# 3) 比较一律忽略大小写 —— 公网开放注册时，别人不能注册 "Admin" 来冒充内置的 "admin"。
+USERNAME_MAX_LEN = 32
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def normalize_username(value: object) -> str:
+    """校验并归一化账号名称：去首尾空白、拒绝控制字符、限制长度。"""
+    username = str(value or "").strip()
+    if not username:
+        raise ValueError("请填写账号名称。")
+    if _CONTROL_CHAR_RE.search(username):
+        raise ValueError("账号名称不能包含换行、制表符等控制字符。")
+    if len(username) > USERNAME_MAX_LEN:
+        raise ValueError(f"账号名称最多 {USERNAME_MAX_LEN} 个字符。")
+    return username
+
+
 def find_user(username: str) -> sqlite3.Row | None:
+    """按账号名称查用户（忽略大小写）。"""
+    name = str(username or "").strip()
+    if not name:
+        return None
     with connect_db() as conn:
-        return conn.execute("select * from _users where username = ?", (username,)).fetchone()
+        return conn.execute(
+            "select * from _users where username = ? collate nocase", (name,)
+        ).fetchone()
 
 
 def count_users() -> int:
@@ -6599,7 +6625,8 @@ def user_public(row: sqlite3.Row) -> dict[str, object]:
     return {
         "id": row["id"],
         "username": row["username"],
-        "displayName": row["display_name"] or row["username"],
+        # 账号名称即显示名称：displayName 保留字段只为兼容前端旧引用，取值恒等于账号名称。
+        "displayName": row["username"],
         "role": row["role"],
         "enabled": bool(row["enabled"]),
         "createdAt": row["created_at"],
@@ -6919,31 +6946,28 @@ def enabled_admin_count(exclude_id: str = "") -> int:
 
 
 def create_user(payload: dict[str, object]) -> dict[str, object]:
-    username = str(payload.get("username") or "").strip()
-    display_name = str(payload.get("displayName") or "").strip()
+    username = normalize_username(payload.get("username"))
     role = str(payload.get("role") or "viewer").strip()
     password = validate_new_password(payload.get("password"))
-    if len(username) < 3:
-        raise ValueError("用户名至少 3 个字符。")
-    if not re.fullmatch(r"[A-Za-z0-9_.@-]{3,32}", username):
-        raise ValueError("用户名只能包含字母、数字与 _ . @ - ，长度 3-32 位。")
     if role not in ROLE_ORDER:
         raise ValueError("角色不合法。")
     if find_user(username):
-        raise ValueError("该用户名已存在。")
+        raise ValueError("该账号名称已存在。")
     user_id = uuid.uuid4().hex
     with connect_db() as conn:
+        # display_name 列保留（不改表结构以兼容旧库），但恒等于 username：
+        # 账号名称即显示名称，不再有第二个名字。
         conn.execute(
             "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
             " values (?, ?, ?, ?, ?, 1, ?, ?, 0)",
-            (user_id, username, display_name or username, hash_password(password), role, now_text(), "admin"),
+            (user_id, username, username, hash_password(password), role, now_text(), "admin"),
         )
         row = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
     return user_public(row)
 
 
 def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> tuple[dict[str, object], list[str]]:
-    """改角色 / 启停 / 重置密码 / 改显示名；返回（用户, 变更说明）。"""
+    """改角色 / 启停 / 重置密码；返回（用户, 变更说明）。"""
     user_id = str(payload.get("id") or "").strip()
     if not user_id:
         raise ValueError("缺少用户 ID。")
@@ -6953,7 +6977,6 @@ def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> 
     changes: list[str] = []
     role = str(payload.get("role") or "").strip()
     enabled_value = payload.get("enabled")
-    display_name = payload.get("displayName")
     password = payload.get("password")
 
     if role and role != str(row["role"]):
@@ -6974,11 +6997,6 @@ def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> 
     else:
         enabled = int(row["enabled"] or 0)
 
-    new_display = str(display_name).strip() if display_name is not None else str(row["display_name"] or "")
-    if display_name is not None and new_display != str(row["display_name"] or ""):
-        changes.append("显示名变更")
-    new_display = new_display or str(row["username"])
-
     with connect_db() as conn:
         if password not in (None, ""):
             conn.execute(
@@ -6987,8 +7005,8 @@ def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> 
             )
             changes.append("重置密码")
         conn.execute(
-            "update _users set role = ?, enabled = ?, display_name = ? where id = ?",
-            (role or row["role"], enabled, new_display, user_id),
+            "update _users set role = ?, enabled = ?, display_name = username where id = ?",
+            (role or row["role"], enabled, user_id),
         )
         updated = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
     # 改密 / 停用后立刻作废其全部会话，避免旧 Cookie 继续可用
@@ -7948,10 +7966,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         payload = read_json_body(self)
         username = str(payload.get("username") or "").strip()
         password = str(payload.get("password") or "")
-        remember = bool(payload.get("remember"))
+        # 「记住我」已按业主决定下线：会话一律用默认有效期（AUTH_SESSION_HOURS），
+        # 不再接受客户端延长会话的请求（payload 里的 remember 被忽略）。
+        remember = False
         ip = self.request_ip()
         if not username or not password:
-            raise ValueError("请填写用户名与密码。")
+            raise ValueError("请填写账号名称与密码。")
         # 同 IP 每分钟登录次数上限（公网必然被扫，先挡在这里）
         retry_after = login_rate_retry_after(ip)
         if retry_after:
@@ -7966,7 +7986,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         # 用户不存在与密码错误使用同一文案，避免暴露账号是否存在
         if not row:
             audit_log({"username": username}, "login", "", "用户不存在", ip, "denied")
-            json_response(self, {"ok": False, "error": "用户名或密码不正确。"}, HTTPStatus.UNAUTHORIZED)
+            json_response(self, {"ok": False, "error": "账号名称或密码不正确。"}, HTTPStatus.UNAUTHORIZED)
             return
         if row["locked_until"] and str(row["locked_until"]) > now_text():
             audit_log({"username": username}, "login", "", "账号锁定中", ip, "denied")
@@ -7988,7 +8008,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                     (failed, locked_until, row["id"]),
                 )
             audit_log({"username": username}, "login", "", f"密码错误（第 {failed} 次）", ip, "denied")
-            message = "用户名或密码不正确。"
+            message = "账号名称或密码不正确。"
             if locked_until:
                 message = f"连续失败 {failed} 次，账号已锁定 {AUTH_LOCK_MINUTES} 分钟。"
             json_response(self, {"ok": False, "error": message}, HTTPStatus.UNAUTHORIZED)
@@ -8002,7 +8022,7 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         user = {
             "id": row["id"],
             "username": row["username"],
-            "displayName": row["display_name"] or row["username"],
+            "displayName": row["username"],
             "role": row["role"],
         }
         audit_log(user, "login", username, "登录成功", ip, "ok")
@@ -8022,17 +8042,17 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         json_response(self, {"ok": True}, extra_headers=[("Set-Cookie", expired_cookie_header(request_is_https(self)))])
 
     def handle_auth_register(self) -> None:
-        """开放注册（业主 2026-09-22 决策）：默认 viewer，可选邀请码。"""
+        """开放注册（业主 2026-09-22 决策）：默认角色由 DC_DEFAULT_ROLE 决定，可选邀请码。
+
+        账号名称允许任意字符（中文、空格、符号均可），不再有独立的「显示名」。
+        """
         payload = read_json_body(self)
-        username = str(payload.get("username") or "").strip()
         password = str(payload.get("password") or "")
-        display_name = str(payload.get("displayName") or "").strip()
         code = str(payload.get("code") or "").strip()
         ip = self.request_ip()
-        if not username or not password:
-            raise ValueError("请填写用户名与密码。")
-        if len(username) < 3:
-            raise ValueError("用户名至少 3 个字符。")
+        username = normalize_username(payload.get("username"))
+        if not password:
+            raise ValueError("请填写密码。")
         if len(password) < 8:
             raise ValueError("密码至少 8 位。")
         expected = signup_code()
@@ -8041,16 +8061,16 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             json_response(self, {"ok": False, "error": "邀请码不正确。"}, HTTPStatus.FORBIDDEN)
             return
         if find_user(username):
-            raise ValueError("该用户名已被占用。")
+            raise ValueError("该账号名称已被占用。")
         user_id = uuid.uuid4().hex
         role = signup_default_role()
         with connect_db() as conn:
             conn.execute(
                 "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
                 " values (?, ?, ?, ?, ?, 1, ?, 'self-register', 0)",
-                (user_id, username, display_name or username, hash_password(password), role, now_text()),
+                (user_id, username, username, hash_password(password), role, now_text()),
             )
-        user = {"id": user_id, "username": username, "displayName": display_name or username, "role": role}
+        user = {"id": user_id, "username": username, "displayName": username, "role": role}
         audit_log(user, "register", username, f"开放注册，默认角色 {role}", ip, "ok")
         token, seconds = create_session(user_id, ip, str(self.headers.get("User-Agent", "")), False)
         json_response(

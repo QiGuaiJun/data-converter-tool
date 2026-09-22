@@ -5,101 +5,435 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>登录 - 数据导表工具</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/styles.css?v=20260922_auth2" />
-    <link rel="stylesheet" href="/theme.css?v=20260912_claude" />
     <style>
-      /* 登录页是独立页面：不引入 shell.js（避免登录态检查造成跳转回环），
-         样式就近内联，只复用 styles.css 的调色与基础控件。 */
+      /* ======================================================================
+         登录页（2026-09-22 改版：独立页面 + 复刻设计稿）
+         · 本页不引入 styles.css / theme.css / shell.js
+           —— shell.js 会做登录态检查并跳转，在登录页引入会形成跳转回环；
+           —— 主站样式与主题变体会干扰这一页的版式，所以自成一页。
+         · 所有文案见 login.config.js（改文字只改那一个文件）
+         · 左侧流程图纯 SVG 绘制，不依赖任何外部图片
+      ====================================================================== */
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html, body { height: 100%; }
+
       body.login-body {
         margin: 0;
         min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #f5f4f0;
-        font-family: "Microsoft YaHei", "PingFang SC", -apple-system, sans-serif;
-        color: #2f2c27;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow-x: hidden;
+        font-family: "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
+          -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #1f2937;
+        background: linear-gradient(158deg, #fdfeff 0%, #f7fbfe 44%, #eef6fe 100%);
+        -webkit-font-smoothing: antialiased;
       }
-      .login-card {
-        width: 380px;
-        max-width: calc(100vw - 40px);
-        padding: 30px 32px 26px;
+
+      /* ---------------------------------------------------------------- 背景 */
+      .ln-bg { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+
+      .ln-waves { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+      /* 卡片背后的柔光，让右侧保持干净、文字可读 */
+      .ln-glow {
+        position: absolute; top: 50%; right: -6%; width: 62%; height: 130%;
+        transform: translateY(-50%);
+        background: radial-gradient(ellipse at center,
+          rgba(255, 255, 255, 0.98) 0%,
+          rgba(255, 255, 255, 0.9) 42%,
+          rgba(255, 255, 255, 0) 72%);
+      }
+
+      /* 左上角与右下的点阵装饰 */
+      .ln-dots {
+        position: absolute; width: 132px; height: 132px; opacity: .75;
+        background-image: radial-gradient(#bfd9f7 1.7px, transparent 1.8px);
+        background-size: 14px 14px;
+      }
+      .ln-dots-tr { top: 26px; right: 62px; }
+      .ln-dots-bl { bottom: 22px; left: 34px; }
+
+      /* ------------------------------------------------------------ 左上品牌 */
+      .ln-brand {
+        position: relative; z-index: 2;
+        display: flex; align-items: center; gap: 12px;
+        padding: 30px 0 0 40px;
+      }
+      .ln-brand-mark { width: 42px; height: 42px; flex: 0 0 auto; }
+      .ln-brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+      .ln-brand-text strong { font-size: 19px; font-weight: 700; letter-spacing: .2px; color: #16233a; }
+      .ln-brand-text em {
+        margin-top: 3px; font-style: normal; font-size: 10.5px; font-weight: 600;
+        letter-spacing: 1.6px; color: #7c8ba1; text-transform: uppercase;
+      }
+
+      /* ------------------------------------------------------------ 主舞台 */
+      .ln-stage {
+        position: relative; z-index: 2;
+        flex: 1 1 auto;
+        display: flex; align-items: center; justify-content: center;
+        gap: 72px;
+        padding: 28px 48px;
+        min-height: 0;
+      }
+
+      .ln-visual { width: 400px; height: 540px; flex: 0 0 auto; }
+      .ln-visual svg { width: 100%; height: 100%; display: block; }
+
+      /* ------------------------------------------------------------ 登录卡片 */
+      .ln-card {
+        width: 424px; max-width: 100%;
+        flex: 0 0 auto;
+        padding: 44px 42px 30px;
         border-radius: 16px;
         background: #fff;
-        border: 1px solid #e4e0d6;
-        box-shadow: 0 14px 40px rgba(60, 55, 45, 0.10);
+        box-shadow: 0 24px 64px rgba(23, 58, 110, 0.10), 0 2px 8px rgba(23, 58, 110, 0.04);
       }
-      .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
-      .login-brand-icon {
-        width: 34px; height: 34px; border-radius: 9px; background: #2f2c27; color: #fff;
-        display: grid; place-items: center; font-size: 13px; letter-spacing: .5px;
+
+      .ln-card-logo {
+        width: 88px; height: 88px; margin: 0 auto 32px;
+        border-radius: 50%;
+        background: #f4f7fb;
+        display: flex; align-items: center; justify-content: center;
       }
-      .login-brand strong { font-size: 17px; }
-      .login-sub { margin: 6px 0 22px; color: #6c6a64; font-size: 13px; }
-      .login-field { margin-bottom: 14px; }
-      .login-field label { display: block; font-size: 13px; color: #4a4740; margin-bottom: 6px; }
-      .login-field input[type="text"],
-      .login-field input[type="password"] {
-        width: 100%; box-sizing: border-box; height: 40px; padding: 0 12px;
-        border: 1px solid #d8d2c6; border-radius: 9px; font-size: 14px; background: #fdfcfa;
+      .ln-card-logo svg { width: 42px; height: 42px; }
+
+      .ln-form-title {
+        margin: 0 0 6px; text-align: center;
+        font-size: 20px; font-weight: 700; color: #16233a;
       }
-      .login-field input:focus { outline: none; border-color: #8a8578; background: #fff; }
-      .login-row { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 18px; font-size: 13px; color: #4a4740; }
-      .login-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-      .login-actions { display: flex; gap: 10px; }
-      .login-actions button {
-        flex: 1; height: 42px; border-radius: 10px; border: 1px solid #d8d2c6;
-        background: #fff; font-size: 14px; cursor: pointer; color: #2f2c27;
+      .ln-form-sub {
+        margin: 0 0 18px; text-align: center;
+        font-size: 13px; line-height: 1.6; color: #7c8ba1;
       }
-      .login-actions button.primary { background: #2f2c27; border-color: #2f2c27; color: #fff; }
-      .login-actions button:disabled { opacity: .55; cursor: not-allowed; }
-      .login-message { min-height: 20px; margin: 2px 0 10px; font-size: 13px; color: #c0392b; }
-      .login-message.ok { color: #13834c; }
-      .login-foot { margin-top: 18px; padding-top: 14px; border-top: 1px solid #efece4; color: #8a8578; font-size: 12px; line-height: 1.6; }
-      .login-hidden { display: none !important; }
+
+      /* 输入框：左侧图标 + 占位文字 */
+      .ln-field { position: relative; margin-bottom: 16px; }
+      .ln-field-icon {
+        position: absolute; left: 15px; top: 50%; transform: translateY(-50%);
+        width: 18px; height: 18px; color: #9aa7b8; pointer-events: none;
+      }
+      .ln-field input {
+        width: 100%; height: 48px;
+        padding: 0 44px 0 44px;
+        font-size: 14.5px; font-family: inherit; color: #1f2937;
+        background: #fff;
+        border: 1px solid #e4e9f0;
+        border-radius: 8px;
+        transition: border-color .15s, box-shadow .15s;
+      }
+      .ln-field input::placeholder { color: #a4b0c0; }
+      .ln-field input:hover { border-color: #d3dbe6; }
+      .ln-field input:focus {
+        outline: none; border-color: #1677ff;
+        box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
+      }
+      /* 无图标时（邀请码）左侧不留白 */
+      .ln-field.no-icon input { padding-left: 15px; }
+
+      /* 密码明/暗文切换 */
+      .ln-eye {
+        position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+        width: 34px; height: 34px; padding: 0;
+        display: flex; align-items: center; justify-content: center;
+        border: 0; background: transparent; border-radius: 6px;
+        color: #9aa7b8; cursor: pointer;
+      }
+      .ln-eye:hover { color: #5b6b80; background: #f3f6fa; }
+      .ln-eye:focus-visible { outline: 2px solid #1677ff; outline-offset: 1px; }
+      .ln-eye svg { width: 19px; height: 19px; }
+
+      .ln-message {
+        min-height: 20px; margin: 2px 0 12px;
+        font-size: 13px; line-height: 1.5; color: #d93025;
+      }
+      .ln-message.ok { color: #13834c; }
+      .ln-message:empty { margin-bottom: 4px; }
+
+      .ln-submit {
+        width: 100%; height: 46px;
+        border: 0; border-radius: 6px;
+        background: #1677ff; color: #fff;
+        font-size: 16px; font-family: inherit; font-weight: 500; letter-spacing: 1px;
+        cursor: pointer;
+        transition: background .15s, box-shadow .15s;
+      }
+      .ln-submit:hover:not(:disabled) { background: #0d63e0; box-shadow: 0 6px 18px rgba(22, 119, 255, .28); }
+      .ln-submit:active:not(:disabled) { background: #0a56c8; }
+      .ln-submit:disabled { opacity: .6; cursor: not-allowed; letter-spacing: 0; }
+
+      .ln-divider { height: 1px; margin: 30px 0 22px; background: #eef1f6; }
+
+      .ln-switch { margin: 0; text-align: center; font-size: 13.5px; color: #7c8ba1; }
+      .ln-switch a { margin-left: 6px; color: #1677ff; text-decoration: none; cursor: pointer; }
+      .ln-switch a:hover { text-decoration: underline; }
+
+      /* ------------------------------------------------------------ 页脚 */
+      .ln-pagefoot {
+        position: relative; z-index: 2;
+        flex: 0 0 auto;
+        padding: 0 24px 26px;
+        text-align: center;
+        color: #93a0b2;
+        font-size: 12.5px;
+        line-height: 1.9;
+      }
+      .ln-foot-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
+      .ln-version {
+        display: inline-block; padding: 1px 9px;
+        border: 1px solid #e4e9f0; border-radius: 10px;
+        background: #fff; font-size: 11.5px; color: #8b98a9;
+      }
+      .ln-version[hidden] { display: none; }
+
+      .ln-hidden { display: none !important; }
+
+      /* ------------------------------------------------------------ 自适应 */
+      @media (max-width: 1080px) {
+        .ln-stage { gap: 40px; }
+        .ln-visual { width: 320px; height: 430px; }
+      }
+      @media (max-width: 900px) {
+        .ln-visual { display: none; }
+        .ln-brand { padding: 22px 0 0 22px; }
+        .ln-dots-tr { right: 20px; }
+        .ln-stage { padding: 20px 20px; }
+        .ln-card { padding: 34px 26px 24px; }
+      }
+      @media (max-height: 720px) {
+        .ln-stage { padding: 12px 48px; }
+        .ln-visual { height: 460px; }
+        .ln-card { padding: 30px 42px 22px; }
+        .ln-card-logo { width: 72px; height: 72px; margin-bottom: 22px; }
+        .ln-divider { margin: 22px 0 16px; }
+      }
     </style>
   </head>
   <body class="login-body">
-    <main class="login-card">
-      <div class="login-brand">
-        <span class="login-brand-icon">DC</span>
-        <strong>数据导表工具</strong>
+    <!-- 背景：波浪 + 点阵 + 卡片后方柔光 -->
+    <div class="ln-bg" aria-hidden="true">
+      <svg class="ln-waves" viewBox="0 0 1440 900" preserveAspectRatio="none">
+        <defs>
+          <!-- 从左侧实到右侧透明：让波纹在卡片之前自然消失，不压住登录区 -->
+          <linearGradient id="lnWaveFade" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stop-color="#d2e4f9" stop-opacity=".55" />
+            <stop offset=".45" stop-color="#d2e4f9" stop-opacity=".5" />
+            <stop offset=".8" stop-color="#e2eefc" stop-opacity=".16" />
+            <stop offset="1" stop-color="#eef6fe" stop-opacity="0" />
+          </linearGradient>
+          <!-- 波纹是背景，边缘要虚，避免形成硬邦邦的斜条纹 -->
+          <filter id="lnWaveBlur" x="-10%" y="-40%" width="120%" height="180%">
+            <feGaussianBlur stdDeviation="7" />
+          </filter>
+        </defs>
+        <g fill="none" stroke="url(#lnWaveFade)" stroke-linecap="round" filter="url(#lnWaveBlur)">
+          <path d="M-60,36 C400,116 760,188 1180,232" stroke-width="32" />
+          <path d="M-60,168 C380,234 758,284 1180,314" stroke-width="15" />
+          <path d="M-60,288 C360,342 742,390 1180,420" stroke-width="50" />
+          <path d="M-60,428 C340,468 730,518 1180,544" stroke-width="22" />
+          <path d="M-60,556 C320,588 720,634 1180,658" stroke-width="60" />
+        </g>
+      </svg>
+      <span class="ln-glow"></span>
+      <span class="ln-dots ln-dots-tr"></span>
+      <span class="ln-dots ln-dots-bl"></span>
+    </div>
+
+    <!-- 左上品牌 -->
+    <header class="ln-brand">
+      <svg class="ln-brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+        <defs>
+          <linearGradient id="lnHexA" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#4a9bff" />
+            <stop offset="100%" stop-color="#0d5ce8" />
+          </linearGradient>
+        </defs>
+        <path d="M24 3.2 41.6 13.4v20.4L24 44 6.4 33.8V13.4z" fill="url(#lnHexA)" />
+        <path d="M24 12.6 33.6 18v11L24 34.4 14.4 29V18z" fill="#eef4ff" />
+        <path d="M24 17.4 29.4 20.5v6.2L24 29.8 18.6 26.7v-6.2z" fill="url(#lnHexA)" />
+      </svg>
+      <span class="ln-brand-text">
+        <strong id="brandCn">Fe数据导表工具</strong>
+        <em id="brandEn">DATA CONVERTER TOOL</em>
+      </span>
+    </header>
+
+    <!-- 主区：左流程图 + 右登录卡片 -->
+    <main class="ln-stage">
+      <div class="ln-visual" aria-hidden="true">
+        <svg viewBox="0 0 400 540">
+          <defs>
+            <filter id="lnNodeShadow" x="-70%" y="-70%" width="240%" height="240%">
+              <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f4f92" flood-opacity="0.16" />
+            </filter>
+            <linearGradient id="lnHexB" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#4a9bff" />
+              <stop offset="100%" stop-color="#0d5ce8" />
+            </linearGradient>
+          </defs>
+
+          <!-- 虚线路径（穿过各节点） -->
+          <path
+            d="M110,22 Q133,44 149,70 Q112,110 70,150 Q45,190 35,228 Q36,266 53,302 Q70,340 92,372 Q122,408 173,432"
+            fill="none" stroke="#7fb2ee" stroke-width="1.6"
+            stroke-dasharray="5 6" stroke-linecap="round" />
+          <circle cx="110" cy="22" r="2.6" fill="#7fb2ee" />
+          <circle cx="173" cy="432" r="2.6" fill="#7fb2ee" />
+
+          <!-- 1. Excel -->
+          <g transform="translate(149,70)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <g transform="translate(-13,-13)">
+              <rect x="2" y="4.5" width="22" height="17" rx="3" fill="#21a366" />
+              <rect x="2" y="4.5" width="6.5" height="17" rx="3" fill="#8cc63f" />
+              <path d="M11.5 10 19 18 M19 10 11.5 18" stroke="#fff" stroke-width="2.3" stroke-linecap="round" />
+            </g>
+          </g>
+
+          <!-- 2. 数据库 -->
+          <g transform="translate(70,150)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <g transform="translate(-13,-13)">
+              <ellipse cx="13" cy="7.6" rx="9" ry="3.6" fill="#4a9bf5" />
+              <path d="M4 7.6v11c0 2 4 3.6 9 3.6s9-1.6 9-3.6v-11z" fill="#2f80ed" />
+              <path d="M4 12.8c0 2 4 3.6 9 3.6s9-1.6 9-3.6" stroke="#fff" stroke-width="1.2" fill="none" opacity=".85" />
+              <path d="M4 17.2c0 2 4 3.6 9 3.6s9-1.6 9-3.6" stroke="#fff" stroke-width="1.2" fill="none" opacity=".85" />
+            </g>
+          </g>
+
+          <!-- 3. 数据交换 -->
+          <g transform="translate(35,228)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <g transform="translate(-13,-13)">
+              <path d="M3.5 9h18m-4.2-4.2L21.5 9l-4.2 4.2" stroke="#2f80ed" stroke-width="2.3"
+                fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M22.5 17h-18m4.2-4.2L4.5 17l4.2 4.2" stroke="#5aa9f7" stroke-width="2.3"
+                fill="none" stroke-linecap="round" stroke-linejoin="round" />
+            </g>
+          </g>
+
+          <!-- 4. 导出下载 -->
+          <g transform="translate(53,302)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <g transform="translate(-13,-13)">
+              <circle cx="13" cy="13" r="11" fill="#7b61ff" />
+              <path d="M13 7.4v8.4" stroke="#fff" stroke-width="2.1" stroke-linecap="round" />
+              <path d="M9.4 12.5 13 16.1l3.6-3.6" stroke="#fff" stroke-width="2.1" fill="none"
+                stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M8.2 19h9.6" stroke="#fff" stroke-width="2.1" stroke-linecap="round" />
+            </g>
+          </g>
+
+          <!-- 5. SQL -->
+          <g transform="translate(92,372)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <text x="0" y="5" text-anchor="middle" font-family="Consolas, 'Courier New', monospace"
+              font-size="12.5" font-weight="700" fill="#f2994a" letter-spacing=".5">SQL</text>
+          </g>
+
+          <!-- 6. 日历 -->
+          <g transform="translate(173,432)">
+            <circle r="26" fill="#fff" filter="url(#lnNodeShadow)" />
+            <g transform="translate(-13,-13)">
+              <rect x="3" y="6" width="20" height="16" rx="3.5" fill="#27ae60" />
+              <rect x="3" y="6" width="20" height="5" rx="2.5" fill="#1e8e4e" />
+              <path d="M8.5 3.6v3.8M17.5 3.6v3.8" stroke="#27ae60" stroke-width="2.3" stroke-linecap="round" />
+              <g fill="#fff" opacity=".95">
+                <rect x="7" y="14" width="3" height="3" rx=".8" />
+                <rect x="11.5" y="14" width="3" height="3" rx=".8" />
+                <rect x="16" y="14" width="3" height="3" rx=".8" />
+                <rect x="7" y="18" width="3" height="2.4" rx=".8" />
+                <rect x="11.5" y="18" width="3" height="2.4" rx=".8" />
+              </g>
+            </g>
+          </g>
+        </svg>
       </div>
-      <p class="login-sub" id="loginSubtitle">请登录后使用（本工具含数据库写入能力，仅限授权人员）</p>
 
-      <form id="loginForm" autocomplete="on">
-        <div class="login-field">
-          <label for="loginUsername">用户名</label>
-          <input id="loginUsername" name="username" type="text" autocomplete="username" placeholder="请输入用户名" />
-        </div>
-        <div class="login-field">
-          <label for="loginPassword">密码</label>
-          <input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" />
-        </div>
-        <div class="login-field login-hidden" id="signupCodeField">
-          <label for="signupCode">邀请码</label>
-          <input id="signupCode" name="code" type="text" placeholder="请输入管理员提供的邀请码" />
-        </div>
-        <div class="login-field login-hidden" id="signupDisplayField">
-          <label for="signupDisplay">显示名称（可选）</label>
-          <input id="signupDisplay" name="displayName" type="text" placeholder="例如：张三（浙江市场）" />
+      <section class="ln-card">
+        <div class="ln-card-logo">
+          <svg viewBox="0 0 48 48" aria-hidden="true">
+            <defs>
+              <linearGradient id="lnHexC" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#4a9bff" />
+                <stop offset="100%" stop-color="#0d5ce8" />
+              </linearGradient>
+            </defs>
+            <path d="M24 3.2 41.6 13.4v20.4L24 44 6.4 33.8V13.4z" fill="url(#lnHexC)" />
+            <path d="M24 12.6 33.6 18v11L24 34.4 14.4 29V18z" fill="#f4f7fb" />
+            <path d="M24 17.4 29.4 20.5v6.2L24 29.8 18.6 26.7v-6.2z" fill="url(#lnHexC)" />
+          </svg>
         </div>
 
-        <div class="login-row">
-          <label><input id="loginRemember" type="checkbox" /> 记住我（7 天）</label>
-        </div>
+        <form id="loginForm" autocomplete="on" novalidate>
+          <p class="ln-form-title ln-hidden" id="formTitle"></p>
+          <p class="ln-form-sub ln-hidden" id="formSubtitle"></p>
 
-        <div id="loginMessage" class="login-message"></div>
+          <div class="ln-field" id="fieldUsername">
+            <svg class="ln-field-icon" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="6.6" r="3.4" fill="currentColor" />
+              <path d="M3.6 17c0-3.4 2.9-5.6 6.4-5.6s6.4 2.2 6.4 5.6z" fill="currentColor" />
+            </svg>
+            <input id="loginUsername" name="username" type="text" autocomplete="username"
+              aria-label="用户名" placeholder="用户名" />
+          </div>
 
-        <div class="login-actions">
-          <button id="loginSubmit" class="primary" type="submit">登录</button>
-          <button id="signupToggle" class="login-hidden" type="button">注册新账号</button>
-        </div>
-      </form>
+          <div class="ln-field" id="fieldPassword">
+            <svg class="ln-field-icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5.4 8.6V6.6a4.6 4.6 0 0 1 9.2 0v2" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" />
+              <rect x="3.6" y="8.6" width="12.8" height="8.6" rx="2.2" fill="currentColor" />
+            </svg>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password"
+              aria-label="密码" placeholder="密码" />
+            <button id="togglePassword" class="ln-eye" type="button"
+              aria-label="显示密码" title="显示密码" aria-pressed="false">
+              <!-- 睁眼 / 闭眼两个图标，由 JS 切换 -->
+              <svg id="eyeOpen" viewBox="0 0 22 22" aria-hidden="true">
+                <path d="M1.8 11S4.9 5.4 11 5.4 20.2 11 20.2 11 17.1 16.6 11 16.6 1.8 11 1.8 11z"
+                  fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                <circle cx="11" cy="11" r="2.9" fill="currentColor" />
+              </svg>
+              <svg id="eyeOff" class="ln-hidden" viewBox="0 0 22 22" aria-hidden="true">
+                <path d="M1.8 11S4.9 5.4 11 5.4 20.2 11 20.2 11 17.1 16.6 11 16.6 1.8 11 1.8 11z"
+                  fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                <circle cx="11" cy="11" r="2.9" fill="currentColor" />
+                <path d="M3.6 3.6 18.4 18.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+              </svg>
+            </button>
+          </div>
 
-      <div class="login-foot" id="loginFoot"></div>
+          <div class="ln-field no-icon ln-hidden" id="signupCodeField">
+            <input id="signupCode" name="code" type="text" autocomplete="off"
+              aria-label="邀请码" placeholder="邀请码" />
+          </div>
+
+          <div id="loginMessage" class="ln-message" role="status" aria-live="polite"></div>
+
+          <button id="loginSubmit" class="ln-submit" type="submit">登录</button>
+        </form>
+
+        <div class="ln-divider"></div>
+
+        <p class="ln-switch">
+          <span id="switchPrefix">还没有账号？</span>
+          <a id="signupToggle" href="#" role="button">创建新账号</a>
+        </p>
+      </section>
     </main>
 
-    <script src="/version.js?v=20260910_app_version"></script>
-    <script src="/login.js?v=20260922_signup_role"></script>
+    <footer class="ln-pagefoot">
+      <div class="ln-foot-row">
+        <span id="footCopyright"></span>
+        <span id="footVersion" class="ln-version" hidden></span>
+      </div>
+      <div id="footVision"></div>
+    </footer>
+
+    <script src="/login.config.js?v=20260922_loginpage"></script>
+    <script src="/login.js?v=20260922_loginpage"></script>
   </body>
 </html>

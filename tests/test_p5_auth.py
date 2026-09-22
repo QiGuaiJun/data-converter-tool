@@ -334,7 +334,7 @@ def test_login_with_wrong_password_then_logout(client):
 def test_login_requires_both_fields(client):
     status, _, payload = client.request("POST", "/api/auth/login", {"username": "admin", "password": ""})
     assert status == 400
-    assert "用户名与密码" in str(payload.get("error"))
+    assert "账号名称与密码" in str(payload.get("error"))
 
 
 # ---------------------------------------------------------------- 4. 开放注册

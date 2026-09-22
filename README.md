@@ -162,7 +162,11 @@ python scripts/restore_data_backup.py /path/to/data-converter-backup-xxxx.zip
 要点：
 
 - 登录页是**独立页面**（`public/login.html`，不加载全站脚本），未登录访问任何功能页会
-  302 到它并带上 `next`，登录成功后跳回原页面。
+  302 到它并带上 `next`，登录成功后跳回原页面。页面上所有文字集中在 `public/login.config.js`，
+  改品牌名 / 提示语 / 版权只改那一个文件。
+- 账号名称**即显示名称**（没有独立的显示名字段），允许任意字符（中文 / 空格 / 符号），最多 32 位；
+  查重忽略大小写，防止有人注册 `Admin` 冒充内置的 `admin`。
+- 密码框右侧可切换明文查看；「记住我」已下线，会话统一 8 小时。
 - 密码用 scrypt 加盐哈希存储；会话 token 只落库 sha256；Cookie 为 `HttpOnly`（HTTPS 下加 `Secure`）。
 - 写操作在 Cookie 会话下要求 `X-DC-Request` 校验头且同源，防 CSRF（页面脚本已自动带上）。
 - 连续失败 5 次锁定 5 分钟；同 IP 每分钟最多 20 次登录 / 注册。

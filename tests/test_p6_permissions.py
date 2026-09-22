@@ -334,8 +334,9 @@ def test_create_user_and_public_fields(fresh_db):
 @pytest.mark.parametrize(
     "payload,message",
     [
-        ({"username": "ab", "password": "P6-Pass-2026", "role": "viewer"}, "用户名至少"),
-        ({"username": "p6 bad name", "password": "P6-Pass-2026", "role": "viewer"}, "只能包含"),
+        ({"username": "   ", "password": "P6-Pass-2026", "role": "viewer"}, "请填写账号名称"),
+        ({"username": "p6" * 20, "password": "P6-Pass-2026", "role": "viewer"}, "最多 32"),
+        ({"username": "p6\n坏名字", "password": "P6-Pass-2026", "role": "viewer"}, "控制字符"),
         ({"username": "p6_weak", "password": "short", "role": "viewer"}, "密码至少"),
         ({"username": "p6_badrole", "password": "P6-Pass-2026", "role": "root"}, "角色不合法"),
     ],
@@ -344,6 +345,24 @@ def test_create_user_validation(fresh_db, payload, message):
     with pytest.raises(ValueError) as excinfo:
         server.create_user(payload)
     assert message in str(excinfo.value)
+
+
+def test_create_user_allows_arbitrary_characters(fresh_db):
+    """账号名称允许任意字符（中文/空格/符号），账号名即显示名。"""
+    name = "浙江 市场·张三"
+    user = _create(fresh_db, name)
+    assert user["username"] == name
+    assert user["displayName"] == name
+    assert server.find_user(name) is not None
+
+
+def test_username_lookup_ignores_case(fresh_db):
+    """忽略大小写：不能靠注册 Admin 冒充内置的 admin。"""
+    _create(fresh_db, "P6_Admin")
+    assert server.find_user("p6_admin") is not None
+    with pytest.raises(ValueError) as excinfo:
+        _create(fresh_db, "p6_admin")
+    assert "已存在" in str(excinfo.value)
 
 
 def test_create_user_rejects_duplicate(fresh_db):

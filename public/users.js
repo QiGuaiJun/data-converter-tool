@@ -21,8 +21,7 @@
   // 导出用的列定义：[字段, 表头]。顺序即 CSV 列顺序。
   // 注意：**不含 password_hash** —— 服务端本来也不返回它，这里再显式约束一次。
   var EXPORT_COLUMNS = [
-    ["username", "用户名"],
-    ["displayName", "显示名"],
+    ["username", "账号名称"],
     ["role", "角色"],
     ["enabled", "状态"],
     ["activeSessions", "在线会话"],
@@ -170,7 +169,7 @@
   function render() {
     var tbody = $("#userRows");
     if (!state.users.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无账号</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无账号</td></tr>';
       return;
     }
     tbody.innerHTML = state.users
@@ -187,9 +186,6 @@
           escapeHtml(user.username) +
           "</strong>" +
           (isSelf ? '<span class="self-tag">当前</span>' : "") +
-          "</td>" +
-          "<td>" +
-          escapeHtml(user.displayName) +
           "</td>" +
           "<td>" +
           roleSelect(user) +
@@ -328,8 +324,7 @@
     dialog.innerHTML =
       '<div class="dialog-card confirm-card">' +
       '<div class="dialog-title"><strong>新建账号</strong><button type="button" data-close>×</button></div>' +
-      '<label class="dc-field">用户名<input id="dcNewUserName" autocomplete="off" placeholder="字母数字 _ . @ - ，3-32 位" /></label>' +
-      '<label class="dc-field">显示名<input id="dcNewDisplayName" autocomplete="off" placeholder="可留空，默认与用户名相同" /></label>' +
+      '<label class="dc-field">账号名称<input id="dcNewUserName" autocomplete="off" placeholder="任意字符均可（中文、符号都行），最多 32 个字符" /></label>' +
       '<label class="dc-field">初始密码<input type="password" id="dcNewUserPassword" autocomplete="new-password" /></label>' +
       '<label class="dc-field">角色<select id="dcNewUserRole"></select></label>' +
       '<p id="dcUserError" class="dc-field-error"></p>' +
@@ -355,12 +350,11 @@
       errorEl.textContent = "";
       var body = {
         username: dialog.querySelector("#dcNewUserName").value.trim(),
-        displayName: dialog.querySelector("#dcNewDisplayName").value.trim(),
         password: dialog.querySelector("#dcNewUserPassword").value,
         role: dialog.querySelector("#dcNewUserRole").value,
       };
       if (!body.username || !body.password) {
-        errorEl.textContent = "请填写用户名与初始密码。";
+        errorEl.textContent = "请填写账号名称与初始密码。";
         return;
       }
       requestJson("/api/users", {

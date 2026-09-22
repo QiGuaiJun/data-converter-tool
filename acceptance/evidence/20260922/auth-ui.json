@@ -1,116 +1,153 @@
 {
-  "generatedAt": "2026-09-22T07:31:42",
-  "base": "http://127.0.0.1:51993",
-  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-auth-ui-export",
+  "generatedAt": "2026-09-22T08:06:28.600Z",
+  "base": "http://127.0.0.1:51996",
+  "sandbox": "acceptance\\replay-auth-ui-v3",
   "counts": {
-    "PASS": 21
+    "PASS": 20
   },
   "pageErrors": [],
   "results": [
     {
       "id": "AUTH-01",
       "verdict": "PASS",
-      "detail": "未登录访问 /query.html → /login.html?next=%2Fquery.html"
+      "detail": "未登录访问 / → http://127.0.0.1:51996/login.html?next=%2F（应在登录页且带登录表单）"
     },
     {
       "id": "AUTH-02",
       "verdict": "PASS",
-      "detail": "登录页独立：表单=true shell.js=false 用户区=false"
+      "detail": "未登录访问 /query.html → http://127.0.0.1:51996/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
     },
     {
       "id": "AUTH-03",
       "verdict": "PASS",
-      "detail": "错误口令：仍停留=/login.html，提示=\"用户名或密码不正确。\""
+      "detail": "登录页元素 {\"username\":1,\"password\":1,\"submit\":1,\"switch\":1,\"brand\":\"Fe数据导表工具\",\"logo\":1,\"illustration\":9,\"footer\":\"项目愿景：让工作简单起来\"}"
     },
     {
       "id": "AUTH-04",
       "verdict": "PASS",
-      "detail": "登录后回到 /query.html，用户区 \"admin / 管理员\""
+      "detail": "「记住我」文案存在=false 勾选框数=0（都应为 0/false）"
     },
     {
       "id": "AUTH-05",
       "verdict": "PASS",
-      "detail": "document.cookie 读不到 dc_session=false；localStorage 会话键=0"
+      "detail": "显示名控件=0 文案出现=false 注册模式文本输入框数=2"
     },
     {
       "id": "AUTH-06",
       "verdict": "PASS",
-      "detail": "管理员可见账号管理/审计入口，账号行数=1"
+      "detail": "注册模式文案：标题「创建新账号」按钮「注册并登录」切换「返回登录」"
     },
     {
       "id": "AUTH-07",
       "verdict": "PASS",
-      "detail": "管理员会话下不带校验头的写请求 → HTTP 403 {\n  \"ok\": false,\n  \"error\": \"请求缺少安全校验头 X-DC-Request，已拒绝执行。\"\n}"
+      "detail": "返回登录后按钮「登录」大标题可见=false（登录模式大标题应为空）"
     },
     {
       "id": "AUTH-08",
       "verdict": "PASS",
-      "detail": "界面新建只读账号后列表可见=true"
+      "detail": "默认 type=password 点击后 type=text 眼睛图标切换=true aria-pressed=true"
     },
     {
       "id": "AUTH-09",
       "verdict": "PASS",
-      "detail": "审计页留痕=true，保留期提示=\"审计记录保留 90 天（到期自动清理）\""
+      "detail": "再点一次 type=password 睁眼图标可见=true"
     },
     {
       "id": "AUTH-10",
       "verdict": "PASS",
-      "detail": "登出后落在 /login.html"
+      "detail": "错误口令 → 停留登录页=true 提示「账号名称或密码不正确。」"
     },
     {
       "id": "AUTH-11",
       "verdict": "PASS",
-      "detail": "登出后会话确实失效，再次访问被拦=true"
+      "detail": "正确口令登录 → http://127.0.0.1:51996/"
     },
     {
       "id": "AUTH-12",
       "verdict": "PASS",
-      "detail": "只读账号访问导入页被引导到 /tables.html"
+      "detail": "用户区=1 账号名称「admin」角色「管理员」退出按钮=1（账号名即显示名，应与登录名一致）"
     },
     {
       "id": "AUTH-13",
       "verdict": "PASS",
-      "detail": "只读账号隐藏入口=/connections.html,/,/export.html,/jobs.html,/schedule.html；管理员入口=false"
+      "detail": "管理员侧边栏：账号管理=1 审计日志=1"
     },
     {
       "id": "AUTH-14",
       "verdict": "PASS",
-      "detail": "只读账号访问账号管理页被引导到 /tables.html"
+      "detail": "注册页账号输入框提示「用户名」"
     },
     {
       "id": "AUTH-15",
       "verdict": "PASS",
-      "detail": "只读账号执行 DROP → HTTP 403，拦截 1 条"
+      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:51996/，用户区显示「测试 账号·A1」"
     },
     {
       "id": "AUTH-16",
       "verdict": "PASS",
-      "detail": "只读账号执行 SELECT → HTTP 200，行数=1"
+      "detail": "新注册账号（DC_DEFAULT_ROLE=operator）导出入口可见=true 管理入口=0（应为 0）显示名「测试 账号·A1」"
     },
     {
       "id": "AUTH-17",
       "verdict": "PASS",
-      "detail": "只读账号访问审计接口 → HTTP 403（needRole=admin）"
+      "detail": "退出后回到登录页=true，再访问受保护页仍被拦=true"
     },
     {
       "id": "AUTH-18",
       "verdict": "PASS",
-      "detail": "HTTP Basic 通道（脚本 / 健康检查）→ HTTP 200"
+      "detail": "表头「账号名称 角色 状态 在线会话 最近登录 创建来源 操作 」行数=2 列数=7 含新注册账号=true"
     },
     {
       "id": "AUTH-19",
       "verdict": "PASS",
-      "detail": "匿名访问接口 → HTTP 401"
-    },
-    {
-      "id": "AUTH-21",
-      "verdict": "PASS",
-      "detail": "导出文件名=账号清单-20260922-1531.csv；含表头=true；含口令痕迹=false；行数=3"
+      "detail": "导出 账号清单-20260922-1606.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
     },
     {
       "id": "AUTH-20",
       "verdict": "PASS",
       "detail": "页面 JS 异常 0 条 "
     }
+  ],
+  "serverLog": [
+    "    self.handle()",
+    "    ~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 447, in handle",
+    "    self.handle_one_request()",
+    "    ~~~~~~~~~~~~~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 435, in handle_one_request",
+    "    method()",
+    "    ~~~~~~^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7253, in do_GET",
+    "    error_response(self, str(exc), HTTPStatus.BAD_REQUEST)",
+    "    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 832, in error_response",
+    "    json_response(handler, {\"ok\": False, \"error\": message}, status)",
+    "    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 827, in json_response",
+    "    handler.end_headers()",
+    "    ~~~~~~~~~~~~~~~~~~~^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7168, in end_headers",
+    "    super().end_headers()",
+    "    ~~~~~~~~~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 549, in end_headers",
+    "    self.flush_headers()",
+    "    ~~~~~~~~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 553, in flush_headers",
+    "    self.wfile.write(b\"\".join(self._headers_buffer))",
+    "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 845, in write",
+    "    self._sock.sendall(b)",
+    "    ~~~~~~~~~~~~~~~~~~^^^",
+    "ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。",
+    "----------------------------------------",
+    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /theme.css?v=20260912_claude HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
+    ""
   ]
 }
