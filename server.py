@@ -6388,6 +6388,22 @@ def signup_code() -> str:
     return os.environ.get("DC_SIGNUP_CODE", "").strip()
 
 
+def signup_default_role() -> str:
+    """自助注册的新账号拿什么角色。
+
+    业主 2026-09-22：要求「任何人都能访问并自由创建账号」——「能注册」这件事
+    默认就是开的（`DC_SIGNUP_CODE` 留空即可），但**新账号能不能写数据**是一个
+    独立的安全决策，用 `DC_DEFAULT_ROLE` 控制：
+
+    · viewer（默认）—— 只能看与只读查询，要导入/导出得管理员提权
+    · operator      —— 注册完即可导入/导出/执行写语句
+
+    取值非法时一律回落到最小权限 viewer：配置写错绝不能变成「悄悄给所有人写权限」。
+    """
+    value = os.environ.get("DC_DEFAULT_ROLE", "").strip().lower()
+    return value if value in ROLE_ORDER else "viewer"
+
+
 def hash_password(password: str) -> str:
     """scrypt 加盐哈希，格式：scrypt$n$r$p$salt_hex$hash_hex"""
     n, r, p = 2 ** 14, 8, 1
@@ -7911,12 +7927,21 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_auth_signup_info(self) -> None:
         """登录页用它决定是否显示「注册」入口与邀请码输入框。"""
+        default_role = signup_default_role()
         json_response(self, {
             "ok": True,
             "authEnabled": public_auth_enabled(),
             "signupCodeRequired": bool(signup_code()),
             "userCount": count_users(),
             "appVersion": APP_VERSION,
+            # 注册前就把「新账号能做什么」告诉用户，避免注册完才发现看不到导入导出
+            "defaultRole": default_role,
+            "defaultRoleLabel": ROLE_LABELS.get(default_role, default_role),
+            "defaultRoleHint": (
+                "注册后即可导入 / 导出 / 执行写语句"
+                if default_role != "viewer"
+                else "注册后为只读账号，可查看与只读查询；需要导入导出请让管理员提升为「可写」"
+            ),
         })
 
     def handle_auth_login(self) -> None:
@@ -8018,14 +8043,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if find_user(username):
             raise ValueError("该用户名已被占用。")
         user_id = uuid.uuid4().hex
+        role = signup_default_role()
         with connect_db() as conn:
             conn.execute(
                 "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
-                " values (?, ?, ?, ?, 'viewer', 1, ?, 'self-register', 0)",
-                (user_id, username, display_name or username, hash_password(password), now_text()),
+                " values (?, ?, ?, ?, ?, 1, ?, 'self-register', 0)",
+                (user_id, username, display_name or username, hash_password(password), role, now_text()),
             )
-        user = {"id": user_id, "username": username, "displayName": display_name or username, "role": "viewer"}
-        audit_log(user, "register", username, "开放注册，默认角色 viewer", ip, "ok")
+        user = {"id": user_id, "username": username, "displayName": display_name or username, "role": role}
+        audit_log(user, "register", username, f"开放注册，默认角色 {role}", ip, "ok")
         token, seconds = create_session(user_id, ip, str(self.headers.get("User-Agent", "")), False)
         json_response(
             self,

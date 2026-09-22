@@ -16,6 +16,9 @@
 
   let mode = "login"; // login | signup
   let signupCodeRequired = false;
+  // 注册后拿什么角色由服务端 DC_DEFAULT_ROLE 决定，文案必须跟着它走，
+  // 否则运营把默认角色改成「可写」后，登录页还在骗用户说只有查看权限。
+  let signupHint = "注册后默认为只读账号，可查看与只读查询；需要导入导出请让管理员提升为「可写」";
 
   function setMessage(text, ok) {
     const box = $("#loginMessage");
@@ -38,7 +41,7 @@
     $("#signupDisplayField").classList.toggle("login-hidden", !isSignup);
     $("#loginPassword").setAttribute("autocomplete", isSignup ? "new-password" : "current-password");
     $("#loginSubtitle").textContent = isSignup
-      ? "注册后默认只有查看权限（viewer），如需写入请让管理员调整角色"
+      ? signupHint
       : "请登录后使用（本工具含数据库写入能力，仅限授权人员）";
     setMessage("");
     setBusy(false);
@@ -108,10 +111,17 @@
       const payload = await response.json();
       const authEnabled = payload.authEnabled !== false;
       signupCodeRequired = Boolean(payload.signupCodeRequired);
+      if (payload.defaultRoleHint) {
+        signupHint = String(payload.defaultRoleHint);
+      }
       $("#signupToggle").classList.toggle("login-hidden", !authEnabled);
       $("#loginFoot").textContent = signupCodeRequired
-        ? "本工具对外开放注册，但需要管理员提供的邀请码。注册账号默认只能查看。"
-        : "本工具对外开放注册，注册后默认为「只能查看」，如需写入请让管理员调整角色。";
+        ? `本工具对外开放注册，但需要管理员提供的邀请码。${signupHint}。`
+        : `本工具对外开放注册。${signupHint}。`;
+      // 文案可能在加载完成后才到，当前就停在注册页时要立刻刷新提示
+      if (mode === "signup") {
+        $("#loginSubtitle").textContent = signupHint;
+      }
       if (payload.appVersion) {
         $("#loginFoot").textContent += `　当前版本 ${payload.appVersion}`;
       }

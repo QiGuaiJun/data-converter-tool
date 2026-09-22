@@ -170,6 +170,18 @@ python scripts/restore_data_backup.py /path/to/data-converter-backup-xxxx.zip
   `ADMIN_USER` / `ADMIN_PASSWORD`，无需改造。
 - 审计日志默认保留 90 天（`DC_AUDIT_RETENTION_DAYS` 可调）。
 
+**要让「任何人都能打开网址、注册并直接使用」**，只改配置、不动代码：
+
+```text
+APP_AUTH_ENABLED=true
+DC_SIGNUP_CODE=            # 留空 → 不要邀请码，任何人都能注册
+DC_DEFAULT_ROLE=operator   # 新账号直接可写（不设则默认只读 viewer）
+```
+
+> ⚠️ 这三条等于「互联网上任何人都能注册并写入你的库」，所以务必同时保证：
+> 连接用的是**只授权单个业务库的专用账号**（不要 root）、定期看审计日志。
+> `DC_DEFAULT_ROLE` 填错（拼写错误等）会**回落到 viewer**，不会意外放开权限。
+
 详细操作见用户手册《登录与账号》（工具内「操作手册」页）。
 
 腾讯云轻量服务器的一键部署脚本：`deploy/tencent-cloud-setup.sh`（幂等，含 Nginx 反代、

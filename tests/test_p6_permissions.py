@@ -531,7 +531,35 @@ def test_audit_retention_default_is_90_days(monkeypatch):
     assert server.audit_retention_days() == 90
 
 
-# ---------------------------------------------------------------- 7. 隔离自检
+# ---------------------------------------------------------------- 7. 自助注册的默认角色
+
+
+def test_signup_default_role_defaults_to_viewer(monkeypatch):
+    """业主要求「任何人都能自由创建账号」——注册默认开着，但默认权限必须是最小。"""
+    monkeypatch.delenv("DC_DEFAULT_ROLE", raising=False)
+    assert server.signup_default_role() == "viewer"
+
+
+@pytest.mark.parametrize("value", ["operator", "OPERATOR", "  Operator  "])
+def test_signup_default_role_can_be_raised(monkeypatch, value):
+    monkeypatch.setenv("DC_DEFAULT_ROLE", value)
+    assert server.signup_default_role() == "operator"
+
+
+@pytest.mark.parametrize("value", ["root", "", "admin2", "viewer;drop"])
+def test_signup_default_role_falls_back_on_garbage(monkeypatch, value):
+    """配置写错时回落到最小权限——绝不能因为拼错就悄悄给所有人写权限。"""
+    monkeypatch.setenv("DC_DEFAULT_ROLE", value)
+    assert server.signup_default_role() == "viewer"
+
+
+def test_signup_default_role_admin_is_allowed(monkeypatch):
+    """允许（但不推荐）把新账号直接设为管理员，取值必须来自合法角色集合。"""
+    monkeypatch.setenv("DC_DEFAULT_ROLE", "admin")
+    assert server.signup_default_role() == "admin"
+
+
+# ---------------------------------------------------------------- 8. 隔离自检
 
 
 def test_runtime_database_is_untouched():
