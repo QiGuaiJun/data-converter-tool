@@ -42,7 +42,10 @@ log "目标：应用 $APP_DIR ｜ venv $VENV_DIR ｜ 端口 $PORT ｜ 公网 IP 
 log "安装系统依赖（nginx / git / python3-venv / unixodbc）"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq nginx git python3-venv python3-pip unixodbc-dev curl >/dev/null
+# build-essential / python3-dev：Python 3.14 上部分依赖（numpy、pandas、pyodbc 等）
+# 可能没有预编译 wheel，需要现场编译；unixodbc(-dev)：pyodbc 运行时依赖。
+apt-get install -y -qq nginx git python3-venv python3-pip python3-dev \
+  build-essential pkg-config unixodbc unixodbc-dev curl >/dev/null
 
 # ---------------------------------------------------------------- 2. 目录
 mkdir -p "$RUNTIME_DIR"/{data,uploads,exports,logs} "$CERT_DIR"
