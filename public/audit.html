@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>审计日志 - 数据导表工具</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/styles.css?v=20260922_auth2" />
+    <link rel="stylesheet" href="/theme.css?v=20260912_claude" />
+  </head>
+  <body>
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/users.html"><span class="ribbon-icon black">USR</span><span>账号</span></a>
+        <a class="ribbon-item active" href="/audit.html"><span class="ribbon-icon black">LOG</span><span>审计</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+            <a class="tree-node" href="/users.html"><span>USR</span> 账号管理</a>
+            <a class="tree-node active" href="/audit.html"><span>LOG</span> 审计日志</a>
+          </nav>
+          <div class="sidebar-version" id="appVersion">数据导表工具</div>
+        </aside>
+        <section class="app-workspace">
+          <main class="tables-page">
+            <section class="tables-toolbar audit-toolbar">
+              <label>用户：<select id="auditUser"><option value="">全部</option></select></label>
+              <label>动作：<select id="auditAction"><option value="">全部</option></select></label>
+              <label>结果：<select id="auditStatus">
+                <option value="">全部</option>
+                <option value="ok">成功</option>
+                <option value="denied">被拒绝</option>
+                <option value="failed">执行失败</option>
+              </select></label>
+              <label>关键字：<input id="auditKeyword" placeholder="对象或详情内容" /></label>
+              <button id="refreshAudit" class="primary" type="button">查询</button>
+              <span id="auditStatusText">等待读取</span>
+            </section>
+            <section class="audit-pager">
+              <button id="auditPrev" type="button" disabled>上一页</button>
+              <span id="auditPageInfo">第 1 页</span>
+              <button id="auditNext" type="button" disabled>下一页</button>
+              <span id="auditRetention" class="audit-retention"></span>
+            </section>
+            <section class="table-wrap audit-table-wrap">
+              <table class="audit-table">
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>用户</th>
+                    <th>动作</th>
+                    <th>对象</th>
+                    <th>详情</th>
+                    <th>IP</th>
+                    <th>结果</th>
+                  </tr>
+                </thead>
+                <tbody id="auditRows"></tbody>
+              </table>
+            </section>
+          </main>
+        </section>
+      </div>
+    </div>
+    <script src="/version.js?v=20260910_app_version"></script>
+    <script src="/audit.js?v=20260922_auth"></script>
+    <script src="/shell.js?v=20260922_auth2"></script>
+  </body>
+</html>

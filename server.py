@@ -82,7 +82,7 @@ DATA = env_path("DATA_DIR", runtime_path("data"))
 UPLOADS = env_path("UPLOADS_DIR", runtime_path("uploads"))
 EXPORTS = env_path("EXPORTS_DIR", runtime_path("exports"))
 # 应用版本号（P3-28）：/api/meta 与页面侧边栏底部展示，发版时改这一处。
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 TASK_SOURCES = DATA / "task_sources"
 LINKED_SOURCES = DATA / "linked_sources"
 DB_PATH = DATA / "imports.db"
@@ -842,6 +842,7 @@ def error_response(handler: SimpleHTTPRequestHandler, message: str, status: int 
 
 DOC_INDEX: list[dict[str, object]] = [
     {"id": "user/quick-start", "title": "快速开始", "category": "user", "tag": "向导"},
+    {"id": "user/auth", "title": "登录与账号", "category": "user", "tag": "权限"},
     {"id": "user/connections", "title": "数据库连接", "category": "user", "tag": "功能"},
     {"id": "user/import", "title": "数据导入", "category": "user", "tag": "功能"},
     {"id": "user/export", "title": "数据导出", "category": "user", "tag": "功能"},
@@ -6373,6 +6374,9 @@ AUTH_MAX_FAILED = 5
 AUTH_LOCK_MINUTES = 5
 AUTH_ROLES = ("admin", "operator", "viewer")
 AUTH_EXEMPT_PATHS = {"/api/ping", "/api/auth/login", "/api/auth/register", "/api/auth/signup-info"}
+# 未登录也必须能直接打开的页面。登录页必须在这里，否则未登录访问 /login.html
+# 会被 require_auth 再一次 302 到 /login.html 自己，浏览器报 ERR_TOO_MANY_REDIRECTS。
+AUTH_PUBLIC_PAGES = {"/login.html"}
 AUTH_STATIC_SUFFIXES = (
     ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".ico", ".gif",
     ".woff", ".woff2", ".ttf", ".map", ".txt",
@@ -6610,6 +6614,421 @@ def check_basic_auth(header_value: str) -> bool:
     return hmac.compare_digest(user, admin_user) and hmac.compare_digest(password, admin_password)
 
 
+# ---------------------------------------------------------------------------
+# 权限矩阵与请求防护（P3 / P4）
+#
+# 角色：viewer（只读） < operator（可写） < admin（管理员）
+#
+# · 路由鉴权按 (方法, 路径) 查 ROUTE_MIN_ROLE；查不到一律按 admin 处理（fail closed），
+#   宁可漏放一个只读接口，也不让新接口默认对只读账号敞开。
+# · 认证未启用（本机桌面模式）与 HTTP Basic 通道一律视为 admin —— 保持本机使用习惯，
+#   并让 acceptance/ 下既有复跑脚本零改造。
+# · CSRF 只针对 Cookie 会话通道：浏览器会自动带上 Cookie，而查询模块能执行 DROP，
+#   所以写操作必须带自定义头且同源。Basic 通道是脚本，不受影响。
+# ---------------------------------------------------------------------------
+
+ROLE_ORDER = {"viewer": 1, "operator": 2, "admin": 3}
+ROLE_LABELS = {"viewer": "只读", "operator": "可写", "admin": "管理员"}
+ROLE_OPTIONS = [
+    {"value": "viewer", "label": "只读", "description": "查看表/日志/查询，只能执行只读 SQL"},
+    {"value": "operator", "label": "可写", "description": "导入、导出、执行写语句、管理作业与定时任务"},
+    {"value": "admin", "label": "管理员", "description": "连接增删改、账号管理、审计查看，全部权限"},
+]
+
+ROUTE_MIN_ROLE: dict[tuple[str, str], str] = {
+    # ---- 登录态与本人操作：任何已登录账号 ----
+    ("GET", "/api/auth/me"): "viewer",
+    ("POST", "/api/auth/logout"): "viewer",
+    ("POST", "/api/auth/password"): "viewer",
+    # ---- 只读 ----
+    ("GET", "/api/ping"): "viewer",
+    ("GET", "/api/meta"): "viewer",
+    ("GET", "/api/docs"): "viewer",
+    ("GET", "/api/tables"): "viewer",
+    ("GET", "/api/table"): "viewer",
+    ("GET", "/api/target-tables"): "viewer",
+    ("GET", "/api/target-table-details"): "viewer",
+    ("GET", "/api/logs"): "viewer",
+    ("GET", "/api/storage/status"): "viewer",
+    ("GET", "/api/connections"): "viewer",
+    ("GET", "/api/jobs"): "viewer",
+    ("GET", "/api/schedules"): "viewer",
+    ("GET", "/api/job-runs"): "viewer",
+    ("GET", "/api/queries"): "viewer",
+    ("GET", "/api/export/sources"): "viewer",
+    ("POST", "/api/tables"): "viewer",
+    ("POST", "/api/table"): "viewer",
+    ("POST", "/api/target-tables"): "viewer",
+    ("POST", "/api/target-table-details"): "viewer",
+    ("POST", "/api/export/sources"): "viewer",
+    # 查询：只读账号只放行 safe 语句，写/危险语句在 handle_query_run 内二次判定
+    ("POST", "/api/query/run"): "viewer",
+    # ---- 可写 ----
+    ("POST", "/api/preview"): "operator",
+    ("POST", "/api/import"): "operator",
+    ("POST", "/api/connections/test"): "operator",
+    ("POST", "/api/export/preview"): "operator",
+    ("POST", "/api/export/run"): "operator",
+    ("GET", "/api/export/download"): "operator",
+    ("POST", "/api/queries"): "operator",
+    ("DELETE", "/api/queries"): "operator",
+    ("POST", "/api/jobs"): "operator",
+    ("POST", "/api/jobs/run"): "operator",
+    ("DELETE", "/api/jobs"): "operator",
+    ("POST", "/api/schedules"): "operator",
+    ("POST", "/api/schedules/start"): "operator",
+    ("POST", "/api/schedules/pause"): "operator",
+    ("DELETE", "/api/schedules"): "operator",
+    # ---- 管理员 ----
+    # 连接是生产库入口（含库口令），只有管理员能增删改
+    ("POST", "/api/connections"): "admin",
+    ("DELETE", "/api/connections"): "admin",
+    # 本机原生对话框：只在桌面模式有意义，且等同于读取宿主机文件系统
+    ("POST", "/api/task-source"): "admin",
+    ("POST", "/api/import/choose-source"): "admin",
+    ("POST", "/api/export/choose-target"): "admin",
+    # 账号与审计
+    ("GET", "/api/users"): "admin",
+    ("POST", "/api/users"): "admin",
+    ("POST", "/api/users/update"): "admin",
+    ("DELETE", "/api/users"): "admin",
+    ("GET", "/api/audit-logs"): "admin",
+}
+
+CSRF_HEADER_NAME = "X-DC-Request"
+CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# 不参与 CSRF 校验的路径，分两类：
+#   1) 登录 / 注册 / 登录页探测 —— 发生在拿到会话之前，此时还没有可被利用的 Cookie；
+#   2) 退出登录 / 本人改密 —— 前者不改变任何数据（最坏结果是被登出），
+#      后者必须同时提供原密码，CSRF 单独无法完成。
+# 真正有破坏性的写操作（导入、导出、执行 SQL、连接增删改、账号管理）一律强制校验头。
+CSRF_EXEMPT_PATHS = {
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/signup-info",
+    "/api/auth/logout",
+    "/api/auth/password",
+}
+
+LOGIN_RATE_WINDOW_SECONDS = 60
+LOGIN_RATE_MAX = 20
+_login_rate_buckets: dict[str, list[float]] = {}
+
+
+def role_at_least(role: str, minimum: str) -> bool:
+    return ROLE_ORDER.get(str(role or ""), 0) >= ROLE_ORDER.get(str(minimum), 99)
+
+
+def readonly_blocked_statements(sql: str) -> list[dict[str, object]]:
+    """只读账号想执行、但被危险分级拦下的语句（空列表表示全部是 safe）。"""
+    blocked: list[dict[str, object]] = []
+    for statement in split_sql_statements(str(sql or "")):
+        risk = classify_sql_risk(statement)
+        if str(risk.get("level")) != "safe":
+            blocked.append({
+                "sql": statement[:200],
+                "level": risk.get("level"),
+                "reasons": risk.get("reasons") or [],
+            })
+    return blocked
+
+
+def route_min_role(method: str, path: str) -> str:
+    return ROUTE_MIN_ROLE.get((str(method).upper(), path), "admin")
+
+
+def request_actor(handler) -> dict[str, object] | None:
+    """把三种通道归一成一个「操作者」，供鉴权与审计共用。
+
+    local  —— 未启用认证（本机桌面模式），等同 admin
+    basic  —— HTTP Basic（脚本 / 健康检查），等同 admin
+    session—— 浏览器 Cookie 会话，按 _users.role 受限
+    """
+    channel = str(getattr(handler, "auth_channel", "") or "")
+    if channel == "local":
+        return {"id": "", "username": "local", "displayName": "本机用户", "role": "admin", "channel": "local"}
+    if channel == "basic":
+        name = os.environ.get("ADMIN_USER", "admin").strip() or "admin"
+        return {"id": "", "username": name, "displayName": "脚本账号", "role": "admin", "channel": "basic"}
+    if channel == "session":
+        user = getattr(handler, "auth_user", None) or current_user(handler)
+        if user:
+            actor = dict(user)
+            actor["channel"] = "session"
+            return actor
+    return None
+
+
+def same_origin_request(handler) -> bool:
+    """Origin / Referer 与 Host 不一致时判为跨站请求。两者都缺省时放行（非浏览器客户端）。"""
+    host = str(handler.headers.get("Host", "") or "").strip()
+    if not host:
+        return True
+    for name in ("Origin", "Referer"):
+        value = str(handler.headers.get(name, "") or "").strip()
+        if not value:
+            continue
+        netloc = urlparse(value).netloc
+        if netloc and netloc != host:
+            return False
+    return True
+
+
+def require_csrf(handler, method: str, path: str) -> bool:
+    if str(method).upper() in CSRF_SAFE_METHODS:
+        return True
+    if str(getattr(handler, "auth_channel", "") or "") != "session":
+        return True
+    if path in CSRF_EXEMPT_PATHS:
+        return True
+    token = str(handler.headers.get(CSRF_HEADER_NAME, "") or "").strip().lower()
+    if token not in {"1", "true"}:
+        json_response(
+            handler,
+            {"ok": False, "error": f"请求缺少安全校验头 {CSRF_HEADER_NAME}，已拒绝执行。"},
+            HTTPStatus.FORBIDDEN,
+        )
+        return False
+    if not same_origin_request(handler):
+        json_response(handler, {"ok": False, "error": "请求来源与本站不一致，已拒绝执行。"}, HTTPStatus.FORBIDDEN)
+        return False
+    return True
+
+
+def guard_request(handler, method: str, path: str) -> bool:
+    """require_auth 之后的第二道门：角色鉴权 + CSRF。
+
+    只作用于 /api/* —— 静态页面本身不做角色限制，无权限的入口由前端隐藏、
+    后端在对应接口上拒绝，避免把页面路由也做成权限迷宫。
+    """
+    if not str(path).startswith("/api/"):
+        return True
+    actor = request_actor(handler)
+    if actor:
+        minimum = route_min_role(method, path)
+        if not role_at_least(str(actor.get("role")), minimum):
+            audit_log(
+                actor,
+                "denied",
+                f"{method} {path}",
+                f"权限不足，需要 {ROLE_LABELS.get(minimum, minimum)}",
+                handler.request_ip(),
+                "denied",
+            )
+            json_response(
+                handler,
+                {
+                    "ok": False,
+                    "error": f"当前账号权限不足：该操作需要「{ROLE_LABELS.get(minimum, minimum)}」角色。",
+                    "needRole": minimum,
+                },
+                HTTPStatus.FORBIDDEN,
+            )
+            return False
+    if not require_csrf(handler, method, path):
+        if actor:
+            audit_log(actor, "csrf", f"{method} {path}", "缺少或跨站的 CSRF 校验头", handler.request_ip(), "denied")
+        return False
+    return True
+
+
+def login_rate_retry_after(ip: str) -> int:
+    """同 IP 每分钟登录/注册上限；返回 0 表示放行，否则为需要等待的秒数。"""
+    now = time.time()
+    bucket = [stamp for stamp in _login_rate_buckets.get(str(ip), []) if now - stamp < LOGIN_RATE_WINDOW_SECONDS]
+    if len(bucket) >= LOGIN_RATE_MAX:
+        _login_rate_buckets[str(ip)] = bucket
+        return max(1, int(LOGIN_RATE_WINDOW_SECONDS - (now - bucket[0])))
+    bucket.append(now)
+    _login_rate_buckets[str(ip)] = bucket
+    return 0
+
+
+def audit_retention_days() -> int:
+    try:
+        return max(1, int(os.environ.get("DC_AUDIT_RETENTION_DAYS", "90") or 90))
+    except Exception:  # noqa: BLE001
+        return 90
+
+
+def prune_audit_logs() -> int:
+    """审计只保留 N 天（默认 90，业主 2026-09-22 决策），随服务启动清理一次。"""
+    cutoff = (dt.datetime.now() - dt.timedelta(days=audit_retention_days())).strftime("%Y-%m-%d %H:%M:%S")
+    with connect_db() as conn:
+        cursor = conn.execute("delete from _audit_logs where created_at < ?", (cutoff,))
+        return cursor.rowcount or 0
+
+
+def list_users() -> list[dict[str, object]]:
+    with connect_db() as conn:
+        rows = conn.execute("select * from _users order by created_at").fetchall()
+        counts = {
+            str(row[0]): int(row[1])
+            for row in conn.execute(
+                "select user_id, count(*) from _sessions where expires_at > ? group by user_id", (now_text(),)
+            ).fetchall()
+        }
+    result: list[dict[str, object]] = []
+    for row in rows:
+        item = user_public(row)
+        item["activeSessions"] = counts.get(str(row["id"]), 0)
+        item["createdBy"] = row["created_by"] or ""
+        result.append(item)
+    return result
+
+
+def validate_new_password(password: str) -> str:
+    text = str(password or "")
+    if len(text) < 8:
+        raise ValueError("密码至少 8 位。")
+    if len(text) > 200:
+        raise ValueError("密码过长。")
+    return text
+
+
+def find_user_by_id(user_id: str) -> sqlite3.Row | None:
+    with connect_db() as conn:
+        return conn.execute("select * from _users where id = ?", (str(user_id),)).fetchone()
+
+
+def enabled_admin_count(exclude_id: str = "") -> int:
+    with connect_db() as conn:
+        if exclude_id:
+            row = conn.execute(
+                "select count(*) from _users where role = 'admin' and enabled = 1 and id <> ?", (exclude_id,)
+            ).fetchone()
+        else:
+            row = conn.execute("select count(*) from _users where role = 'admin' and enabled = 1").fetchone()
+    return int(row[0])
+
+
+def create_user(payload: dict[str, object]) -> dict[str, object]:
+    username = str(payload.get("username") or "").strip()
+    display_name = str(payload.get("displayName") or "").strip()
+    role = str(payload.get("role") or "viewer").strip()
+    password = validate_new_password(payload.get("password"))
+    if len(username) < 3:
+        raise ValueError("用户名至少 3 个字符。")
+    if not re.fullmatch(r"[A-Za-z0-9_.@-]{3,32}", username):
+        raise ValueError("用户名只能包含字母、数字与 _ . @ - ，长度 3-32 位。")
+    if role not in ROLE_ORDER:
+        raise ValueError("角色不合法。")
+    if find_user(username):
+        raise ValueError("该用户名已存在。")
+    user_id = uuid.uuid4().hex
+    with connect_db() as conn:
+        conn.execute(
+            "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
+            " values (?, ?, ?, ?, ?, 1, ?, ?, 0)",
+            (user_id, username, display_name or username, hash_password(password), role, now_text(), "admin"),
+        )
+        row = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
+    return user_public(row)
+
+
+def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> tuple[dict[str, object], list[str]]:
+    """改角色 / 启停 / 重置密码 / 改显示名；返回（用户, 变更说明）。"""
+    user_id = str(payload.get("id") or "").strip()
+    if not user_id:
+        raise ValueError("缺少用户 ID。")
+    row = find_user_by_id(user_id)
+    if not row:
+        raise ValueError("用户不存在。")
+    changes: list[str] = []
+    role = str(payload.get("role") or "").strip()
+    enabled_value = payload.get("enabled")
+    display_name = payload.get("displayName")
+    password = payload.get("password")
+
+    if role and role != str(row["role"]):
+        if role not in ROLE_ORDER:
+            raise ValueError("角色不合法。")
+        if str(row["role"]) == "admin" and role != "admin" and enabled_admin_count(str(row["id"])) == 0:
+            raise ValueError("这是最后一名启用中的管理员，不能降级。请先指定另一名管理员。")
+        changes.append(f"角色 {row['role']} → {role}")
+
+    if enabled_value is not None:
+        enabled = 1 if str(enabled_value).strip().lower() in {"1", "true", "yes", "on"} else 0
+        if enabled != int(row["enabled"] or 0):
+            if not enabled and str(row["role"]) == "admin" and enabled_admin_count(str(row["id"])) == 0:
+                raise ValueError("这是最后一名启用中的管理员，不能停用。")
+            if not enabled and actor and str(actor.get("id")) == str(row["id"]):
+                raise ValueError("不能停用当前登录的账号。")
+            changes.append("启用" if enabled else "停用")
+    else:
+        enabled = int(row["enabled"] or 0)
+
+    new_display = str(display_name).strip() if display_name is not None else str(row["display_name"] or "")
+    if display_name is not None and new_display != str(row["display_name"] or ""):
+        changes.append("显示名变更")
+    new_display = new_display or str(row["username"])
+
+    with connect_db() as conn:
+        if password not in (None, ""):
+            conn.execute(
+                "update _users set password_hash = ?, failed_count = 0, locked_until = NULL where id = ?",
+                (hash_password(validate_new_password(password)), user_id),
+            )
+            changes.append("重置密码")
+        conn.execute(
+            "update _users set role = ?, enabled = ?, display_name = ? where id = ?",
+            (role or row["role"], enabled, new_display, user_id),
+        )
+        updated = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
+    # 改密 / 停用后立刻作废其全部会话，避免旧 Cookie 继续可用
+    if password not in (None, "") or (enabled_value is not None and not int(updated["enabled"] or 0)):
+        destroy_user_sessions(user_id)
+    return user_public(updated), changes
+
+
+def delete_user(user_id: str, actor: dict[str, object] | None) -> dict[str, object]:
+    row = find_user_by_id(user_id)
+    if not row:
+        raise ValueError("用户不存在。")
+    if actor and str(actor.get("id")) and str(actor.get("id")) == str(row["id"]):
+        raise ValueError("不能删除当前登录的账号。")
+    if str(row["role"]) == "admin" and int(row["enabled"] or 0) and enabled_admin_count(str(row["id"])) == 0:
+        raise ValueError("这是最后一名启用中的管理员，不能删除。")
+    removed = user_public(row)
+    with connect_db() as conn:
+        conn.execute("delete from _users where id = ?", (str(row["id"]),))
+    destroy_user_sessions(str(row["id"]))
+    return removed
+
+
+def query_audit_logs(
+    username: str = "",
+    action: str = "",
+    status: str = "",
+    keyword: str = "",
+    limit: int = 100,
+    offset: int = 0,
+) -> dict[str, object]:
+    clauses: list[str] = []
+    args: list[object] = []
+    if username:
+        clauses.append("username = ?")
+        args.append(username)
+    if action:
+        clauses.append("action = ?")
+        args.append(action)
+    if status:
+        clauses.append("status = ?")
+        args.append(status)
+    if keyword:
+        clauses.append("(target like ? or detail like ?)")
+        args.extend([f"%{keyword}%", f"%{keyword}%"])
+    where = (" where " + " and ".join(clauses)) if clauses else ""
+    with connect_db() as conn:
+        total = int(conn.execute(f"select count(*) from _audit_logs{where}", args).fetchone()[0])
+        rows = conn.execute(
+            f"select * from _audit_logs{where} order by created_at desc, rowid desc limit ? offset ?",
+            args + [max(1, min(500, int(limit))), max(0, int(offset))],
+        ).fetchall()
+        actions = [str(item[0]) for item in conn.execute("select distinct action from _audit_logs order by action").fetchall()]
+    return {"total": total, "logs": [dict(row) for row in rows], "actions": actions}
+
+
 def bind_host() -> str:
     if os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_ENVIRONMENT_NAME"):
         return "0.0.0.0"
@@ -6676,16 +7095,20 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         · 静态资源（css/js/图片）放行，否则登录页自身的样式脚本会被拦
         """
         if not public_auth_enabled():
+            self.auth_channel = "local"  # type: ignore[attr-defined]
             return True
         parsed = urlparse(self.path)
         path = parsed.path
-        if path in AUTH_EXEMPT_PATHS:
+        if path in AUTH_EXEMPT_PATHS or path in AUTH_PUBLIC_PAGES:
+            self.auth_channel = "anonymous"  # type: ignore[attr-defined]
             return True
         if check_basic_auth(self.headers.get("Authorization", "")):
+            self.auth_channel = "basic"  # type: ignore[attr-defined]
             return True
         user = current_user(self)
         if user:
             self.auth_user = user  # type: ignore[attr-defined]
+            self.auth_channel = "session"  # type: ignore[attr-defined]
             return True
         if path.startswith("/api/"):
             json_response(
@@ -6728,6 +7151,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if not guard_request(self, "GET", parsed.path):
+                return
             if parsed.path == "/api/auth/me":
                 self.handle_auth_me()
                 return
@@ -6784,6 +7209,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/export/download":
                 self.handle_export_download(parsed.query)
                 return
+            if parsed.path == "/api/users":
+                self.handle_users()
+                return
+            if parsed.path == "/api/audit-logs":
+                self.handle_audit_logs(parsed.query)
+                return
         except Exception as exc:
             error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
             return
@@ -6792,8 +7223,10 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self.require_auth():
             return
+        post_path = urlparse(self.path).path
         try:
-            post_path = urlparse(self.path).path
+            if not guard_request(self, "POST", post_path):
+                return
             if post_path == "/api/auth/login":
                 self.handle_auth_login()
                 return
@@ -6805,6 +7238,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if post_path == "/api/auth/password":
                 self.handle_auth_password()
+                return
+            if post_path == "/api/users":
+                self.handle_user_create()
+                return
+            if post_path == "/api/users/update":
+                self.handle_user_update()
                 return
             # Read-only connection lookups accept POST + JSON body so connection
             # credentials are no longer required to travel in a GET query string.
@@ -6880,6 +7319,8 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             return
         parsed = urlparse(self.path)
         try:
+            if not guard_request(self, "DELETE", parsed.path):
+                return
             if parsed.path == "/api/connections":
                 self.handle_connection_delete(parsed.query)
                 return
@@ -6972,6 +7413,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if failures and not results:
             raise ValueError(failures[0]["error"])
 
+        audit_log(
+            request_actor(self),
+            "import.run",
+            str(results[0]["tableName"] if results else ""),
+            f"{len(uploaded_files)} 个文件，成功 {len(results)} / 失败 {len(failures)}，"
+            f"写入 {sum(int(item['rowsWritten']) for item in results)} 行",
+            self.request_ip(),
+            "ok",
+        )
         json_response(
             self,
             {
@@ -7296,6 +7746,15 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 ),
             )
             row = conn.execute("select * from _db_connections where id = ?", (record["id"],)).fetchone()
+        # 连接变更是高价值审计点：谁在什么时候把工具指向了哪个库（不含任何口令）
+        audit_log(
+            request_actor(self),
+            "connection.save",
+            str(record["name"]),
+            f"{record['db_type']} {record['host']}:{record['port']}/{record['db_name']} 用户 {record['user_name']}",
+            self.request_ip(),
+            "ok",
+        )
         json_response(self, {"ok": True, "connection": connection_public(row)})
 
     def handle_connection_delete(self, query: str) -> None:
@@ -7304,7 +7763,16 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         if not connection_id:
             raise ValueError("缺少连接编号。")
         with connect_db() as conn:
+            existing = conn.execute("select name from _db_connections where id = ?", (connection_id,)).fetchone()
             conn.execute("delete from _db_connections where id = ?", (connection_id,))
+        audit_log(
+            request_actor(self),
+            "connection.delete",
+            str(existing["name"]) if existing else connection_id,
+            "",
+            self.request_ip(),
+            "ok",
+        )
         json_response(self, {"ok": True})
 
     def handle_jobs(self) -> None:
@@ -7459,6 +7927,16 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         ip = self.request_ip()
         if not username or not password:
             raise ValueError("请填写用户名与密码。")
+        # 同 IP 每分钟登录次数上限（公网必然被扫，先挡在这里）
+        retry_after = login_rate_retry_after(ip)
+        if retry_after:
+            audit_log({"username": username}, "login", "", "触发登录频率限制", ip, "denied")
+            json_response(
+                self,
+                {"ok": False, "error": f"登录请求过于频繁，请 {retry_after} 秒后再试。"},
+                HTTPStatus.TOO_MANY_REQUESTS,
+            )
+            return
         row = find_user(username)
         # 用户不存在与密码错误使用同一文案，避免暴露账号是否存在
         if not row:
@@ -7555,6 +8033,69 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             extra_headers=[("Set-Cookie", session_cookie_header(token, seconds, request_is_https(self)))],
         )
 
+    # --------------------------------------------------- 账号管理与审计（P3，仅 admin）
+
+    def handle_users(self) -> None:
+        actor = request_actor(self)
+        json_response(self, {
+            "ok": True,
+            "users": list_users(),
+            "roles": ROLE_OPTIONS,
+            "currentUserId": str((actor or {}).get("id") or ""),
+        })
+
+    def handle_user_create(self) -> None:
+        actor = request_actor(self)
+        user = create_user(read_json_body(self))
+        audit_log(actor, "user.create", str(user["username"]), f"角色 {user['role']}", self.request_ip(), "ok")
+        json_response(self, {"ok": True, "user": user, "message": f"账号 {user['username']} 已创建。"})
+
+    def handle_user_update(self) -> None:
+        actor = request_actor(self)
+        user, changes = update_user(read_json_body(self), actor)
+        detail = "；".join(changes) if changes else "无变化"
+        audit_log(actor, "user.update", str(user["username"]), detail, self.request_ip(), "ok")
+        json_response(self, {"ok": True, "user": user, "message": f"{user['username']}：{detail}"})
+
+    def handle_user_delete(self, query: str) -> None:
+        actor = request_actor(self)
+        params = parse_qs(query)
+        user_id = (params.get("id") or [""])[0].strip()
+        if not user_id:
+            raise ValueError("缺少用户 ID。")
+        removed = delete_user(user_id, actor)
+        audit_log(actor, "user.delete", str(removed["username"]), "", self.request_ip(), "ok")
+        json_response(self, {"ok": True, "message": f"账号 {removed['username']} 已删除，其会话已全部作废。"})
+
+    def handle_audit_logs(self, query: str) -> None:
+        params = parse_qs(query)
+
+        def pick(name: str, default: str = "") -> str:
+            return (params.get(name) or [default])[0].strip()
+
+        def number(name: str, default: int, low: int, high: int) -> int:
+            try:
+                value = int(pick(name, str(default)))
+            except Exception:  # noqa: BLE001
+                value = default
+            return max(low, min(high, value))
+
+        payload = query_audit_logs(
+            username=pick("username"),
+            action=pick("action"),
+            status=pick("status"),
+            keyword=pick("keyword"),
+            limit=number("limit", 100, 1, 500),
+            offset=number("offset", 0, 0, 10000000),
+        )
+        json_response(self, {
+            "ok": True,
+            **payload,
+            "retentionDays": audit_retention_days(),
+            "users": [str(item["username"]) for item in list_users()],
+            "roleLabels": ROLE_LABELS,
+        })
+
     def handle_auth_password(self) -> None:
         payload = read_json_body(self)
         user = getattr(self, "auth_user", None) or current_user(self)
@@ -7587,10 +8128,49 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
 
     def handle_query_run(self) -> None:
         payload = read_json_body(self)
+        actor = request_actor(self)
+        sql_text = str(payload.get("sql") or "")
+        # 只读账号（viewer）只能执行 safe 语句：复用查询模块自己的危险分级，
+        # 判定为 write / danger 直接 403 并落审计，不进入执行器。
+        if actor and not role_at_least(str(actor.get("role")), "operator"):
+            blocked = readonly_blocked_statements(sql_text)
+            if blocked:
+                audit_log(
+                    actor,
+                    "query.denied",
+                    str(payload.get("connectionId") or ""),
+                    f"只读账号执行写语句被拒（{blocked[0]['level']}）：{str(blocked[0]['sql'])[:120]}",
+                    self.request_ip(),
+                    "denied",
+                )
+                json_response(
+                    self,
+                    {
+                        "ok": False,
+                        "error": "只读账号只能执行查询语句（SELECT / SHOW / EXPLAIN 等）。需要写入请让管理员提升为「可写」。",
+                        "blockedStatements": blocked,
+                    },
+                    HTTPStatus.FORBIDDEN,
+                )
+                return
         try:
             result = run_readonly_query(payload)
         except Exception as exc:
             raise ValueError(str(exc)) from exc
+        # 写 / 危险语句落审计（成功的 DDL、DML 也要留痕）
+        if actor:
+            risks = [classify_sql_risk(item) for item in split_sql_statements(sql_text)]
+            if any(str(risk.get("level")) != "safe" for risk in risks):
+                worst = "danger" if any(str(risk.get("level")) == "danger" for risk in risks) else "write"
+                failed_index = result.get("failedIndex")
+                audit_log(
+                    actor,
+                    "query.write",
+                    str(payload.get("connectionId") or ""),
+                    f"{worst} 级语句共 {len(risks)} 条，失败序号：{failed_index if failed_index else '无'}",
+                    self.request_ip(),
+                    "failed" if failed_index else "ok",
+                )
         json_response(self, {"ok": True, **result})
 
     def handle_query_save(self) -> None:
@@ -7648,6 +8228,14 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
         fields = {key: str(value) for key, value in payload.items() if not isinstance(value, (list, dict))}
         # 「导出完成后打开文件 / 打开文件夹」——此前只采集不执行，这里补上真正的动作。
         open_exported_files(fields, [str(path) for path in result["files"]])
+        audit_log(
+            request_actor(self),
+            "export.run",
+            str(fields.get("connectionId") or fields.get("targetDbType") or ""),
+            f"{len(result['files'])} 个文件 / {result['rows']} 行",
+            self.request_ip(),
+            "ok",
+        )
         json_response(
             self,
             {
@@ -7751,6 +8339,9 @@ def main() -> None:
         pruned = prune_expired_sessions()
         if pruned:
             print(f"[auth] 清理过期会话 {pruned} 条", flush=True)
+        pruned_logs = prune_audit_logs()
+        if pruned_logs:
+            print(f"[auth] 清理超过 {audit_retention_days()} 天的审计记录 {pruned_logs} 条", flush=True)
     except Exception as exc:  # noqa: BLE001
         print(f"WARNING: 认证初始化跳过：{exc}", flush=True)
     # 启动即把三个运行数据落点打出来：定时任务无人值守跑，出问题时第一件事就是

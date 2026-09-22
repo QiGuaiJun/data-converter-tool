@@ -75,21 +75,37 @@ log "安装 Python 依赖（镜像：$PIP_INDEX）"
 # ---------------------------------------------------------------- 5. .env
 ENV_FILE="$APP_DIR/.env"
 if [[ ! -f "$ENV_FILE" ]]; then
-  log "生成 $ENV_FILE（含随机 DC_MASTER_KEY）"
+  log "生成 $ENV_FILE（含随机 DC_MASTER_KEY / 初始管理员口令）"
   MASTER_KEY="$("$VENV_DIR/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+  # 初始管理员口令必须一起生成：public_auth_enabled() 要求 APP_AUTH_ENABLED 为真
+  # **且** ADMIN_PASSWORD 非空，只写前者会导致「认证被判定为未启用」——公网裸奔。
+  BOOTSTRAP_PW="$("$VENV_DIR/bin/python" -c 'import secrets; print(secrets.token_urlsafe(15))')"
   cat > "$ENV_FILE" <<EOF
 # data-converter-tool 运行配置（由 tencent-cloud-setup.sh 生成）
 HOST=127.0.0.1
 PORT=$PORT
-APP_AUTH_ENABLED=true
-DC_MASTER_KEY=$MASTER_KEY
 DATA_DIR=$RUNTIME_DIR/data
 UPLOADS_DIR=$RUNTIME_DIR/uploads
 EXPORTS_DIR=$RUNTIME_DIR/exports
 PYTHONIOENCODING=utf-8
 PYTHONUTF8=1
+
+# --- 登录与账号 ---
+APP_AUTH_ENABLED=true
+ADMIN_USER=admin
+ADMIN_PASSWORD=$BOOTSTRAP_PW
+# 首次启动会把上面这组凭据引导成 _users 表里的第一个管理员；
+# 建议登录后立即在界面右上角「改密码」改掉。
+DC_MASTER_KEY=$MASTER_KEY
+
+# --- 可选 ---
+# 注册邀请码：填了就要求注册时输入，留空则允许任何人自助注册（默认只读角色）
+# DC_SIGNUP_CODE=
+# 审计记录保留天数（默认 90）
+# DC_AUDIT_RETENTION_DAYS=90
 EOF
   chmod 600 "$ENV_FILE"
+  log "初始管理员：admin / $BOOTSTRAP_PW （也写在 $ENV_FILE，请登录后立即修改）"
 else
   log "$ENV_FILE 已存在，跳过（如需重建请先手动备份删除）"
 fi
@@ -177,15 +193,32 @@ systemctl is-active --quiet "$SERVICE_NAME" && echo "  systemd: 运行中" || { 
 curl -sk --max-time 8 "http://127.0.0.1:$PORT/api/ping" >/dev/null && echo "  应用: 51978 可达" || echo "  应用: 51978 不可达"
 curl -sk --max-time 8 "https://127.0.0.1/api/ping" >/dev/null && echo "  Nginx: HTTPS 可达" || echo "  Nginx: HTTPS 不可达"
 "$VENV_DIR/bin/python" - <<'PY'
-import json, urllib.request, ssl
+import json, urllib.request, ssl, urllib.error
 ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
 try:
     with urllib.request.urlopen("https://127.0.0.1/api/meta", context=ctx, timeout=8) as r:
         print("  应用版本:", json.load(r).get("appVersion"))
+except urllib.error.HTTPError as exc:
+    print("  /api/meta 返回 HTTP", exc.code, "（启用认证后属正常，需登录态访问）")
 except Exception as exc:
     print("  版本探测失败:", exc)
+
+# 认证必须真的生效：无凭据访问受保护接口应当 401。
+# 只设 APP_AUTH_ENABLED=true 而漏掉 ADMIN_PASSWORD 时，认证会被判为「未启用」而放行全部请求，
+# 所以这里做一次硬校验，宁可自检报红也不要静默裸奔。
+try:
+    urllib.request.urlopen("https://127.0.0.1/api/connections", context=ctx, timeout=8)
+    print("  ❌ 认证未生效：无凭据访问 /api/connections 竟然放行了，请检查 .env 的 ADMIN_PASSWORD")
+except urllib.error.HTTPError as exc:
+    if exc.code == 401:
+        print("  认证: 已生效（无凭据 401）")
+    else:
+        print("  认证: 状态异常 HTTP", exc.code)
+except Exception as exc:
+    print("  认证探针失败:", exc)
 PY
 
 log "完成。访问地址： https://$PUBLIC_IP"
-echo "  提示：自签证书首次访问需在浏览器点「高级 → 继续前往」"
-echo "  后续步骤：登录页创建首个管理员账号 → 在「新建连接」里连 127.0.0.1 / dc_cloud"
+echo "  提示：自签证书首次访问需在浏览器点「高级 → 继续前往」（传输仍是加密的）"
+echo "  初始管理员账号：admin / 口令见 $ENV_FILE（登录后请在右上角「改密码」修改）"
+echo "  后续步骤：在「新建连接」里连 127.0.0.1 / dc_cloud（应用与 MySQL 同机）"

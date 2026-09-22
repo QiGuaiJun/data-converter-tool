@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-09-22T06:24:25",
+  "base": "http://127.0.0.1:51992",
+  "sandbox": "D:\\ProjectDevelopment\\data-converter-tool\\acceptance\\replay-auth-ui-final",
+  "counts": {
+    "PASS": 20
+  },
+  "pageErrors": [],
+  "results": [
+    {
+      "id": "AUTH-01",
+      "verdict": "PASS",
+      "detail": "未登录访问 /query.html → /login.html?next=%2Fquery.html"
+    },
+    {
+      "id": "AUTH-02",
+      "verdict": "PASS",
+      "detail": "登录页独立：表单=true shell.js=false 用户区=false"
+    },
+    {
+      "id": "AUTH-03",
+      "verdict": "PASS",
+      "detail": "错误口令：仍停留=/login.html，提示=\"用户名或密码不正确。\""
+    },
+    {
+      "id": "AUTH-04",
+      "verdict": "PASS",
+      "detail": "登录后回到 /query.html，用户区 \"admin / 管理员\""
+    },
+    {
+      "id": "AUTH-05",
+      "verdict": "PASS",
+      "detail": "document.cookie 读不到 dc_session=false；localStorage 会话键=0"
+    },
+    {
+      "id": "AUTH-06",
+      "verdict": "PASS",
+      "detail": "管理员可见账号管理/审计入口，账号行数=1"
+    },
+    {
+      "id": "AUTH-07",
+      "verdict": "PASS",
+      "detail": "管理员会话下不带校验头的写请求 → HTTP 403 {\n  \"ok\": false,\n  \"error\": \"请求缺少安全校验头 X-DC-Request，已拒绝执行。\"\n}"
+    },
+    {
+      "id": "AUTH-08",
+      "verdict": "PASS",
+      "detail": "界面新建只读账号后列表可见=true"
+    },
+    {
+      "id": "AUTH-09",
+      "verdict": "PASS",
+      "detail": "审计页留痕=true，保留期提示=\"审计记录保留 90 天（到期自动清理）\""
+    },
+    {
+      "id": "AUTH-10",
+      "verdict": "PASS",
+      "detail": "登出后落在 /login.html"
+    },
+    {
+      "id": "AUTH-11",
+      "verdict": "PASS",
+      "detail": "登出后会话确实失效，再次访问被拦=true"
+    },
+    {
+      "id": "AUTH-12",
+      "verdict": "PASS",
+      "detail": "只读账号访问导入页被引导到 /tables.html"
+    },
+    {
+      "id": "AUTH-13",
+      "verdict": "PASS",
+      "detail": "只读账号隐藏入口=/connections.html,/,/export.html,/jobs.html,/schedule.html；管理员入口=false"
+    },
+    {
+      "id": "AUTH-14",
+      "verdict": "PASS",
+      "detail": "只读账号访问账号管理页被引导到 /tables.html"
+    },
+    {
+      "id": "AUTH-15",
+      "verdict": "PASS",
+      "detail": "只读账号执行 DROP → HTTP 403，拦截 1 条"
+    },
+    {
+      "id": "AUTH-16",
+      "verdict": "PASS",
+      "detail": "只读账号执行 SELECT → HTTP 200，行数=1"
+    },
+    {
+      "id": "AUTH-17",
+      "verdict": "PASS",
+      "detail": "只读账号访问审计接口 → HTTP 403（needRole=admin）"
+    },
+    {
+      "id": "AUTH-18",
+      "verdict": "PASS",
+      "detail": "HTTP Basic 通道（脚本 / 健康检查）→ HTTP 200"
+    },
+    {
+      "id": "AUTH-19",
+      "verdict": "PASS",
+      "detail": "匿名访问接口 → HTTP 401"
+    },
+    {
+      "id": "AUTH-20",
+      "verdict": "PASS",
+      "detail": "页面 JS 异常 0 条 "
+    }
+  ]
+}

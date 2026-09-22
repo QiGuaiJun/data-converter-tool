@@ -194,11 +194,29 @@
     window.location.href = "/login.html?next=" + encodeURIComponent(here);
   }
 
+  // 写请求统一带上 CSRF 校验头：Cookie 会话下服务端强制要求它，
+  // 这样既不用改 20 多个页面的 fetch 调用，也不会漏掉任何一处。
+  var WRITE_METHODS = { POST: 1, PUT: 1, PATCH: 1, DELETE: 1 };
+
+  function withSecurityHeaders(input, init) {
+    var options = init ? Object.assign({}, init) : {};
+    var method = String(options.method || (input && input.method) || "GET").toUpperCase();
+    if (!WRITE_METHODS[method]) {
+      return options;
+    }
+    var headers = new Headers(options.headers || (input && input.headers) || {});
+    if (!headers.has("X-DC-Request")) {
+      headers.set("X-DC-Request", "1");
+    }
+    options.headers = headers;
+    return options;
+  }
+
   // 接口返回 401（未登录 / 会话过期）时统一跳登录页。
   // 用 rawFetch 发出真实请求，避免递归。
   var rawFetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
-    return rawFetch(input, init).then(function (response) {
+    return rawFetch(input, withSecurityHeaders(input, init)).then(function (response) {
       if (response.status !== 401) {
         return response;
       }
@@ -223,9 +241,11 @@
     box.innerHTML =
       '<span class="auth-user-name"></span>' +
       '<span class="auth-user-role"></span>' +
+      '<button type="button" class="auth-password">改密码</button>' +
       '<button type="button" class="auth-logout">退出</button>';
     box.querySelector(".auth-user-name").textContent = user.displayName || user.username;
     box.querySelector(".auth-user-role").textContent = roleLabel(user.role);
+    box.querySelector(".auth-password").addEventListener("click", openPasswordDialog);
     box.querySelector(".auth-logout").addEventListener("click", function () {
       window.dcConfirm({
         title: "退出登录",
@@ -235,7 +255,7 @@
         if (!confirmed) {
           return;
         }
-        rawFetch("/api/auth/logout", { method: "POST" }).then(function () {
+        rawFetch("/api/auth/logout", { method: "POST", headers: { "X-DC-Request": "1" } }).then(function () {
           window.location.href = "/login.html";
         });
       });
@@ -258,14 +278,139 @@
           return;
         }
         currentUser = payload.user || null;
-        document.documentElement.setAttribute("data-user-role", (currentUser && currentUser.role) || "");
+        var role = (currentUser && currentUser.role) || "";
+        document.documentElement.setAttribute("data-user-role", role);
         if (currentUser) {
           renderUserBox(currentUser);
+          applyRoleVisibility(role);
         }
+        window.dcUser = currentUser;
       })
       .catch(function () {
         /* 探测登录态失败不打扰用户 */
       });
+  }
+
+  // ---------------------------------------------------------------- 角色门禁与改密
+
+  // 页面 → 最低角色。服务端已经逐接口鉴权，这里只是不让用户点了才被拒。
+  var PAGE_MIN_ROLE = {
+    "/": "operator",
+    "/index.html": "operator",
+    "/export.html": "operator",
+    "/sync.html": "operator",
+    "/jobs.html": "operator",
+    "/schedule.html": "operator",
+    "/connections.html": "operator",
+  };
+  var ADMIN_PAGES = ["/users.html", "/audit.html"];
+  var ROLE_ORDER = { viewer: 1, operator: 2, admin: 3 };
+
+  function roleAtLeast(role, minimum) {
+    return (ROLE_ORDER[role] || 0) >= (ROLE_ORDER[minimum] || 99);
+  }
+
+  function currentPath() {
+    var path = window.location.pathname || "/";
+    return path === "" ? "/" : path;
+  }
+
+  function applyRoleVisibility(role) {
+    var nodes = document.querySelectorAll(".module-tree a[href], .app-ribbon a[href]");
+    Array.prototype.forEach.call(nodes, function (node) {
+      var href = node.getAttribute("href") || "";
+      var minimum = PAGE_MIN_ROLE[href];
+      if (minimum && !roleAtLeast(role, minimum)) {
+        node.style.display = "none";
+      }
+    });
+
+    var tree = document.querySelector(".module-tree");
+    if (tree && roleAtLeast(role, "admin") && !tree.querySelector('a[href="/users.html"]')) {
+      var extra = document.createElement("div");
+      extra.innerHTML =
+        '<a class="tree-node" href="/users.html"><span>USR</span> 账号管理</a>' +
+        '<a class="tree-node" href="/audit.html"><span>LOG</span> 审计日志</a>';
+      while (extra.firstChild) {
+        tree.appendChild(extra.firstChild);
+      }
+    }
+
+    // 只读账号误入可写页面时，直接引到它有权使用的页面，而不是让它看一堆 403
+    var here = currentPath();
+    if (PAGE_MIN_ROLE[here] && !roleAtLeast(role, PAGE_MIN_ROLE[here])) {
+      window.location.replace("/tables.html");
+      return;
+    }
+    if (ADMIN_PAGES.indexOf(here) >= 0 && !roleAtLeast(role, "admin")) {
+      window.location.replace("/tables.html");
+    }
+  }
+
+  function openPasswordDialog() {
+    var existing = document.getElementById("dcPasswordDialog");
+    if (existing) {
+      existing.remove();
+    }
+    var dialog = document.createElement("section");
+    dialog.className = "dialog";
+    dialog.id = "dcPasswordDialog";
+    dialog.innerHTML =
+      '<div class="dialog-card confirm-card">' +
+      '<div class="dialog-title"><strong>修改密码</strong><button type="button" data-close>×</button></div>' +
+      '<label class="dc-field">原密码<input type="password" id="dcOldPassword" autocomplete="current-password" /></label>' +
+      '<label class="dc-field">新密码<input type="password" id="dcNewPassword" autocomplete="new-password" /></label>' +
+      '<label class="dc-field">确认新密码<input type="password" id="dcNewPassword2" autocomplete="new-password" /></label>' +
+      '<p id="dcPasswordError" class="dc-field-error"></p>' +
+      '<div class="confirm-actions">' +
+      '<button type="button" class="button" data-close>取消</button>' +
+      '<button type="button" class="primary" id="dcPasswordOk">确认修改</button>' +
+      "</div></div>";
+    document.body.appendChild(dialog);
+
+    var errorEl = dialog.querySelector("#dcPasswordError");
+    function close() {
+      dialog.remove();
+    }
+    Array.prototype.forEach.call(dialog.querySelectorAll("[data-close]"), function (button) {
+      button.addEventListener("click", close);
+    });
+    dialog.querySelector("#dcPasswordOk").addEventListener("click", function () {
+      var oldPassword = dialog.querySelector("#dcOldPassword").value;
+      var newPassword = dialog.querySelector("#dcNewPassword").value;
+      var confirmPassword = dialog.querySelector("#dcNewPassword2").value;
+      errorEl.textContent = "";
+      if (!oldPassword || !newPassword) {
+        errorEl.textContent = "请填写原密码与新密码。";
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        errorEl.textContent = "两次输入的新密码不一致。";
+        return;
+      }
+      rawFetch("/api/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-DC-Request": "1" },
+        body: JSON.stringify({ oldPassword: oldPassword, newPassword: newPassword }),
+      })
+        .then(function (response) {
+          return response.json().then(function (body) {
+            return { body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.body || result.body.ok !== true) {
+            errorEl.textContent = (result.body && result.body.error) || "修改失败，请重试。";
+            return;
+          }
+          close();
+          window.alert("密码已更新，请使用新密码重新登录。");
+          window.location.href = "/login.html";
+        })
+        .catch(function () {
+          errorEl.textContent = "网络异常，请稍后重试。";
+        });
+    });
   }
 
   function boot() {

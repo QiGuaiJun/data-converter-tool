@@ -13,10 +13,26 @@ services:
         value: /app/persistent/uploads
       - key: EXPORTS_DIR
         value: /app/persistent/exports
+      # --- 登录模块（P1–P4）---
+      # 必须同时设置 APP_AUTH_ENABLED 与 ADMIN_PASSWORD，缺任一项认证会被判定为
+      # 「未启用」而放行全部请求（只写 APP_AUTH_ENABLED 是踩过的坑）。
+      - key: APP_AUTH_ENABLED
+        value: "true"
       - key: ADMIN_USER
         value: admin
+      # 首个管理员引导用；服务启动时若 _users 里没有启用中的 admin 就按它创建。
       - key: ADMIN_PASSWORD
         sync: false
+      # 数据库连接口令的加密主密钥：**必须固定**。容器重建若丢失它，
+      # 已存的连接口令全部解不开，只能重录。
+      - key: DC_MASTER_KEY
+        sync: false
+      # 可选：注册邀请码（留空 = 允许自助注册，默认只读角色）
+      - key: DC_SIGNUP_CODE
+        sync: false
+      # 可选：审计保留天数，默认 90
+      - key: DC_AUDIT_RETENTION_DAYS
+        value: "90"
     disk:
       name: data-converter-storage
       mountPath: /app/persistent

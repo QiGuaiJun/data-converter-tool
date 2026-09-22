@@ -246,12 +246,37 @@ def test_signup_info_is_exempt(client):
 
 
 def test_page_request_redirects_to_login(client):
-    status, headers, _ = client.request("GET", "/")
-    assert status == 302, status
-    assert headers.get("Location", "").startswith("/login.html?next="), headers.get("Location")
+    """未登录访问页面 → 落到登录页本体。
 
-    status, headers, _ = client.request("GET", "/query.html")
-    assert status == 302 and "query.html" in headers.get("Location", "")
+    _Client 会跟随重定向，所以不能断言「拿到 302」：登录页自己也 302 时
+    （即重定向死循环）同样会停在 302，那种情况反而是坏的。
+    这里断言最终拿到登录页本体，并由 test_p6_permissions 断言白名单常量。
+    """
+    status, _, body = client.request("GET", "/")
+    assert status == 200, status
+    # 客户端只保留响应体前 200 字符，足以看到登录页标题
+    assert "登录 - 数据导表工具" in str(body)
+
+
+def test_sub_page_redirect_keeps_next(client):
+    """子页面未登录访问时，重定向目标要带上原地址（next），登录后才能跳回。
+
+    urllib 默认跟随重定向，看不到 Location，所以这里自建一个「不跟随」的 opener。
+    """
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        opener.open(client.base + "/query.html", timeout=10)
+        raise AssertionError("未登录访问 /query.html 竟然没有重定向")
+    except urllib.error.HTTPError as exc:
+        assert exc.code == 302, exc.code
+        location = str(exc.headers.get("Location", ""))
+        assert location.startswith("/login.html?next="), location
+        assert "query.html" in location, location
 
 
 def test_api_request_without_session_returns_401_json(client):

@@ -1,6 +1,7 @@
 # 数据导表工具
 
-本地桌面风格的数据导表工具：数据库连接、导入、导出、作业编排、定时任务。
+本地桌面风格的数据导表工具：数据库连接、导入、导出、SQL 查询、作业编排、定时任务；
+部署到服务器时可开启**登录与角色权限**（只读 / 可写 / 管理员）并记录审计日志。
 
 ## 目录结构
 
@@ -10,18 +11,21 @@
 ```text
 data-converter-tool\            源码（git 仓库）
 ├─ server.py                    唯一后端入口（单文件）
-├─ public\                      前端页面
+├─ public\                      前端页面（含 login.html 登录页、users.html / audit.html 管理页）
 ├─ tests\                       测试用例 + conftest.py
-├─ deploy\                      打包与部署说明（spec、requirements-packaging、PACKAGING.md）
+├─ acceptance\                  验收复跑脚本与证据
+├─ deploy\                      打包与部署说明（含 tencent-cloud-setup.sh 一键部署）
 ├─ scripts\                     watchdog、备份还原、打包脚本
-├─ docs\                        模块设计文档、迁移记录
+├─ docs\                        模块设计文档、迁移记录、用户手册（docs/user/*.md）
+├─ runtime\                     运行数据（整体 gitignore，删掉会自动重建）
+│  ├─ data\                     imports.db、.secret_key、linked_sources\、task_sources\
+│  └─ exports\ · uploads\ · logs\
 ├─ archive\                     过程留档（验收计划、审计产出）
 └─ 启动导表工具.bat              双击启动
-
-data-converter-tool-data\       运行数据（同级目录，不进 git）
-├─ data\                        imports.db、.secret_key、linked_sources\、task_sources\
-├─ exports\ · uploads\ · logs\
 ```
+
+> 运行数据默认落在**项目内** `runtime/`（2026-09-17 迁移后的口径），可用
+> `DATA_DIR` / `UPLOADS_DIR` / `EXPORTS_DIR` 覆盖；启动日志第一行会打印实际数据目录。
 
 ## 本地运行
 
@@ -74,9 +78,19 @@ EXPORTS_DIR=D:\somewhere\exports
 ```text
 HOST=0.0.0.0
 PORT=平台自动提供
+APP_AUTH_ENABLED=true
 ADMIN_USER=admin
 ADMIN_PASSWORD=一个足够复杂的密码
+DC_MASTER_KEY=固定的加密主密钥
 ```
+
+> ⚠️ `APP_AUTH_ENABLED` 与 `ADMIN_PASSWORD` **必须同时设置**。只设前者时，
+> `public_auth_enabled()` 会判定认证未启用，**全部接口对匿名请求放行**。
+> 部署完请务必访问一次 `/api/connections`，确认返回 401 而不是 200。
+>
+> `DC_MASTER_KEY` 用于加密数据库连接口令，**必须固定**：容器重建若丢了它，
+> 已存的连接口令会全部解不开，只能重录。生成方式：
+> `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 
 如果平台支持持久化磁盘，建议设置：
 
@@ -93,7 +107,8 @@ EXPORTS_DIR=/app/persistent/exports
 
 ## Render 部署
 
-仓库已包含 `Dockerfile` 和 `render.yaml`。在 Render 中新建 Blueprint 或 Web Service，连接 GitHub 仓库后设置 `ADMIN_PASSWORD` 即可。
+仓库已包含 `Dockerfile` 和 `render.yaml`。在 Render 中新建 Blueprint 或 Web Service，连接 GitHub 仓库后设置
+`ADMIN_PASSWORD` 与 `DC_MASTER_KEY` 两个 secret 即可（`APP_AUTH_ENABLED` 等已在 `render.yaml` 里声明）。
 
 ## 数据备份与迁移到公网环境
 
@@ -134,9 +149,36 @@ python scripts/restore_data_backup.py /path/to/data-converter-backup-xxxx.zip
 用例把数据目录指向 `%TEMP%`，不会碰真实运行数据；目标库用临时 sqlite，
 不连接任何外部数据库。
 
+## 登录与账号（公网部署必读）
+
+服务部署到公网后，用 `APP_AUTH_ENABLED=true` 开启登录。三种角色：
+
+| 角色 | 能力 |
+|---|---|
+| 只读 viewer | 查看表 / 日志 / 已保存查询，只能执行只读 SQL |
+| 可写 operator | 导入、导出、执行写语句、作业与定时任务 |
+| 管理员 admin | 全部权限 + 连接增删改 + 账号管理 + 审计日志 |
+
+要点：
+
+- 登录页是**独立页面**（`public/login.html`，不加载全站脚本），未登录访问任何功能页会
+  302 到它并带上 `next`，登录成功后跳回原页面。
+- 密码用 scrypt 加盐哈希存储；会话 token 只落库 sha256；Cookie 为 `HttpOnly`（HTTPS 下加 `Secure`）。
+- 写操作在 Cookie 会话下要求 `X-DC-Request` 校验头且同源，防 CSRF（页面脚本已自动带上）。
+- 连续失败 5 次锁定 5 分钟；同 IP 每分钟最多 20 次登录 / 注册。
+- **脚本通道保留 HTTP Basic**：`acceptance/` 下的复跑脚本与健康检查继续用
+  `ADMIN_USER` / `ADMIN_PASSWORD`，无需改造。
+- 审计日志默认保留 90 天（`DC_AUDIT_RETENTION_DAYS` 可调）。
+
+详细操作见用户手册《登录与账号》（工具内「操作手册」页）。
+
+腾讯云轻量服务器的一键部署脚本：`deploy/tencent-cloud-setup.sh`（幂等，含 Nginx 反代、
+自签证书、systemd 常驻与认证自检）。
+
 ## 注意
 
-运行数据目录、`.venv/`、`deployment-data/` 都不纳入仓库，避免上传本地数据库、
+运行数据目录（`runtime/`）、`.venv/`、`deployment-data/` 都不纳入仓库，避免上传本地数据库、
 源文件、导出结果、日志和虚拟环境。
 
-公网部署会暴露数据库连接和文件导入导出能力，请务必使用强密码，并尽量限制访问来源。
+公网部署会暴露数据库连接和文件导入导出能力（查询模块可执行任意 SQL，包括 DDL），
+请务必开启登录、使用强口令，并尽量限制访问来源。
