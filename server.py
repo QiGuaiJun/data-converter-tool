@@ -7932,7 +7932,14 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
     # ------------------------------------------------------------ 认证接口（P1）
 
     def handle_auth_me(self) -> None:
-        user = getattr(self, "auth_user", None) or current_user(self)
+        """当前登录者。
+
+        必须覆盖三种通道 —— 尤其**本机模式（未启用认证）也要给 200**：
+        前端 shell.js 收到 401 会立刻跳登录页，而登录页在未启用认证时没有注册入口、
+        也登不进来（`signup-info` 的 authEnabled=false），结果就是本机版整站被弹到
+        一个进不去的登录页。所以这里用 request_actor 统一取身份，而不是只看会话。
+        """
+        user = request_actor(self)
         if not user:
             json_response(self, {"ok": False, "needLogin": True, "error": "未登录。"}, HTTPStatus.UNAUTHORIZED)
             return

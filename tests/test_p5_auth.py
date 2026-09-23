@@ -337,6 +337,21 @@ def test_login_requires_both_fields(client):
     assert "账号名称与密码" in str(payload.get("error"))
 
 
+def test_auth_me_works_in_local_mode_without_login(client, monkeypatch):
+    """本机模式（未启用认证）下 /api/auth/me 必须返回 200 + 本机身份。
+
+    回归背景（2026-09-23 实测）：本函数原先只看会话，未启用认证时既没有会话也没有
+    auth_user，于是返回 401 → 前端 shell.js 见 401 就跳登录页；而登录页在未启用认证时
+    不显示注册入口、也登不进来 → **本机桌面版整站被弹到一个进不去的登录页**。
+    """
+    monkeypatch.setenv("APP_AUTH_ENABLED", "false")
+    status, _, payload = client.request("GET", "/api/auth/me")
+    assert status == 200, payload
+    assert payload.get("authEnabled") is False
+    assert payload.get("user", {}).get("channel") == "local"
+    assert payload.get("user", {}).get("role") == "admin"
+
+
 # ---------------------------------------------------------------- 4. 开放注册
 
 

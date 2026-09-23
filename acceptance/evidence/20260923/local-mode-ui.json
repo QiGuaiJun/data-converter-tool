@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-09-23T00:11:01.227Z",
+  "base": "http://127.0.0.1:51997",
+  "sandbox": "acceptance\\replay-local-mode",
+  "mode": "APP_AUTH_ENABLED=false（本机桌面模式）",
+  "counts": {
+    "PASS": 8
+  },
+  "pageErrors": [],
+  "results": [
+    {
+      "id": "LOCAL-01",
+      "verdict": "PASS",
+      "detail": "appVersion=1.8.0 /api/auth/me → HTTP 200 authEnabled=false channel=local（期望 200 / false / local）"
+    },
+    {
+      "id": "LOCAL-02",
+      "verdict": "PASS",
+      "detail": "/ → /｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-03",
+      "verdict": "PASS",
+      "detail": "/index.html → /index.html｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-04",
+      "verdict": "PASS",
+      "detail": "/query.html → /query.html｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-05",
+      "verdict": "PASS",
+      "detail": "/jobs.html → /jobs.html｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-06",
+      "verdict": "PASS",
+      "detail": "/tables.html → /tables.html｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-07",
+      "verdict": "PASS",
+      "detail": "/export.html → /export.html｜被弹登录页=false 出现登录表单=0 用户区=0 侧边栏入口=8"
+    },
+    {
+      "id": "LOCAL-08",
+      "verdict": "PASS",
+      "detail": "页面 JS 异常 0 条 "
+    }
+  ],
+  "serverLog": [
+    "127.0.0.1 - \"GET /api/connections HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/jobs HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/job-runs HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /tables.html HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /sql-editor.js?v=20260911_sql_editor HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /theme.css?v=20260912_claude HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /tables.js?v=20260914_defect_fix HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /sql-editor.css?v=20260911_sql_editor HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/connections HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /export.html HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /sql-editor.css?v=20260911_sql_editor HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /theme.css?v=20260912_claude HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /export.js?v=20260914_defect_fix3 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /sql-editor.js?v=20260911_sql_editor HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/connections HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/jobs HTTP/1.1\" 200 -",
+    ""
+  ]
+}
