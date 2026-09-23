@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-09-23T00:39:46.918Z",
-  "base": "http://127.0.0.1:51999",
-  "sandbox": "acceptance\\replay-auth-ui-v5",
+  "generatedAt": "2026-09-23T03:08:47.484Z",
+  "base": "http://127.0.0.1:52001",
+  "sandbox": "acceptance\\replay-auth-ui-v6",
   "counts": {
     "PASS": 20
   },
@@ -10,12 +10,12 @@
     {
       "id": "AUTH-01",
       "verdict": "PASS",
-      "detail": "未登录访问 / → http://127.0.0.1:51999/login.html?next=%2F（应在登录页且带登录表单）"
+      "detail": "未登录访问 / → http://127.0.0.1:52001/login.html?next=%2F（应在登录页且带登录表单）"
     },
     {
       "id": "AUTH-02",
       "verdict": "PASS",
-      "detail": "未登录访问 /query.html → http://127.0.0.1:51999/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
+      "detail": "未登录访问 /query.html → http://127.0.0.1:52001/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
     },
     {
       "id": "AUTH-03",
@@ -60,7 +60,7 @@
     {
       "id": "AUTH-11",
       "verdict": "PASS",
-      "detail": "正确口令登录 → http://127.0.0.1:51999/"
+      "detail": "正确口令登录 → http://127.0.0.1:52001/"
     },
     {
       "id": "AUTH-12",
@@ -80,7 +80,7 @@
     {
       "id": "AUTH-15",
       "verdict": "PASS",
-      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:51999/，用户区显示「测试 账号·A1」"
+      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:52001/，用户区显示「测试 账号·A1」"
     },
     {
       "id": "AUTH-16",
@@ -100,7 +100,7 @@
     {
       "id": "AUTH-19",
       "verdict": "PASS",
-      "detail": "导出 账号清单-20260923-0839.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
+      "detail": "导出 账号清单-20260923-1108.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
     },
     {
       "id": "AUTH-20",
@@ -109,15 +109,6 @@
     }
   ],
   "serverLog": [
-    "",
-    "During handling of the above exception, another exception occurred:",
-    "",
-    "Traceback (most recent call last):",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 697, in process_request_thread",
-    "    self.finish_request(request, client_address)",
-    "    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 362, in finish_request",
-    "    self.RequestHandlerClass(request, client_address, self)",
     "    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
     "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 683, in __init__",
     "    super().__init__(*args, **kwargs)",
@@ -131,23 +122,32 @@
     "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 435, in handle_one_request",
     "    method()",
     "    ~~~~~~^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7349, in do_POST",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7253, in do_GET",
     "    error_response(self, str(exc), HTTPStatus.BAD_REQUEST)",
     "    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
     "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 832, in error_response",
     "    json_response(handler, {\"ok\": False, \"error\": message}, status)",
     "    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 828, in json_response",
-    "    handler.wfile.write(body)",
-    "    ~~~~~~~~~~~~~~~~~~~^^^^^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 827, in json_response",
+    "    handler.end_headers()",
+    "    ~~~~~~~~~~~~~~~~~~~^^",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7168, in end_headers",
+    "    super().end_headers()",
+    "    ~~~~~~~~~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 549, in end_headers",
+    "    self.flush_headers()",
+    "    ~~~~~~~~~~~~~~~~~~^^",
+    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 553, in flush_headers",
+    "    self.wfile.write(b\"\".join(self._headers_buffer))",
+    "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
     "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 845, in write",
     "    self._sock.sendall(b)",
     "    ~~~~~~~~~~~~~~~~~~^^^",
     "ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。",
     "----------------------------------------",
     "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
     ""
   ]
 }

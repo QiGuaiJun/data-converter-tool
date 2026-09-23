@@ -14,6 +14,11 @@
     --text 取 public/login.config.js 里 vision 的值（自动读取，改文案后重跑即可）
     --out  public/fonts/zixiaohun-canglang-xingkai.woff2
 
+例：把当前生效的免费字体（志莽行书）按新文案重做子集
+    ./.venv/Scripts/python.exe scripts/subset_login_font.py zhimangxing.ttf \
+        --out public/fonts/zhi-mang-xing.woff2
+详见 docs/登录页页脚艺术字字体.md
+
 依赖：pip install fonttools brotli
 
 ⚠️ 授权提醒：字魂 / 字小魂系列为收费字体，商业使用需先取得授权。

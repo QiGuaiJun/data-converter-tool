@@ -207,21 +207,32 @@
       }
       .ln-version[hidden] { display: none; }
 
-      /* 页脚最后一行：艺术字（字小魂沧浪行楷），字号 18、居中。
-         ★ 字体文件放 public/fonts/ 下即生效（命名与授权说明见
-           docs/登录页页脚艺术字字体.md）；没放也没关系 —— 会按下面的回退链渲染
-           （华文行楷 → 楷体），所以本机、同事电脑、云端都不会出现"方框乱码"。
-           该字体为收费字体，仓库不内置，需先取得授权再嵌入。 */
+      /* 页脚最后一行：艺术字，字号 18、居中。
+         ▼ 字体优先级（从上到下）：
+           1) 「字小魂沧浪行楷」—— 业主指定的那款，属**收费字体**，仓库未内置；
+              将来买了授权，把子集化后的文件放到 public/fonts/zixiaohun-canglang-xingkai.woff2
+              就会自动优先使用，无需改代码。
+           2) 「Zhi Mang Xing（志莽行书）」—— 当前实际使用的字体，SIL OFL 1.1 免费商用，
+              已子集化并随仓库分发（public/fonts/zhi-mang-xing.woff2，2.6KB，
+              许可证随文件放在同目录 zhi-mang-xing-OFL.txt）。
+           3) 系统行楷/楷体回退 —— 防"方框乱码"的最后兜底。
+           换字体只改这一处 + 替换 public/fonts/ 里的文件，详见 docs/登录页页脚艺术字字体.md。 */
       @font-face {
         font-family: "字小魂沧浪行楷";
         src: url("/fonts/zixiaohun-canglang-xingkai.woff2") format("woff2"),
              url("/fonts/zixiaohun-canglang-xingkai.ttf") format("truetype");
         font-display: swap;
       }
+      @font-face {
+        font-family: "Zhi Mang Xing";
+        src: url("/fonts/zhi-mang-xing.woff2") format("woff2");
+        font-display: swap;
+      }
       .ln-foot-vision {
         display: block;
         text-align: center;
-        font-family: "字小魂沧浪行楷", "华文行楷", "STXingkai", "楷体", KaiTi, STKaiti, serif;
+        font-family: "字小魂沧浪行楷", "Zhi Mang Xing", "华文行楷", "STXingkai",
+          "楷体", KaiTi, STKaiti, serif;
         font-size: 18px;
         line-height: 1.7;
         letter-spacing: .08em;
