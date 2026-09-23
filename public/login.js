@@ -87,7 +87,8 @@
     setField("#fieldUsername", CFG.usernameLabel);
     setField("#fieldPassword", CFG.passwordLabel);
     setField("#signupCodeField", CFG.signupCodePlaceholder);
-    setText("#footCopyright", CFG.copyright);
+    // 版权里的 {year} 自动替换成当前年份，避免"页面还写着旧年份"这种每年都要修的小问题
+    setText("#footCopyright", String(CFG.copyright || "").replace(/\{year\}/g, String(new Date().getFullYear())));
     setText("#footVision", CFG.vision);
     if (CFG.showVersion === false) {
       $("#footVersion").hidden = true;

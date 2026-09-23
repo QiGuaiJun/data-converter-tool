@@ -5,6 +5,7 @@
  *   改完保存，刷新浏览器即可生效（若没变化按 Ctrl + F5 强刷一次缓存）。
  *
  * 左边是配置项名，右边引号里就是页面上显示的文字。留空字符串 "" 表示不显示那一行。
+ * 版权那行支持 `{year}` 占位符，会自动替换成当前年份（如 © {year} …）。
  * ========================================================================== */
 window.LOGIN_CONFIG = {
   /* ---- 左上角品牌 ---- */
@@ -34,9 +35,9 @@ window.LOGIN_CONFIG = {
   /* ---- 底部 —— */
   switchPrefix: "还没有账号？",         // 切换链接前面的文字
   switchLinkText: "创建新账号",         // 切换链接文字（登录模式下）
-  copyright: "© 2024 Data Converter Tool",
+  copyright: "© {year} Data Converter Tool",  // {year} 会自动替换成当前年份，不用每年手改
   vision: "让工作简单起来",             // 页脚最后一行（艺术字，字号见 login.html 的 .ln-foot-vision）
-  showVersion: true,                  // 是否显示版本号小徽章
+  showVersion: true,                  // 是否显示版本号小徽章（内容取自服务端 APP_VERSION，自动跟随）
 
   /* ---- 服务端不可达时的兜底提示 ---- */
   networkError: "网络异常，请稍后再试。",

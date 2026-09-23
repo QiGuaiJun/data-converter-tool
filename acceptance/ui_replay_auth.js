@@ -173,12 +173,17 @@ async function main() {
         brand: (await a.page.locator("#brandCn").innerText()).trim(),
         logo: await a.page.locator(".ln-card-logo svg").count(),
         illustration: await a.page.locator(".ln-visual .ln-node, .ln-visual circle").count(),
+        copyright: (await a.page.locator("#footCopyright").innerText()).trim(),
+        version: (await a.page.locator("#footVersion").innerText()).trim(),
         footer: (await a.page.locator("#footVision").innerText()).trim(),
       };
+      // 版权年份必须是当前年份（配置里用 {year} 占位，防止页面停留在旧年份）
+      const yearOk = parts.copyright.includes(String(new Date().getFullYear()));
       const ok =
         parts.username === 1 && parts.password === 1 && parts.submit === 1 &&
         parts.switch === 1 && parts.logo === 1 && parts.illustration > 0 &&
-        parts.brand.length > 0 && parts.footer.length > 0;
+        parts.brand.length > 0 && parts.footer.length > 0 &&
+        yearOk && /^v\d+\.\d+\.\d+$/.test(parts.version);
       rec("AUTH-03", ok ? "PASS" : "FAIL", `登录页元素 ${JSON.stringify(parts)}`);
     });
 
