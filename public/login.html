@@ -207,6 +207,27 @@
       }
       .ln-version[hidden] { display: none; }
 
+      /* 页脚最后一行：艺术字（字小魂沧浪行楷），字号 18、居中。
+         ★ 字体文件放 public/fonts/ 下即生效（命名与授权说明见
+           docs/登录页页脚艺术字字体.md）；没放也没关系 —— 会按下面的回退链渲染
+           （华文行楷 → 楷体），所以本机、同事电脑、云端都不会出现"方框乱码"。
+           该字体为收费字体，仓库不内置，需先取得授权再嵌入。 */
+      @font-face {
+        font-family: "字小魂沧浪行楷";
+        src: url("/fonts/zixiaohun-canglang-xingkai.woff2") format("woff2"),
+             url("/fonts/zixiaohun-canglang-xingkai.ttf") format("truetype");
+        font-display: swap;
+      }
+      .ln-foot-vision {
+        display: block;
+        text-align: center;
+        font-family: "字小魂沧浪行楷", "华文行楷", "STXingkai", "楷体", KaiTi, STKaiti, serif;
+        font-size: 18px;
+        line-height: 1.7;
+        letter-spacing: .08em;
+        color: #6f7f95;
+      }
+
       .ln-hidden { display: none !important; }
 
       /* ------------------------------------------------------------ 自适应 */
@@ -455,7 +476,7 @@
         <span id="footCopyright"></span>
         <span id="footVersion" class="ln-version" hidden></span>
       </div>
-      <div id="footVision"></div>
+      <div id="footVision" class="ln-foot-vision"></div>
     </footer>
 
     <script src="/login.config.js?v=20260922_loginpage"></script>

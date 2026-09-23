@@ -35,7 +35,7 @@ window.LOGIN_CONFIG = {
   switchPrefix: "还没有账号？",         // 切换链接前面的文字
   switchLinkText: "创建新账号",         // 切换链接文字（登录模式下）
   copyright: "© 2024 Data Converter Tool",
-  vision: "项目愿景：让工作简单起来",
+  vision: "让工作简单起来",             // 页脚最后一行（艺术字，字号见 login.html 的 .ln-foot-vision）
   showVersion: true,                  // 是否显示版本号小徽章
 
   /* ---- 服务端不可达时的兜底提示 ---- */
