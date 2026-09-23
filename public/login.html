@@ -70,17 +70,35 @@
         letter-spacing: 1.6px; color: #7c8ba1; text-transform: uppercase;
       }
 
-      /* ------------------------------------------------------------ 主舞台 */
+      /* ------------------------------------------------------------ 主舞台
+         版式：示意图靠左、登录卡片靠右，中间留白。
+         设计稿比例 = 示意图左边距 ≈14%、卡片右边距 ≈9%；两者都被"居中"时
+         左右会各空出一大片，看着就不协调。
+         ★ 想微调位置只改下面两个变量：
+           --ln-pad-left 变大 → 图标更靠左（整块示意图左移）
+           --ln-pad-right 变大 → 登录卡片更靠右
+      */
       .ln-stage {
+        --ln-pad-left: clamp(24px, 13.5vw, 260px);
+        --ln-pad-right: clamp(24px, 9.5vw, 190px);
         position: relative; z-index: 2;
         flex: 1 1 auto;
-        display: flex; align-items: center; justify-content: center;
-        gap: 72px;
-        padding: 28px 48px;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 424px;
+        align-items: center;
+        column-gap: clamp(32px, 5vw, 110px);
+        padding: 28px var(--ln-pad-right) 28px var(--ln-pad-left);
         min-height: 0;
       }
 
-      .ln-visual { width: 400px; height: 540px; flex: 0 0 auto; }
+      /* 示意图尺寸跟随视口高度：设计稿里节点直径约占画面高度的 7.3%，
+         按 30vh 取即可对上（短屏自动收小）。viewBox 已裁到内容边界 210×420，
+         比例正好 1:2。★ 要整体调大调小只改 --ln-w 即可。 */
+      .ln-visual {
+        --ln-w: clamp(200px, 30vh, 330px);
+        width: var(--ln-w);
+        height: calc(var(--ln-w) * 2);
+      }
       .ln-visual svg { width: 100%; height: 100%; display: block; }
 
       /* ------------------------------------------------------------ 登录卡片 */
@@ -192,20 +210,25 @@
       .ln-hidden { display: none !important; }
 
       /* ------------------------------------------------------------ 自适应 */
-      @media (max-width: 1080px) {
-        .ln-stage { gap: 40px; }
-        .ln-visual { width: 320px; height: 430px; }
+      @media (max-width: 1180px) {
+        .ln-stage {
+          --ln-pad-left: clamp(20px, 7vw, 120px);
+          --ln-pad-right: clamp(20px, 6vw, 100px);
+          column-gap: 32px;
+        }
+        .ln-visual { --ln-w: clamp(180px, 26vh, 280px); }
       }
       @media (max-width: 900px) {
         .ln-visual { display: none; }
+        /* 只剩卡片时要居中，否则会被 grid 的第一列推到左边 */
+        .ln-stage { grid-template-columns: minmax(0, 1fr); justify-items: center; padding: 20px; }
         .ln-brand { padding: 22px 0 0 22px; }
         .ln-dots-tr { right: 20px; }
-        .ln-stage { padding: 20px 20px; }
         .ln-card { padding: 34px 26px 24px; }
       }
       @media (max-height: 720px) {
-        .ln-stage { padding: 12px 48px; }
-        .ln-visual { height: 460px; }
+        .ln-stage { padding-top: 12px; padding-bottom: 12px; }
+        .ln-visual { --ln-w: clamp(160px, 24vh, 240px); }
         .ln-card { padding: 30px 42px 22px; }
         .ln-card-logo { width: 72px; height: 72px; margin-bottom: 22px; }
         .ln-divider { margin: 22px 0 16px; }
@@ -264,7 +287,9 @@
     <!-- 主区：左流程图 + 右登录卡片 -->
     <main class="ln-stage">
       <div class="ln-visual" aria-hidden="true">
-        <svg viewBox="0 0 400 540">
+        <!-- viewBox 裁到内容边界（原 0 0 400 540 右侧与上下都有大片空白，
+             既会把图标挤向画面中间，也会让放大后撑高版面） -->
+        <svg viewBox="0 44 210 420">
           <defs>
             <filter id="lnNodeShadow" x="-70%" y="-70%" width="240%" height="240%">
               <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#1f4f92" flood-opacity="0.16" />
