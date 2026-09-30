@@ -137,6 +137,11 @@ EnvironmentFile=$ENV_FILE
 ExecStart=$VENV_DIR/bin/python server.py
 Restart=always
 RestartSec=5
+# 文件描述符上限。默认软限是 1024，一旦有句柄泄漏（2026-09-30 就是
+# imports.db 连接没关，攒到 1019 个）就会撞满 → accept() 报 EMFILE →
+# 进程活着但一个请求都不服务。这里放到 65536 留出缓冲，
+# 真正的修法在 server.py 的 _ClosingConnection 与看门狗双保险。
+LimitNOFILE=65536
 StandardOutput=append:$RUNTIME_DIR/logs/service.log
 StandardError=append:$RUNTIME_DIR/logs/service.log
 

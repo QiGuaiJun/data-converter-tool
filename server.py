@@ -132,9 +132,36 @@ def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) 
         conn.execute(f"alter table {table} add column {column} {ddl}")
 
 
+class _ClosingConnection(sqlite3.Connection):
+    """`with` 块退出时**同时**关闭连接。
+
+    ⚠️ 这是个很容易踩的坑：`sqlite3.Connection` 的上下文管理器**只管事务**
+    （正常结束提交、异常回滚），**不会关闭连接**。所以 `with connect_db() as conn:`
+    这种看起来无害的写法，会让每个请求泄漏一个 SQLite 句柄（≈1 个文件描述符）。
+
+    累计撞上 FD 上限（默认 1024）后会发生的事（2026-09-30 云端事故的真实形态）：
+      1. `accept()` 报 EMFILE；
+      2. `socketserver._handle_request_noblock` **静默吞掉**这个 OSError 直接 return；
+      3. 但监听队列里的连接还在、`select()` 持续报可读 → accept 循环 **100% 烧 CPU 空转**；
+      4. 一个连接都服务不了，**且一条错误都不打**（日志干干净净）；
+      5. nginx 等满 `proxy_read_timeout`(60s) → 504。表现为"进程活着、端口在听、就是不应答"，
+         而且 **systemd 的 Restart=always 完全看不见**（进程没退出）。
+
+    这个子类把"关闭"补上，让 82 处 `with connect_db() as conn:` 一次全部修好，
+    同时保持原有事务语义不变。
+    """
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def connect_db() -> sqlite3.Connection:
     ensure_dirs()
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    # factory 用 _ClosingConnection：见该类注释，with 退出时必须真的关闭连接
+    conn = sqlite3.connect(DB_PATH, timeout=30, factory=_ClosingConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("pragma busy_timeout = 30000")
     conn.execute(
@@ -8383,6 +8410,64 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(chunk)
 
 
+class ResilientHTTPServer(ThreadingHTTPServer):
+    """accept 失败时**不再静默空转**，并在连续失败后主动退出交给 systemd 重启。
+
+    `socketserver.BaseServer._handle_request_noblock()` 会把 `get_request()` 抛出的
+    OSError（EMFILE / ENFILE 等）**直接吞掉**（只 return，不打印）。于是 FD 耗尽时：
+    监听队列里的连接还在 → `select()` 持续报可读 → 循环以满速空转烧掉一个核，
+    却一个连接都不服务、一条日志都不出，systemd 也看不到异常（进程没退出）。
+    2026-09-30 云端挂 24 小时就是这个形态 —— 这里把它补成"可观测 + 会自愈"。
+
+    处理策略：
+      · 第 1 次与每 200 次打一条 WARNING（含 errno 文本），让根因看得见；
+      · 每次失败退避 0.2s，避免无意义地烧 CPU；
+      · 连续失败达到 ACCEPT_FAIL_LIMIT（约 20s）就打印 FATAL 并 os._exit(1)，
+        由 systemd 的 Restart=always 拉起一个新进程 —— **宁可重启，不要假死**。
+    """
+
+    ACCEPT_FAIL_LIMIT = 100
+
+    def __init__(self, *args, **kwargs):
+        self._accept_fail_streak = 0
+        super().__init__(*args, **kwargs)
+
+    def _handle_request_noblock(self) -> None:  # noqa: N802 - 覆写标准库同名方法
+        try:
+            request, client_address = self.get_request()
+        except OSError as error:
+            self._accept_fail_streak += 1
+            streak = self._accept_fail_streak
+            if streak == 1 or streak % 200 == 0:
+                print(
+                    f"WARNING: accept() 失败第 {streak} 次：{type(error).__name__}: {error}"
+                    f"（常见原因是文件描述符耗尽，请查 `ls /proc/<pid>/fd | wc -l`）",
+                    flush=True,
+                )
+            if streak >= self.ACCEPT_FAIL_LIMIT:
+                print(
+                    f"FATAL: accept() 连续失败 {streak} 次，已无法服务任何请求，"
+                    f"主动退出以交由 systemd 重启（Restart=always）",
+                    flush=True,
+                )
+                os._exit(1)
+            time.sleep(0.2)
+            return
+        self._accept_fail_streak = 0
+        if not self.verify_request(request, client_address):
+            self.shutdown_request(request)
+            return
+        try:
+            self.process_request(request, client_address)
+        except Exception:
+            # 与标准库一致：单个请求出错只记这一条，不能把 accept 循环带死
+            self.handle_error(request, client_address)
+            self.shutdown_request(request)
+        except BaseException:
+            self.shutdown_request(request)
+            raise
+
+
 def main() -> None:
     ensure_dirs()
     # 首个管理员引导（幂等：_users 非空时直接返回）。放在起服务之前，
@@ -8410,7 +8495,7 @@ def main() -> None:
         print(f"WARNING: interrupted-run recovery skipped: {exc}", flush=True)
     port = int(os.environ.get("PORT", "8765"))
     host = bind_host()
-    server = ThreadingHTTPServer((host, port), ImportPrototypeHandler)
+    server = ResilientHTTPServer((host, port), ImportPrototypeHandler)
     stop_event = threading.Event()
     scheduler = threading.Thread(target=scheduler_loop, args=(stop_event,), daemon=True)
     scheduler.start()
