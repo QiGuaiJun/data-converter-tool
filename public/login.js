@@ -87,6 +87,13 @@
     setField("#fieldUsername", CFG.usernameLabel);
     setField("#fieldPassword", CFG.passwordLabel);
     setField("#signupCodeField", CFG.signupCodePlaceholder);
+    // 忘记密码：文案全部来自配置，留空则整行不显示
+    setText("#forgotToggle", CFG.forgotLabel);
+    $("#forgotToggle").classList.toggle("ln-hidden", !CFG.forgotLabel);
+    setText("#forgotHint", CFG.forgotHint);
+    $("#forgotHint").classList.toggle("ln-hidden", !CFG.forgotHint);
+    setText("#forgotContact", CFG.forgotContact);
+    $("#forgotContact").classList.toggle("ln-hidden", !CFG.forgotContact);
     // 版权里的 {year} 自动替换成当前年份，避免"页面还写着旧年份"这种每年都要修的小问题
     setText("#footCopyright", String(CFG.copyright || "").replace(/\{year\}/g, String(new Date().getFullYear())));
     setText("#footVision", CFG.vision);
@@ -109,6 +116,11 @@
     $("#formSubtitle").classList.toggle("ln-hidden", !subtitle);
 
     $("#signupCodeField").classList.toggle("ln-hidden", !(isSignup && signupCodeRequired));
+    // 忘记密码只在登录模式有意义：切到注册时收起入口并折叠面板
+    $("#forgotRow").classList.toggle("ln-hidden", isSignup);
+    if (isSignup) {
+      setForgotOpen(false);
+    }
     $("#loginPassword").setAttribute("autocomplete", isSignup ? "new-password" : "current-password");
 
     setText("#switchPrefix", isSignup ? "" : CFG.switchPrefix);
@@ -125,6 +137,27 @@
     button.textContent = busy
       ? (mode === "login" ? CFG.loginButtonBusy : CFG.signupButtonBusy)
       : (mode === "login" ? CFG.loginButton : CFG.signupButton);
+  }
+
+  /* --------------------------------------------------------- 忘记密码 */
+  // 展开/收起找回说明。这是纯前端展开，不发请求 ——
+  // 登录页不做自助找回（本工具没有邮件服务），密码由管理员在「账号管理」里重置。
+  function setForgotOpen(open) {
+    var panel = $("#forgotPanel");
+    var button = $("#forgotToggle");
+    panel.classList.toggle("ln-hidden", !open);
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function initForgot() {
+    var button = $("#forgotToggle");
+    if (!button) {
+      return;
+    }
+    button.addEventListener("click", function (event) {
+      event.preventDefault(); // 按钮在 <form> 里，必须阻止默认提交
+      setForgotOpen($("#forgotPanel").classList.contains("ln-hidden"));
+    });
   }
 
   /* --------------------------------------------------------- 密码明文切换 */
@@ -239,6 +272,7 @@
     applyConfig();
     applyMode("login");
     initPasswordToggle();
+    initForgot();
     $("#loginForm").addEventListener("submit", submit);
     $("#signupToggle").addEventListener("click", function (event) {
       event.preventDefault();

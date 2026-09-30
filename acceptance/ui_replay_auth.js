@@ -399,6 +399,48 @@ async function main() {
     });
 
     /* ------------------------------------------------------------ 7 页面异常 */
+    /* ---------------------------------------------------- 9 忘记密码入口
+       编号接在原有 20 条之后，避免重排既有用例号。 */
+    await guard("AUTH-21", async () => {
+      await b.page.goto(`${BASE}/login.html`, { waitUntil: "domcontentloaded" });
+      await b.page.waitForTimeout(600);
+      const label = (await b.page.locator("#forgotToggle").innerText()).trim();
+      const closedByDefault = await b.page.locator("#forgotPanel").isHidden();
+      await b.page.click("#forgotToggle");
+      await b.page.waitForTimeout(250);
+      const opened = await b.page.locator("#forgotPanel").isVisible();
+      const expanded = await b.page.getAttribute("#forgotToggle", "aria-expanded");
+      const hint = (await b.page.locator("#forgotHint").innerText()).trim();
+      const contact = (await b.page.locator("#forgotContact").innerText()).trim();
+      await b.page.click("#forgotToggle");
+      await b.page.waitForTimeout(250);
+      const collapsed = await b.page.locator("#forgotPanel").isHidden();
+      const ok =
+        label.length > 0 && closedByDefault && opened && collapsed &&
+        expanded === "true" && hint.includes("管理员");
+      rec(
+        "AUTH-21",
+        ok ? "PASS" : "FAIL",
+        `「${label}」默认收起=${closedByDefault} 点开显示=${opened} 再点收起=${collapsed} ` +
+          `aria-expanded=${expanded} 提示提及管理员=${hint.includes("管理员")} 联系方式行「${contact}」`
+      );
+    });
+
+    // 切到注册模式时入口应收起（注册页没有"忘记密码"这回事），回到登录模式再出现
+    await guard("AUTH-22", async () => {
+      await b.page.click("#signupToggle");
+      await b.page.waitForTimeout(300);
+      const hiddenInSignup = await b.page.locator("#forgotRow").isHidden();
+      await b.page.click("#signupToggle");
+      await b.page.waitForTimeout(300);
+      const visibleInLogin = await b.page.locator("#forgotRow").isVisible();
+      rec(
+        "AUTH-22",
+        hiddenInSignup && visibleInLogin ? "PASS" : "FAIL",
+        `注册模式隐藏=${hiddenInSignup} 回到登录模式显示=${visibleInLogin}`
+      );
+    });
+
     await guard("AUTH-20", async () => {
       rec(
         "AUTH-20",

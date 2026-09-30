@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-09-23T03:20:45.852Z",
-  "base": "http://127.0.0.1:52002",
-  "sandbox": "acceptance\\replay-auth-ui-v7",
+  "generatedAt": "2026-09-30T01:32:54.336Z",
+  "base": "http://127.0.0.1:52005",
+  "sandbox": "acceptance\\replay-auth-ui-forgot",
   "counts": {
-    "PASS": 20
+    "PASS": 22
   },
   "pageErrors": [],
   "results": [
     {
       "id": "AUTH-01",
       "verdict": "PASS",
-      "detail": "未登录访问 / → http://127.0.0.1:52002/login.html?next=%2F（应在登录页且带登录表单）"
+      "detail": "未登录访问 / → http://127.0.0.1:52005/login.html?next=%2F（应在登录页且带登录表单）"
     },
     {
       "id": "AUTH-02",
       "verdict": "PASS",
-      "detail": "未登录访问 /query.html → http://127.0.0.1:52002/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
+      "detail": "未登录访问 /query.html → http://127.0.0.1:52005/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
     },
     {
       "id": "AUTH-03",
@@ -60,7 +60,7 @@
     {
       "id": "AUTH-11",
       "verdict": "PASS",
-      "detail": "正确口令登录 → http://127.0.0.1:52002/"
+      "detail": "正确口令登录 → http://127.0.0.1:52005/"
     },
     {
       "id": "AUTH-12",
@@ -80,7 +80,7 @@
     {
       "id": "AUTH-15",
       "verdict": "PASS",
-      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:52002/，用户区显示「测试 账号·A1」"
+      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:52005/，用户区显示「测试 账号·A1」"
     },
     {
       "id": "AUTH-16",
@@ -100,7 +100,17 @@
     {
       "id": "AUTH-19",
       "verdict": "PASS",
-      "detail": "导出 账号清单-20260923-1120.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
+      "detail": "导出 账号清单-20260930-0932.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
+    },
+    {
+      "id": "AUTH-21",
+      "verdict": "PASS",
+      "detail": "「忘记密码？」默认收起=true 点开显示=true 再点收起=true aria-expanded=true 提示提及管理员=true 联系方式行「管理员联系方式：」"
+    },
+    {
+      "id": "AUTH-22",
+      "verdict": "PASS",
+      "detail": "注册模式隐藏=true 回到登录模式显示=true"
     },
     {
       "id": "AUTH-20",
@@ -109,26 +119,14 @@
     }
   ],
   "serverLog": [
-    "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 766, in __init__",
-    "    self.handle()",
-    "    ~~~~~~~~~~~^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 447, in handle",
-    "    self.handle_one_request()",
-    "    ~~~~~~~~~~~~~~~~~~~~~~~^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 435, in handle_one_request",
-    "    method()",
-    "    ~~~~~~^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7253, in do_GET",
-    "    error_response(self, str(exc), HTTPStatus.BAD_REQUEST)",
     "    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 832, in error_response",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 859, in error_response",
     "    json_response(handler, {\"ok\": False, \"error\": message}, status)",
     "    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 827, in json_response",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 854, in json_response",
     "    handler.end_headers()",
     "    ~~~~~~~~~~~~~~~~~~~^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7168, in end_headers",
+    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7195, in end_headers",
     "    super().end_headers()",
     "    ~~~~~~~~~~~~~~~~~~~^^",
     "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 549, in end_headers",
@@ -142,12 +140,24 @@
     "    ~~~~~~~~~~~~~~~~~~^^^",
     "ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。",
     "----------------------------------------",
+    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /theme.css?v=20260912_claude HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /users.js?v=20260922_export HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.html HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.config.js?v=20260930_forgot HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.js?v=20260930_forgot HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 401 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.woff2 HTTP/1.1\" 404 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.ttf HTTP/1.1\" 404 -",
+    "127.0.0.1 - \"GET /api/auth/signup-info HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /fonts/zhi-mang-xing.woff2 HTTP/1.1\" 200 -",
     ""
   ]
 }

@@ -185,6 +185,24 @@
 
       .ln-divider { height: 1px; margin: 30px 0 22px; background: #eef1f6; }
 
+      /* ------------------------------------------------------------ 忘记密码 */
+      .ln-forgot-row { margin-top: 12px; text-align: right; }
+      .ln-forgot {
+        border: 0; background: none; padding: 2px 0; cursor: pointer;
+        font-size: 13px; color: #2b7cf6; font-family: inherit;
+      }
+      .ln-forgot:hover { text-decoration: underline; }
+      .ln-forgot-panel {
+        margin-top: 10px; padding: 12px 14px;
+        background: #f6f9fe; border: 1px solid #e3ecf9; border-radius: 10px;
+        text-align: left;
+      }
+      .ln-forgot-line { margin: 0; font-size: 12.8px; line-height: 1.75; color: #4d5b70; }
+      .ln-forgot-line + .ln-forgot-line { margin-top: 4px; }
+      /* 联系方式单独一行，加粗一点，便于一眼看到 */
+      .ln-forgot-contact { color: #1f3b63; font-weight: 600; }
+      .ln-forgot-panel.ln-hidden, .ln-forgot-line.ln-hidden { display: none; }
+
       .ln-switch { margin: 0; text-align: center; font-size: 13.5px; color: #7c8ba1; }
       .ln-switch a { margin-left: 6px; color: #1677ff; text-decoration: none; cursor: pointer; }
       .ln-switch a:hover { text-decoration: underline; }
@@ -471,6 +489,16 @@
           <div id="loginMessage" class="ln-message" role="status" aria-live="polite"></div>
 
           <button id="loginSubmit" class="ln-submit" type="submit">登录</button>
+
+          <!-- 忘记密码：登录模式下显示，点开是一段可配置的找回说明（文案在 login.config.js） -->
+          <div class="ln-forgot-row" id="forgotRow">
+            <button id="forgotToggle" class="ln-forgot" type="button"
+              aria-expanded="false" aria-controls="forgotPanel">忘记密码？</button>
+          </div>
+          <div id="forgotPanel" class="ln-forgot-panel ln-hidden" role="region" aria-label="找回密码">
+            <p id="forgotHint" class="ln-forgot-line"></p>
+            <p id="forgotContact" class="ln-forgot-line ln-forgot-contact"></p>
+          </div>
         </form>
 
         <div class="ln-divider"></div>
@@ -490,7 +518,7 @@
       <div id="footVision" class="ln-foot-vision"></div>
     </footer>
 
-    <script src="/login.config.js?v=20260923_footer_year"></script>
-    <script src="/login.js?v=20260923_footer_year"></script>
+    <script src="/login.config.js?v=20260930_forgot"></script>
+    <script src="/login.js?v=20260930_forgot"></script>
   </body>
 </html>
