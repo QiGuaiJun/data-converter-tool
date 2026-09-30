@@ -34,6 +34,21 @@
     vision: "",
     showVersion: true,
     networkError: "网络异常，请稍后再试。",
+    forgotLabel: "忘记密码？",
+    forgotHint: "",
+    forgotContact: "",
+    forgotIdLabel: "账号 / 邮箱 / 手机号",
+    forgotSend: "发送验证码",
+    forgotSending: "发送中…",
+    forgotCodeLabel: "邮箱收到的 6 位验证码",
+    forgotPasswordLabel: "新密码（至少 8 位）",
+    forgotConfirmLabel: "再输一次新密码",
+    forgotReset: "重置密码",
+    forgotResetting: "重置中…",
+    forgotBack: "返回上一步",
+    forgotSent: "验证码已发送",
+    forgotPasswordMismatch: "两次输入的新密码不一致。",
+    forgotDone: "密码已重置，请用新密码登录。",
   };
 
   var CFG = Object.assign({}, FALLBACK, window.LOGIN_CONFIG || {});
@@ -49,6 +64,10 @@
 
   var mode = "login"; // login | signup
   var signupCodeRequired = false;
+  // 忘记密码：emailRecovery 由服务端 /api/auth/signup-info 告知（是否配好了发信邮箱），
+  // forgotStep 是两步自助流程里的当前步（1 发验证码 / 2 输码改密）。
+  var emailRecovery = false;
+  var forgotStep = 1;
   // 注册后拿到什么角色由服务端 DC_DEFAULT_ROLE 决定，文案跟着服务端走，
   // 否则运营把默认角色改成「可写」后，登录页还在骗用户说只有查看权限。
   var signupHint = CFG.signupSubtitle;
@@ -94,6 +113,14 @@
     $("#forgotHint").classList.toggle("ln-hidden", !CFG.forgotHint);
     setText("#forgotContact", CFG.forgotContact);
     $("#forgotContact").classList.toggle("ln-hidden", !CFG.forgotContact);
+    // 自助找回表单的输入提示与按钮文字
+    setField("#fieldForgotId", CFG.forgotIdLabel);
+    setField("#fieldForgotCode", CFG.forgotCodeLabel);
+    setField("#fieldForgotPass1", CFG.forgotPasswordLabel);
+    setField("#fieldForgotPass2", CFG.forgotConfirmLabel);
+    setText("#forgotSendBtn", CFG.forgotSend);
+    setText("#forgotResetBtn", CFG.forgotReset);
+    setText("#forgotBack", CFG.forgotBack);
     // 版权里的 {year} 自动替换成当前年份，避免"页面还写着旧年份"这种每年都要修的小问题
     setText("#footCopyright", String(CFG.copyright || "").replace(/\{year\}/g, String(new Date().getFullYear())));
     setText("#footVision", CFG.vision);
@@ -140,13 +167,120 @@
   }
 
   /* --------------------------------------------------------- 忘记密码 */
-  // 展开/收起找回说明。这是纯前端展开，不发请求 ——
-  // 登录页不做自助找回（本工具没有邮件服务），密码由管理员在「账号管理」里重置。
+  // 展开/收起找回说明。
+  // 分两种形态（由服务端 /api/auth/signup-info 的 emailRecovery 决定）：
+  //   · 配了发信邮箱 → 两步自助：① 发验证码 → ② 输码 + 设新密码；
+  //   · 没配 → 只显示"联系管理员重置"的静态说明。
+  // 两条路都保留最下面那行管理员联系方式（永远可用的兜底）。
   function setForgotOpen(open) {
     var panel = $("#forgotPanel");
     var button = $("#forgotToggle");
     panel.classList.toggle("ln-hidden", !open);
     button.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      setForgotStep(1);
+      setForgotTip("");
+    }
+  }
+
+  function applyForgotMode() {
+    var form = $("#forgotForm");
+    if (!form) {
+      return;
+    }
+    form.classList.toggle("ln-hidden", !emailRecovery);
+    $("#forgotFallback").classList.toggle("ln-hidden", emailRecovery);
+  }
+
+  function setForgotStep(step) {
+    forgotStep = step;
+    $("#forgotStep1").classList.toggle("ln-hidden", step !== 1);
+    $("#forgotStep2").classList.toggle("ln-hidden", step !== 2);
+    setForgotTip("");
+  }
+
+  function setForgotTip(text, kind) {
+    var box = $("#forgotTip");
+    if (!box) {
+      return;
+    }
+    box.textContent = text || "";
+    box.className = "ln-forgot-line ln-forgot-tip" + (kind ? " is-" + kind : "");
+  }
+
+  function setForgotBusy(busy) {
+    var send = $("#forgotSendBtn");
+    var reset = $("#forgotResetBtn");
+    send.disabled = busy;
+    reset.disabled = busy;
+    send.textContent = busy && forgotStep === 1 ? CFG.forgotSending : CFG.forgotSend;
+    reset.textContent = busy && forgotStep === 2 ? CFG.forgotResetting : CFG.forgotReset;
+  }
+
+  function sendForgotCode() {
+    var identifier = $("#forgotIdentifier").value.trim();
+    if (!identifier) {
+      setForgotTip("请填写" + CFG.forgotIdLabel + "。", "error");
+      return;
+    }
+    setForgotBusy(true);
+    setForgotTip("");
+    postJson("/api/auth/forgot/send", { identifier: identifier })
+      .then(function (result) {
+        setForgotBusy(false);
+        if (!result.ok) {
+          setForgotTip(result.payload.error || CFG.networkError, "error");
+          return;
+        }
+        setForgotStep(2);
+        setForgotTip((result.payload.message || CFG.forgotSent) , "ok");
+        $("#forgotCode").focus();
+      })
+      .catch(function (error) {
+        setForgotBusy(false);
+        setForgotTip(CFG.networkError + "（" + error.message + "）", "error");
+      });
+  }
+
+  function resetForgotPassword() {
+    var identifier = $("#forgotIdentifier").value.trim();
+    var code = $("#forgotCode").value.trim();
+    var password = $("#forgotPassword").value;
+    var confirm = $("#forgotPassword2").value;
+    if (!code) {
+      setForgotTip("请填写" + CFG.forgotCodeLabel + "。", "error");
+      return;
+    }
+    if (password !== confirm) {
+      setForgotTip(CFG.forgotPasswordMismatch, "error");
+      return;
+    }
+    if (password.length < 8) {
+      setForgotTip("新密码至少 8 位。", "error");
+      return;
+    }
+    setForgotBusy(true);
+    setForgotTip("");
+    postJson("/api/auth/forgot/reset", { identifier: identifier, code: code, password: password })
+      .then(function (result) {
+        setForgotBusy(false);
+        if (!result.ok) {
+          setForgotTip(result.payload.error || CFG.networkError, "error");
+          return;
+        }
+        // 重置成功：收起找回面板、切回登录，并把标识原样回填（账号名/邮箱/手机号
+        // 现在都能用于登录，回填省得再打一遍），密码留空等用户输入新密码
+        setForgotOpen(false);
+        applyMode("login");
+        $("#loginUsername").value = identifier;
+        setMessage(result.payload.message || CFG.forgotDone, true);
+        $("#loginPassword").value = "";
+        $("#loginPassword").focus();
+      })
+      .catch(function (error) {
+        setForgotBusy(false);
+        setForgotTip(CFG.networkError + "（" + error.message + "）", "error");
+      });
   }
 
   function initForgot() {
@@ -157,6 +291,19 @@
     button.addEventListener("click", function (event) {
       event.preventDefault(); // 按钮在 <form> 里，必须阻止默认提交
       setForgotOpen($("#forgotPanel").classList.contains("ln-hidden"));
+    });
+    applyForgotMode();
+    $("#forgotSendBtn").addEventListener("click", function (event) {
+      event.preventDefault();
+      sendForgotCode();
+    });
+    $("#forgotResetBtn").addEventListener("click", function (event) {
+      event.preventDefault();
+      resetForgotPassword();
+    });
+    $("#forgotBack").addEventListener("click", function (event) {
+      event.preventDefault();
+      setForgotStep(1);
     });
   }
 
@@ -254,6 +401,10 @@
           signupHint = String(payload.defaultRoleHint);
         }
         $("#signupToggle").classList.toggle("ln-hidden", !authEnabled);
+        // 服务端配好了发信邮箱才展示"邮箱自助找回"，否则退回"联系管理员"的静态说明，
+        // 避免用户点了发送却永远收不到邮件。
+        emailRecovery = payload.emailRecovery === true;
+        applyForgotMode();
         if (mode === "signup") {
           applyMode("signup");
         }

@@ -89,6 +89,12 @@
         column-gap: clamp(32px, 5vw, 110px);
         padding: 28px var(--ln-pad-right) 28px var(--ln-pad-left);
         min-height: 0;
+        /* 展开「忘记密码」后卡片会变高；窗口不够高时若让它直接溢出，
+           会被页脚压住 —— 实测点重置按钮时命中的是页脚 .ln-foot-row，按钮点不到。
+           所以这里让舞台内部滚动；`safe center` 保证内容超高时退化为顶部对齐，
+           否则居中的超高内容会把上方部分裁掉、滚不到。 */
+        overflow-y: auto;
+        align-items: safe center;
       }
 
       /* 示意图尺寸跟随视口高度：设计稿里节点直径约占画面高度的 7.3%，
@@ -202,6 +208,19 @@
       /* 联系方式单独一行，加粗一点，便于一眼看到 */
       .ln-forgot-contact { color: #1f3b63; font-weight: 600; }
       .ln-forgot-panel.ln-hidden, .ln-forgot-line.ln-hidden { display: none; }
+
+      /* 自助找回的输入区与按钮：比主按钮小一号，不与「登录」抢注意力 */
+      #forgotPanel .ln-field { margin-bottom: 10px; }
+      #forgotPanel .ln-field input { height: 42px; font-size: 14px; padding-right: 15px; }
+      .ln-submit-sm { height: 40px; font-size: 14.5px; letter-spacing: .5px; }
+      .ln-forgot-back {
+        display: block; margin: 10px auto 0;
+        font-size: 12.5px; color: #7b8899;
+      }
+      .ln-forgot-tip { margin-top: 10px; }
+      .ln-forgot-tip.is-error { color: #d93025; }
+      .ln-forgot-tip.is-ok { color: #13834c; }
+      .ln-forgot-tip:empty { display: none; }
 
       .ln-switch { margin: 0; text-align: center; font-size: 13.5px; color: #7c8ba1; }
       .ln-switch a { margin-left: 6px; color: #1677ff; text-decoration: none; cursor: pointer; }
@@ -496,7 +515,43 @@
               aria-expanded="false" aria-controls="forgotPanel">忘记密码？</button>
           </div>
           <div id="forgotPanel" class="ln-forgot-panel ln-hidden" role="region" aria-label="找回密码">
-            <p id="forgotHint" class="ln-forgot-line"></p>
+            <!-- A. 服务端未启用邮箱找回（没配 SMTP）时的兜底说明。
+                    文案来自 login.config.js，点「忘记密码？」就能看到，未登录也能看。 -->
+            <div id="forgotFallback">
+              <p id="forgotHint" class="ln-forgot-line"></p>
+            </div>
+
+            <!-- B. 邮箱自助找回：① 发验证码 → ② 输码 + 设新密码 -->
+            <div id="forgotForm" class="ln-hidden">
+              <div id="forgotStep1">
+                <div class="ln-field no-icon" id="fieldForgotId">
+                  <input id="forgotIdentifier" type="text" autocomplete="username"
+                    aria-label="账号" placeholder="账号 / 邮箱 / 手机号" />
+                </div>
+                <button id="forgotSendBtn" class="ln-submit ln-submit-sm" type="button">发送验证码</button>
+              </div>
+
+              <div id="forgotStep2" class="ln-hidden">
+                <div class="ln-field no-icon" id="fieldForgotCode">
+                  <input id="forgotCode" type="text" inputmode="numeric" autocomplete="one-time-code"
+                    aria-label="验证码" placeholder="邮箱收到的 6 位验证码" />
+                </div>
+                <div class="ln-field no-icon" id="fieldForgotPass1">
+                  <input id="forgotPassword" type="password" autocomplete="new-password"
+                    aria-label="新密码" placeholder="新密码（至少 8 位）" />
+                </div>
+                <div class="ln-field no-icon" id="fieldForgotPass2">
+                  <input id="forgotPassword2" type="password" autocomplete="new-password"
+                    aria-label="确认新密码" placeholder="再输一次新密码" />
+                </div>
+                <button id="forgotResetBtn" class="ln-submit ln-submit-sm" type="button">重置密码</button>
+                <button id="forgotBack" class="ln-forgot ln-forgot-back" type="button">返回上一步</button>
+              </div>
+
+              <p id="forgotTip" class="ln-forgot-line ln-forgot-tip"></p>
+            </div>
+
+            <!-- 不论走哪条路，都提示可以找管理员 —— 这是永远可用的兜底 -->
             <p id="forgotContact" class="ln-forgot-line ln-forgot-contact"></p>
           </div>
         </form>

@@ -5458,6 +5458,10 @@ body.plain-mode {
   color: #6e6a5f;
   font-size: 11px;
 }
+/* 账号管理 → 邮箱 / 手机列（2026-09-30）：一个单元格里可能有两行，字号收小 */
+.user-contact { line-height: 1.5; }
+.user-contact .contact-item { display: block; font-size: 12px; color: #2f2c27; word-break: break-all; }
+.user-contact .contact-empty { color: #a8a294; font-size: 12px; }
 .audit-detail { max-width: 420px; word-break: break-all; }
 .audit-toolbar { flex-wrap: wrap; }
 .audit-pager button {

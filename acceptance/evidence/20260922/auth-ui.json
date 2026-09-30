@@ -1,21 +1,21 @@
 {
-  "generatedAt": "2026-09-30T01:32:54.336Z",
-  "base": "http://127.0.0.1:52005",
-  "sandbox": "acceptance\\replay-auth-ui-forgot",
+  "generatedAt": "2026-09-30T02:51:47.543Z",
+  "base": "http://127.0.0.1:52018",
+  "sandbox": "acceptance\\replay-auth-ui-final",
   "counts": {
-    "PASS": 22
+    "PASS": 25
   },
   "pageErrors": [],
   "results": [
     {
       "id": "AUTH-01",
       "verdict": "PASS",
-      "detail": "未登录访问 / → http://127.0.0.1:52005/login.html?next=%2F（应在登录页且带登录表单）"
+      "detail": "未登录访问 / → http://127.0.0.1:52018/login.html?next=%2F（应在登录页且带登录表单）"
     },
     {
       "id": "AUTH-02",
       "verdict": "PASS",
-      "detail": "未登录访问 /query.html → http://127.0.0.1:52005/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
+      "detail": "未登录访问 /query.html → http://127.0.0.1:52018/login.html?next=%2Fquery.html（应跳登录页且保留 next）"
     },
     {
       "id": "AUTH-03",
@@ -30,7 +30,7 @@
     {
       "id": "AUTH-05",
       "verdict": "PASS",
-      "detail": "显示名控件=0 文案出现=false 注册模式文本输入框数=2"
+      "detail": "显示名控件=0 文案出现=false 注册模式文本输入框数=4"
     },
     {
       "id": "AUTH-06",
@@ -60,7 +60,7 @@
     {
       "id": "AUTH-11",
       "verdict": "PASS",
-      "detail": "正确口令登录 → http://127.0.0.1:52005/"
+      "detail": "正确口令登录 → http://127.0.0.1:52018/"
     },
     {
       "id": "AUTH-12",
@@ -80,7 +80,7 @@
     {
       "id": "AUTH-15",
       "verdict": "PASS",
-      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:52005/，用户区显示「测试 账号·A1」"
+      "detail": "含中文/空格/符号的账号名「测试 账号·A1」注册并登录 → http://127.0.0.1:52018/，用户区显示「测试 账号·A1」"
     },
     {
       "id": "AUTH-16",
@@ -95,22 +95,37 @@
     {
       "id": "AUTH-18",
       "verdict": "PASS",
-      "detail": "表头「账号名称 角色 状态 在线会话 最近登录 创建来源 操作 」行数=2 列数=7 含新注册账号=true"
+      "detail": "表头「账号名称 角色 状态 邮箱 / 手机 在线会话 最近登录 创建来源 操作 」行数=2 列数=8 含邮箱手机列=true 含新注册账号=true"
     },
     {
       "id": "AUTH-19",
       "verdict": "PASS",
-      "detail": "导出 账号清单-20260930-0932.csv：表头「账号名称,角色,状态,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
+      "detail": "导出 账号清单-20260930-1051.csv：表头「账号名称,角色,状态,邮箱,手机号,在线会话,最近登录,创建时间,创建来源,锁定至」含新账号=true 无口令痕迹=true BOM=true"
     },
     {
       "id": "AUTH-21",
       "verdict": "PASS",
-      "detail": "「忘记密码？」默认收起=true 点开显示=true 再点收起=true aria-expanded=true 提示提及管理员=true 联系方式行「管理员联系方式：」"
+      "detail": "「忘记密码？」默认收起=true 点开显示=true 再点收起=true aria-expanded=true 邮箱自助模式=true 内容符合该模式=true 联系方式行「」"
     },
     {
       "id": "AUTH-22",
       "verdict": "PASS",
       "detail": "注册模式隐藏=true 回到登录模式显示=true"
+    },
+    {
+      "id": "AUTH-23",
+      "verdict": "PASS",
+      "detail": "第一步可见=true 第二步初始隐藏=true 发送后出现第二步=true 提示「验证码已发送至 z******n@corp.com，10 分钟内有效。」→ 重置后面板收起=true 登录页提示「密码已重置，请用新密码登录。」回填账号=zhangsan@corp.com"
+    },
+    {
+      "id": "AUTH-24",
+      "verdict": "PASS",
+      "detail": "emailRecovery=false → 兜底说明可见=true 两步表单隐藏=true 文案提及管理员=true"
+    },
+    {
+      "id": "AUTH-25",
+      "verdict": "PASS",
+      "detail": "表头含「邮箱/手机」=true 数据行数=2 操作按钮=2 绑定前「未绑定」→ 绑定后「zhangsan@corp.com 13800138000」"
     },
     {
       "id": "AUTH-20",
@@ -119,35 +134,14 @@
     }
   ],
   "serverLog": [
-    "    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 859, in error_response",
-    "    json_response(handler, {\"ok\": False, \"error\": message}, status)",
-    "    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 854, in json_response",
-    "    handler.end_headers()",
-    "    ~~~~~~~~~~~~~~~~~~~^^",
-    "  File \"D:\\ProjectDevelopment\\data-converter-tool\\server.py\", line 7195, in end_headers",
-    "    super().end_headers()",
-    "    ~~~~~~~~~~~~~~~~~~~^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 549, in end_headers",
-    "    self.flush_headers()",
-    "    ~~~~~~~~~~~~~~~~~~^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\http\\server.py\", line 553, in flush_headers",
-    "    self.wfile.write(b\"\".join(self._headers_buffer))",
-    "    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
-    "  File \"C:\\Users\\Administrator\\.workbuddy\\binaries\\python\\versions\\3.13.12\\Lib\\socketserver.py\", line 845, in write",
-    "    self._sock.sendall(b)",
-    "    ~~~~~~~~~~~~~~~~~~^^^",
-    "ConnectionAbortedError: [WinError 10053] 你的主机中的软件中止了一个已建立的连接。",
-    "----------------------------------------",
-    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /users.js?v=20260922_export HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
-    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.js?v=20260930_forgot HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 401 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.woff2 HTTP/1.1\" 404 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.ttf HTTP/1.1\" 404 -",
+    "127.0.0.1 - \"GET /api/auth/signup-info HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /fonts/zhi-mang-xing.woff2 HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /login.html HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /login.config.js?v=20260930_forgot HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /login.js?v=20260930_forgot HTTP/1.1\" 200 -",
@@ -158,6 +152,27 @@
     "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.ttf HTTP/1.1\" 404 -",
     "127.0.0.1 - \"GET /api/auth/signup-info HTTP/1.1\" 200 -",
     "127.0.0.1 - \"GET /fonts/zhi-mang-xing.woff2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.html HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.config.js?v=20260930_forgot HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /login.js?v=20260930_forgot HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 401 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.woff2 HTTP/1.1\" 404 -",
+    "127.0.0.1 - code 404, message File not found",
+    "127.0.0.1 - \"GET /fonts/zixiaohun-canglang-xingkai.ttf HTTP/1.1\" 404 -",
+    "127.0.0.1 - \"GET /fonts/zhi-mang-xing.woff2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /users.html HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /styles.css?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /theme.css?v=20260912_claude HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /users.js?v=20260930_contact HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /version.js?v=20260910_app_version HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /shell.js?v=20260922_auth2 HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/meta HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/auth/me HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/schedules HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"POST /api/users/update HTTP/1.1\" 200 -",
+    "127.0.0.1 - \"GET /api/users HTTP/1.1\" 200 -",
     ""
   ]
 }

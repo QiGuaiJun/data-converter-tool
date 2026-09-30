@@ -108,6 +108,14 @@ async function main() {
       ADMIN_USER,
       ADMIN_PASSWORD,
       DC_DEFAULT_ROLE: "operator",
+      // 让服务端认为"邮箱自助找回已启用"，这样登录页会渲染两步表单。
+      // 这里**不需要真能发信**：邮件happy path 用 Playwright 的 route 拦截伪造响应，
+      // 真实发信逻辑由 tests/test_p7_login_alias_and_recovery.py 覆盖。
+      DC_SMTP_HOST: "smtp.invalid.test",
+      DC_SMTP_PORT: "465",
+      DC_SMTP_USER: "noreply@invalid.test",
+      DC_SMTP_PASSWORD: "unit-test-only",
+      DC_SMTP_FROM: "noreply@invalid.test",
       PYTHONIOENCODING: "utf-8",
       PYTHONUTF8: "1",
     },
@@ -368,11 +376,13 @@ async function main() {
       const cols = await c.page.locator("#userRows tr:first-child td").count();
       const hasName = headers.includes("账号名称");
       const hasDisplay = headers.includes("显示名");
+      // 2026-09-30 起多了「邮箱 / 手机」列（登录别名 + 自助找回渠道），故列数为 8
+      const hasContact = headers.includes("邮箱") && headers.includes("手机");
       const newUserListed = (await c.page.locator("#userRows").innerText()).includes(NEW_USER);
       rec(
         "AUTH-18",
-        hasName && !hasDisplay && rows >= 2 && cols === 7 && newUserListed ? "PASS" : "FAIL",
-        `表头「${headers}」行数=${rows} 列数=${cols} 含新注册账号=${newUserListed}`
+        hasName && !hasDisplay && hasContact && rows >= 2 && cols === 8 && newUserListed ? "PASS" : "FAIL",
+        `表头「${headers}」行数=${rows} 列数=${cols} 含邮箱手机列=${hasContact} 含新注册账号=${newUserListed}`
       );
     });
 
@@ -403,26 +413,31 @@ async function main() {
        编号接在原有 20 条之后，避免重排既有用例号。 */
     await guard("AUTH-21", async () => {
       await b.page.goto(`${BASE}/login.html`, { waitUntil: "domcontentloaded" });
-      await b.page.waitForTimeout(600);
+      await b.page.waitForTimeout(700);
       const label = (await b.page.locator("#forgotToggle").innerText()).trim();
       const closedByDefault = await b.page.locator("#forgotPanel").isHidden();
       await b.page.click("#forgotToggle");
       await b.page.waitForTimeout(250);
       const opened = await b.page.locator("#forgotPanel").isVisible();
       const expanded = await b.page.getAttribute("#forgotToggle", "aria-expanded");
+      // 两种形态：配了发信邮箱走两步自助表单，没配则显示"联系管理员"的兜底说明
+      const emailMode = await b.page.evaluate(
+        () => !document.querySelector("#forgotForm").classList.contains("ln-hidden")
+      );
       const hint = (await b.page.locator("#forgotHint").innerText()).trim();
+      const sendLabel = (await b.page.locator("#forgotSendBtn").innerText()).trim();
+      const fallbackVisible = await b.page.locator("#forgotFallback").isVisible();
       const contact = (await b.page.locator("#forgotContact").innerText()).trim();
       await b.page.click("#forgotToggle");
       await b.page.waitForTimeout(250);
       const collapsed = await b.page.locator("#forgotPanel").isHidden();
-      const ok =
-        label.length > 0 && closedByDefault && opened && collapsed &&
-        expanded === "true" && hint.includes("管理员");
+      const contentOk = emailMode ? sendLabel.length > 0 && !fallbackVisible : hint.includes("管理员");
+      const ok = label.length > 0 && closedByDefault && opened && collapsed && expanded === "true" && contentOk;
       rec(
         "AUTH-21",
         ok ? "PASS" : "FAIL",
         `「${label}」默认收起=${closedByDefault} 点开显示=${opened} 再点收起=${collapsed} ` +
-          `aria-expanded=${expanded} 提示提及管理员=${hint.includes("管理员")} 联系方式行「${contact}」`
+          `aria-expanded=${expanded} 邮箱自助模式=${emailMode} 内容符合该模式=${contentOk} 联系方式行「${contact}」`
       );
     });
 
@@ -438,6 +453,165 @@ async function main() {
         "AUTH-22",
         hiddenInSignup && visibleInLogin ? "PASS" : "FAIL",
         `注册模式隐藏=${hiddenInSignup} 回到登录模式显示=${visibleInLogin}`
+      );
+    });
+
+    /* ------------------------------------------- 10 邮箱验证码自助找回
+       邮件 happy path 用 route 拦截伪造响应：本脚本起的服务并没有真的发信能力，
+       真实发信与验证码校验逻辑由 tests/test_p7_login_alias_and_recovery.py 覆盖。 */
+    await guard("AUTH-23", async () => {
+      const page = b.page;
+      const trace = [];
+      const step = async (name, fn) => {
+        trace.push(name);
+        return fn();
+      };
+      try {
+        await step("goto", async () => {
+          await page.goto(`${BASE}/login.html`, { waitUntil: "domcontentloaded" });
+          await page.waitForTimeout(500);
+        });
+        await step("route", async () => {
+          await page.route(/\/api\/auth\/forgot\/send$/, (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({
+                ok: true, sent: true, target: "z******n@corp.com", ttlMinutes: 10,
+                message: "验证码已发送至 z******n@corp.com，10 分钟内有效。",
+              }),
+            })
+          );
+          await page.route(/\/api\/auth\/forgot\/reset$/, (route) =>
+            route.fulfill({
+              status: 200,
+              contentType: "application/json",
+              body: JSON.stringify({ ok: true, message: "密码已重置，请用新密码登录。" }),
+            })
+          );
+        });
+        await step("open-panel", () => page.click("#forgotToggle"));
+        await page.waitForTimeout(250);
+        const step1Visible = await page.locator("#forgotStep1").isVisible();
+        const step2HiddenFirst = await page.locator("#forgotStep2").isHidden();
+
+        await step("fill-identifier", () => page.fill("#forgotIdentifier", "zhangsan@corp.com"));
+        await step("click-send", () => page.click("#forgotSendBtn"));
+        await page.waitForTimeout(600);
+        const step2Visible = await page.locator("#forgotStep2").isVisible();
+        const tipAfterSend = (await page.locator("#forgotTip").innerText()).trim();
+
+        await step("fill-code", () => page.fill("#forgotCode", "123456"));
+        await step("fill-password", () => page.fill("#forgotPassword", "Brand-New-2026"));
+        await step("fill-confirm", () => page.fill("#forgotPassword2", "Brand-New-2026"));
+        // 点之前先探一下按钮的真实状态（disabled / 被遮挡 / 尺寸为 0），
+        // 否则 Playwright 只会给一句"等待元素可见可点"，很难定位。
+        const probe = await page.evaluate(() => {
+          const btn = document.querySelector("#forgotResetBtn");
+          const rect = btn.getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return {
+            disabled: btn.disabled,
+            step2Hidden: document.querySelector("#forgotStep2").classList.contains("ln-hidden"),
+            rect: [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)],
+            hit: hit ? (hit.id || hit.className || hit.tagName) : "(null)",
+          };
+        });
+        trace.push("probe=" + JSON.stringify(probe));
+        await step("click-reset", () => page.click("#forgotResetBtn"));
+        await page.waitForTimeout(700);
+        const panelHidden = await page.locator("#forgotPanel").isHidden();
+        const loginMessage = (await page.locator("#loginMessage").innerText()).trim();
+        const filledUser = await page.inputValue("#loginUsername");
+
+        await page.unroute(/\/api\/auth\/forgot\/send$/).catch(() => {});
+        await page.unroute(/\/api\/auth\/forgot\/reset$/).catch(() => {});
+
+        const ok =
+          step1Visible && step2HiddenFirst && step2Visible &&
+          tipAfterSend.includes("z******n@corp.com") &&
+          panelHidden && loginMessage.includes("已重置") && filledUser === "zhangsan@corp.com";
+        rec(
+          "AUTH-23",
+          ok ? "PASS" : "FAIL",
+          `第一步可见=${step1Visible} 第二步初始隐藏=${step2HiddenFirst} 发送后出现第二步=${step2Visible} ` +
+            `提示「${tipAfterSend}」→ 重置后面板收起=${panelHidden} 登录页提示「${loginMessage}」回填账号=${filledUser}`
+        );
+      } catch (error) {
+        await page.unroute(/\/api\/auth\/forgot\/send$/).catch(() => {});
+        await page.unroute(/\/api\/auth\/forgot\/reset$/).catch(() => {});
+        rec(
+          "AUTH-23",
+          "FAIL",
+          `中断于步骤「${trace[trace.length - 1]}」URL=${page.url()}｜步骤轨迹 ${trace.join(" → ")}｜` +
+            String(error.message).replace(/\s+/g, " ").slice(0, 240)
+        );
+      }
+    });
+
+    // 服务端未启用邮箱找回时，应退回"联系管理员"的静态说明（不显示两步表单）
+    await guard("AUTH-24", async () => {
+      const page = b.page;
+      await page.route(/\/api\/auth\/signup-info/, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true, authEnabled: true, signupCodeRequired: false, userCount: 3,
+            appVersion: "0.0.0-test", emailRecovery: false,
+            defaultRole: "viewer", defaultRoleLabel: "只读", defaultRoleHint: "测试用",
+          }),
+        })
+      );
+      await page.goto(`${BASE}/login.html`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(700);
+      await page.click("#forgotToggle");
+      await page.waitForTimeout(250);
+      const fallbackVisible = await page.locator("#forgotFallback").isVisible();
+      const formHidden = await page.locator("#forgotForm").isHidden();
+      const hint = (await page.locator("#forgotHint").innerText()).trim();
+      await page.unroute(/\/api\/auth\/signup-info/);
+      const ok = fallbackVisible && formHidden && hint.includes("管理员");
+      rec(
+        "AUTH-24",
+        ok ? "PASS" : "FAIL",
+        `emailRecovery=false → 兜底说明可见=${fallbackVisible} 两步表单隐藏=${formHidden} 文案提及管理员=${hint.includes("管理员")}`
+      );
+    });
+
+    /* --------------------------------- 11 账号管理：邮箱 / 手机（自助找回的前提） */
+    await guard("AUTH-25", async () => {
+      const page = c.page;
+      await page.goto(`${BASE}/users.html`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(800);
+      const headers = await page.locator(".user-table thead th").allInnerTexts();
+      const hasColumn = headers.some((text) => text.replace(/\s/g, "").includes("邮箱") && text.includes("手机"));
+      const contactCells = await page.locator("tbody .user-contact").count();
+      const contactButton = await page.locator('button[data-action="contact"]').count();
+      const before = (await page.locator("tbody .user-contact").first().innerText()).trim();
+
+      // 点「邮箱/手机」会连弹两个输入框：先邮箱、再手机号。
+      // 注意用**一个**监听器按顺序作答 —— 注册两个 page.once 的话，同一个对话框
+      // 会同时触发两个回调，第二个会报 "dialog is already handled"。
+      const answers = ["zhangsan@corp.com", "13800138000"];
+      const onDialog = (dialog) => {
+        const value = answers.length ? answers.shift() : "";
+        dialog.accept(value).catch(() => {});
+      };
+      page.on("dialog", onDialog);
+      await page.click('button[data-action="contact"]');
+      await page.waitForTimeout(1500);
+      page.off("dialog", onDialog);
+      const after = (await page.locator("tbody .user-contact").first().innerText()).trim();
+
+      const ok =
+        hasColumn && contactCells > 0 && contactButton > 0 &&
+        after.includes("zhangsan@corp.com") && after.includes("13800138000");
+      rec(
+        "AUTH-25",
+        ok ? "PASS" : "FAIL",
+        `表头含「邮箱/手机」=${hasColumn} 数据行数=${contactCells} 操作按钮=${contactButton} ` +
+          `绑定前「${before}」→ 绑定后「${after.replace(/\s+/g, " ")}」`
       );
     });
 

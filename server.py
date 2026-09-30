@@ -10,6 +10,7 @@ import mimetypes
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
 import tempfile
 import threading
@@ -20,6 +21,7 @@ import zipfile
 from collections.abc import Iterable, Iterator
 from contextlib import nullcontext
 from dataclasses import dataclass
+from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from io import BytesIO
@@ -207,6 +209,42 @@ def connect_db() -> sqlite3.Connection:
             locked_until text
         )
         """
+    )
+    # ---- 登录别名与找回渠道（2026-09-30）----
+    # email / phone 都可作为登录标识（账号名称仍然有效，是"并存"而不是替换），
+    # email 另外用于「忘记密码 → 邮箱验证码」自助找回。
+    # 两列都可空；**非空时必须唯一** —— 用部分索引表达（SQLite 支持表达式 + 部分索引），
+    # 这样多个账号可以都没有邮箱，但填了就不允许重复。
+    _ensure_column(conn, "_users", "email", "text")
+    _ensure_column(conn, "_users", "phone", "text")
+    conn.execute(
+        "create unique index if not exists idx_users_email "
+        "on _users(lower(email)) where email is not null and email <> ''"
+    )
+    conn.execute(
+        "create unique index if not exists idx_users_phone "
+        "on _users(phone) where phone is not null and phone <> ''"
+    )
+    # 自助找回密码的一次性验证码。只存「盐 + 哈希」，不落明文验证码。
+    # 有效期、尝试次数上限、单次使用均由服务端判定（见 AUTH_RESET_* 常量）。
+    conn.execute(
+        """
+        create table if not exists _auth_reset_codes (
+            id text primary key,
+            user_id text not null,
+            channel text not null,
+            target text not null,
+            salt text not null,
+            code_hash text not null,
+            attempts integer not null default 0,
+            created_at text not null,
+            expires_at text not null,
+            used_at text
+        )
+        """
+    )
+    conn.execute(
+        "create index if not exists idx_reset_codes_user on _auth_reset_codes(user_id, created_at)"
     )
     conn.execute(
         """
@@ -6400,7 +6438,16 @@ AUTH_REMEMBER_DAYS = 7
 AUTH_MAX_FAILED = 5
 AUTH_LOCK_MINUTES = 5
 AUTH_ROLES = ("admin", "operator", "viewer")
-AUTH_EXEMPT_PATHS = {"/api/ping", "/api/auth/login", "/api/auth/register", "/api/auth/signup-info"}
+AUTH_EXEMPT_PATHS = {
+    "/api/ping",
+    "/api/auth/login",
+    "/api/auth/register",
+    "/api/auth/signup-info",
+    # 自助找回密码（2026-09-30）：发生在登录之前，必然匿名访问。
+    # 安全性由"邮箱验证码 + 冷却/次数限制 + 按 IP 限流"保证，而不是靠会话。
+    "/api/auth/forgot/send",
+    "/api/auth/forgot/reset",
+}
 # 未登录也必须能直接打开的页面。登录页必须在这里，否则未登录访问 /login.html
 # 会被 require_auth 再一次 302 到 /login.html 自己，浏览器报 ERR_TOO_MANY_REDIRECTS。
 AUTH_PUBLIC_PAGES = {"/login.html"}
@@ -6619,6 +6666,296 @@ def count_users() -> int:
         return int(conn.execute("select count(*) from _users").fetchone()[0])
 
 
+# ---------------------------------------------------------------- 登录别名（邮箱 / 手机号）
+# 设计取舍：**账号名称仍是主标识**，邮箱与手机号是"别名 + 找回渠道"。
+# 不替换的原因：审计日志、权限归属、以及 acceptance/ 下用 HTTP Basic 传账号名跑复跑脚本
+# 都依赖账号名称，换掉会让历史记录对不上人、脚本集体失效。
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_PHONE_RE = re.compile(r"^1[3-9]\d{9}$")
+
+
+def normalize_email(value: object) -> str:
+    """邮箱归一化：去空白 + 统一小写（大小写不敏感，避免 Admin@x 与 admin@x 被当成两个）。"""
+    return str(value or "").strip().lower()
+
+
+def validate_email(value: object) -> str:
+    """校验并归一化邮箱；空字符串表示"不设置"。"""
+    email = normalize_email(value)
+    if not email:
+        return ""
+    if len(email) > 120 or not _EMAIL_RE.match(email):
+        raise ValueError("邮箱格式不正确。")
+    return email
+
+
+def normalize_phone(value: object) -> str:
+    """手机号归一化：只保留数字，并去掉 +86 / 86 前缀，让各种写法互相匹配。"""
+    digits = "".join(ch for ch in str(value or "") if ch.isdigit())
+    if len(digits) == 13 and digits.startswith("86"):
+        digits = digits[2:]
+    return digits
+
+
+def validate_phone(value: object) -> str:
+    """校验并归一化手机号；空字符串表示"不设置"。目前只接受大陆 11 位手机号。"""
+    digits = normalize_phone(value)
+    if not digits:
+        return ""
+    if not _PHONE_RE.match(digits):
+        raise ValueError("手机号格式不正确（应为 11 位大陆手机号）。")
+    return digits
+
+
+def mask_email(email: str) -> str:
+    """脱敏展示，例如 zhangsan@abc.com → z******n@abc.com。用于接口回显"发到哪儿了"。"""
+    text = normalize_email(email)
+    if "@" not in text:
+        return text
+    local, _, domain = text.partition("@")
+    if len(local) <= 2:
+        head = local[:1]
+    else:
+        head = local[0] + "*" * (len(local) - 2) + local[-1]
+    return f"{head}@{domain}"
+
+
+def find_user_by_identifier(identifier: object) -> sqlite3.Row | None:
+    """按「账号名称 / 邮箱 / 手机号」解析账号 —— 登录与找回密码共用。
+
+    优先级：账号名称 → 邮箱 → 手机号。账号名称排第一是因为它可能恰好是全数字
+    （允许任意字符），此时应优先按账号名称解释，避免与某个手机号撞车时行为漂移。
+    """
+    text = str(identifier or "").strip()
+    if not text:
+        return None
+    row = find_user(text)
+    if row:
+        return row
+    digits = normalize_phone(text)
+    with connect_db() as conn:
+        row = conn.execute(
+            "select * from _users where lower(email) = lower(?) limit 1", (text,)
+        ).fetchone()
+        if row:
+            return row
+        if digits:
+            row = conn.execute(
+                "select * from _users where phone = ? limit 1", (digits,)
+            ).fetchone()
+    return row
+
+
+# ---------------------------------------------------------------- 自助找回密码（邮箱验证码）
+# 下面这些安全取舍是刻意设计，改动前先想清楚：
+#   · 验证码只存「每行随机盐 + SHA256」，不落明文；
+#   · 有效期 10 分钟、最多尝试 5 次、成功即作废（单次使用）；
+#   · 同账号 60 秒冷却 + 每小时最多 5 次，另有按 IP 的发送限流（复用登录那套桶）；
+#   · 验证码**只发往账号已绑定的邮箱**，绝不接受请求里传来的收件地址 —— 否则就是任意发信；
+#   · 账号是否存在、是否绑定邮箱都不在响应里区分（统一成功文案），只有"发给谁"用脱敏邮箱回显；
+#   · 重置成功后走 update_user 同一套逻辑，因此"清空锁定 + 作废全部旧会话"自动生效。
+AUTH_RESET_CODE_TTL_MINUTES = 10
+AUTH_RESET_MAX_ATTEMPTS = 5
+AUTH_RESET_RESEND_COOLDOWN_SECONDS = 60
+AUTH_RESET_MAX_PER_HOUR = 5
+SMTP_TIMEOUT_SECONDS = 20
+
+
+def _text_at(moment: dt.datetime) -> str:
+    return moment.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def smtp_settings() -> dict[str, object] | None:
+    """读取 SMTP 配置；未配置到可用状态时返回 None。
+
+    None 同时也是"邮箱自助找回未启用"的开关：前端据此隐藏入口，
+    接口直接拒绝，退回到"联系管理员重置"的老路径（不会半残）。
+    """
+    host = os.environ.get("DC_SMTP_HOST", "").strip()
+    if not host:
+        return None
+    user = os.environ.get("DC_SMTP_USER", "").strip()
+    password = os.environ.get("DC_SMTP_PASSWORD", "").strip()
+    if user and not password:
+        return None  # 配了用户名却没配授权码，属于没配好
+    try:
+        port = int(os.environ.get("DC_SMTP_PORT", "465") or 465)
+    except ValueError:
+        port = 465
+    sender = os.environ.get("DC_SMTP_FROM", "").strip() or user
+    if not sender:
+        return None
+    use_ssl = str(os.environ.get("DC_SMTP_SSL", "true")).strip().lower() not in {"0", "false", "no", "off"}
+    return {"host": host, "port": port, "user": user, "password": password, "sender": sender, "ssl": use_ssl}
+
+
+def email_recovery_enabled() -> bool:
+    return smtp_settings() is not None
+
+
+def mail_site_name() -> str:
+    return os.environ.get("DC_SITE_NAME", "").strip() or "数据导表工具"
+
+
+def send_mail(to_addr: str, subject: str, body: str) -> None:
+    """发送纯文本邮件；失败抛 RuntimeError（调用方转成用户可读提示）。"""
+    settings = smtp_settings()
+    if not settings:
+        raise RuntimeError("邮件服务未配置。")
+    message = EmailMessage()
+    message["From"] = str(settings["sender"])
+    message["To"] = to_addr
+    message["Subject"] = subject
+    message.set_content(body)
+    try:
+        if settings["ssl"]:
+            with smtplib.SMTP_SSL(
+                str(settings["host"]), int(settings["port"]), timeout=SMTP_TIMEOUT_SECONDS
+            ) as server:
+                if settings["user"]:
+                    server.login(str(settings["user"]), str(settings["password"]))
+                server.send_message(message)
+        else:
+            with smtplib.SMTP(
+                str(settings["host"]), int(settings["port"]), timeout=SMTP_TIMEOUT_SECONDS
+            ) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                if settings["user"]:
+                    server.login(str(settings["user"]), str(settings["password"]))
+                server.send_message(message)
+    except (smtplib.SMTPException, OSError, ValueError) as error:
+        raise RuntimeError(f"邮件发送失败：{error}") from error
+
+
+def _hash_reset_code(code: str, salt: str, user_id: str) -> str:
+    """验证码哈希。盐按行随机，避免相同验证码在库里哈希相同。"""
+    return hashlib.sha256(f"{user_id}:{salt}:{code}".encode("utf-8")).hexdigest()
+
+
+def reset_code_cooldown(user_id: str) -> int:
+    """返回还需等待的秒数；0 表示可以发送。用于给前端一个友好提示。"""
+    with connect_db() as conn:
+        row = conn.execute(
+            "select created_at from _auth_reset_codes where user_id = ? order by created_at desc limit 1",
+            (user_id,),
+        ).fetchone()
+    if not row:
+        return 0
+    created = parse_datetime(str(row["created_at"]))
+    if not created:
+        return 0
+    elapsed = (app_now() - created).total_seconds()
+    if elapsed >= AUTH_RESET_RESEND_COOLDOWN_SECONDS:
+        return 0
+    return max(1, int(AUTH_RESET_RESEND_COOLDOWN_SECONDS - elapsed))
+
+
+def issue_reset_code(user: sqlite3.Row) -> tuple[str, str, str]:
+    """生成并保存一次性验证码，返回（明文验证码, 收件邮箱, 验证码记录 id）。
+
+    明文只用于发信、不落库 —— 库被读走也拿不到可直接使用的验证码。
+    返回 id 是为了发信失败时能把这条记录删掉（否则用户永远收不到那个码）。
+    """
+    target = normalize_email(user["email"] if "email" in user.keys() else "")
+    if not target:
+        raise ValueError("该账号还没有绑定邮箱，请联系管理员重置密码。")
+    now = app_now()
+    wait = reset_code_cooldown(str(user["id"]))
+    if wait:
+        raise ValueError(f"验证码刚发过一次，请 {wait} 秒后再试。")
+    with connect_db() as conn:
+        sent_last_hour = int(
+            conn.execute(
+                "select count(*) from _auth_reset_codes where user_id = ? and created_at >= ?",
+                (user["id"], _text_at(now - dt.timedelta(hours=1))),
+            ).fetchone()[0]
+        )
+    if sent_last_hour >= AUTH_RESET_MAX_PER_HOUR:
+        raise ValueError("该账号一小时内获取验证码次数过多，请稍后再试或联系管理员。")
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    salt = secrets.token_hex(16)
+    code_id = uuid.uuid4().hex
+    with connect_db() as conn:
+        # 顺手清理一天前的旧码，避免这张表无限增长（不需要额外的定时任务）
+        conn.execute("delete from _auth_reset_codes where created_at < ?", (_text_at(now - dt.timedelta(days=1)),))
+        conn.execute(
+            "insert into _auth_reset_codes"
+            " (id, user_id, channel, target, salt, code_hash, attempts, created_at, expires_at, used_at)"
+            " values (?, ?, 'email', ?, ?, ?, 0, ?, ?, NULL)",
+            (
+                code_id,
+                user["id"],
+                target,
+                salt,
+                _hash_reset_code(code, salt, str(user["id"])),
+                _text_at(now),
+                _text_at(now + dt.timedelta(minutes=AUTH_RESET_CODE_TTL_MINUTES)),
+            ),
+        )
+    return code, target, code_id
+
+
+def send_reset_code_mail(to_addr: str, code: str) -> None:
+    """把验证码发出去。正文不含任何链接 —— 既符合"验证码就是验证码"的直觉，
+    也避免邮件被当成钓鱼/垃圾邮件。"""
+    site = mail_site_name()
+    send_mail(
+        to_addr,
+        f"【{site}】密码重置验证码",
+        (
+            f"你正在重置「{site}」的登录密码。\n\n"
+            f"验证码：{code}\n"
+            f"有效期 {AUTH_RESET_CODE_TTL_MINUTES} 分钟，且只能使用一次。\n\n"
+            f"如果这不是你本人的操作，忽略本邮件即可，你的密码不会被修改。\n"
+            f"（本邮件由系统自动发出，请勿回复。）\n"
+        ),
+    )
+
+
+def discard_reset_code(code_id: str) -> None:
+    """发信失败时把刚生成的验证码删掉，避免留下一个用户永远收不到的码。"""
+    with connect_db() as conn:
+        conn.execute("delete from _auth_reset_codes where id = ?", (code_id,))
+
+
+def consume_reset_code(user: sqlite3.Row, code: object) -> None:
+    """校验并消费验证码；失败抛 ValueError。
+
+    ⚠️ 注意写法：所有写入都在 `with` 块内完成、错误**在块外**抛出。
+    因为 `with sqlite3.Connection` 在异常时会回滚事务 —— 若在块内 raise，
+    "尝试次数 +1" 会被一起回滚，攻击者就能无限次试码。
+    """
+    text = "".join(ch for ch in str(code or "") if ch.isdigit())
+    failure: str | None = None
+    with connect_db() as conn:
+        # 取最近一条（含已用过的），这样能给出更准确的提示：
+        # "已使用过" 和 "从没获取过" 对用户是两件不同的事。
+        row = conn.execute(
+            "select * from _auth_reset_codes where user_id = ? order by created_at desc limit 1",
+            (user["id"],),
+        ).fetchone()
+        if not row:
+            failure = "请先获取验证码。"
+        elif row["used_at"]:
+            failure = "该验证码已使用过，请重新获取。"
+        elif int(row["attempts"]) >= AUTH_RESET_MAX_ATTEMPTS:
+            failure = "验证码尝试次数过多，请重新获取。"
+        elif str(row["expires_at"]) < now_text():
+            failure = "验证码已过期，请重新获取。"
+        elif not secrets.compare_digest(_hash_reset_code(text, str(row["salt"]), str(user["id"])), str(row["code_hash"])):
+            conn.execute("update _auth_reset_codes set attempts = attempts + 1 where id = ?", (row["id"],))
+            left = max(0, AUTH_RESET_MAX_ATTEMPTS - (int(row["attempts"]) + 1))
+            failure = f"验证码不正确（还可尝试 {left} 次）。"
+        else:
+            conn.execute("update _auth_reset_codes set used_at = ? where id = ?", (now_text(), row["id"]))
+    if failure:
+        raise ValueError(failure)
+
+
 def has_enabled_admin() -> bool:
     with connect_db() as conn:
         return bool(
@@ -6659,6 +6996,9 @@ def user_public(row: sqlite3.Row) -> dict[str, object]:
         "createdAt": row["created_at"],
         "lastLoginAt": row["last_login_at"] or "",
         "lockedUntil": row["locked_until"] or "",
+        # 登录别名 / 找回渠道（2026-09-30）。用 dict.get 兼容极旧的库行（列由 _ensure_column 补）。
+        "email": (row["email"] if "email" in row.keys() else "") or "",
+        "phone": (row["phone"] if "phone" in row.keys() else "") or "",
     }
 
 
@@ -6778,6 +7118,10 @@ CSRF_EXEMPT_PATHS = {
     "/api/auth/signup-info",
     "/api/auth/logout",
     "/api/auth/password",
+    # 自助找回密码：同登录/注册，全程发生在拿到会话之前，此时还没有可被利用的 Cookie。
+    # 它自身的防护是"只有账号已绑定的邮箱能收到验证码"+"次数与频率限制"。
+    "/api/auth/forgot/send",
+    "/api/auth/forgot/reset",
 }
 
 LOGIN_RATE_WINDOW_SECONDS = 60
@@ -6976,6 +7320,8 @@ def create_user(payload: dict[str, object]) -> dict[str, object]:
     username = normalize_username(payload.get("username"))
     role = str(payload.get("role") or "viewer").strip()
     password = validate_new_password(payload.get("password"))
+    email = validate_email(payload.get("email"))
+    phone = validate_phone(payload.get("phone"))
     if role not in ROLE_ORDER:
         raise ValueError("角色不合法。")
     if find_user(username):
@@ -6984,13 +7330,27 @@ def create_user(payload: dict[str, object]) -> dict[str, object]:
     with connect_db() as conn:
         # display_name 列保留（不改表结构以兼容旧库），但恒等于 username：
         # 账号名称即显示名称，不再有第二个名字。
-        conn.execute(
-            "insert into _users (id, username, display_name, password_hash, role, enabled, created_at, created_by, failed_count)"
-            " values (?, ?, ?, ?, ?, 1, ?, ?, 0)",
-            (user_id, username, username, hash_password(password), role, now_text(), "admin"),
-        )
+        try:
+            conn.execute(
+                "insert into _users (id, username, display_name, password_hash, role, enabled,"
+                " created_at, created_by, failed_count, email, phone)"
+                " values (?, ?, ?, ?, ?, 1, ?, ?, 0, ?, ?)",
+                (user_id, username, username, hash_password(password), role, now_text(), "admin", email, phone),
+            )
+        except sqlite3.IntegrityError as error:
+            raise ValueError(_alias_conflict_message(error)) from error
         row = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
     return user_public(row)
+
+
+def _alias_conflict_message(error: sqlite3.IntegrityError) -> str:
+    """把唯一索引冲突翻译成人话（否则用户只会看到整段 SQLite 报错）。"""
+    text = str(error)
+    if "idx_users_email" in text or "lower(email)" in text or "email" in text:
+        return "该邮箱已被其他账号使用。"
+    if "idx_users_phone" in text or "phone" in text:
+        return "该手机号已被其他账号使用。"
+    return "保存失败：该信息与已有账号冲突。"
 
 
 def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> tuple[dict[str, object], list[str]]:
@@ -7024,6 +7384,19 @@ def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> 
     else:
         enabled = int(row["enabled"] or 0)
 
+    # 登录别名（邮箱 / 手机号）：只有 payload 里**出现该键**才改动，
+    # 传空字符串表示"清空绑定"，不传表示不动。
+    email = row["email"] if "email" in row.keys() else ""
+    if "email" in payload:
+        email = validate_email(payload.get("email"))
+        if email != (row["email"] or "" if "email" in row.keys() else ""):
+            changes.append("邮箱" + ("已清空" if not email else "已更新"))
+    phone = row["phone"] if "phone" in row.keys() else ""
+    if "phone" in payload:
+        phone = validate_phone(payload.get("phone"))
+        if phone != (row["phone"] or "" if "phone" in row.keys() else ""):
+            changes.append("手机号" + ("已清空" if not phone else "已更新"))
+
     with connect_db() as conn:
         if password not in (None, ""):
             conn.execute(
@@ -7031,10 +7404,14 @@ def update_user(payload: dict[str, object], actor: dict[str, object] | None) -> 
                 (hash_password(validate_new_password(password)), user_id),
             )
             changes.append("重置密码")
-        conn.execute(
-            "update _users set role = ?, enabled = ?, display_name = username where id = ?",
-            (role or row["role"], enabled, user_id),
-        )
+        try:
+            conn.execute(
+                "update _users set role = ?, enabled = ?, display_name = username,"
+                " email = ?, phone = ? where id = ?",
+                (role or row["role"], enabled, email, phone, user_id),
+            )
+        except sqlite3.IntegrityError as error:
+            raise ValueError(_alias_conflict_message(error)) from error
         updated = conn.execute("select * from _users where id = ?", (user_id,)).fetchone()
     # 改密 / 停用后立刻作废其全部会话，避免旧 Cookie 继续可用
     if password not in (None, "") or (enabled_value is not None and not int(updated["enabled"] or 0)):
@@ -7299,6 +7676,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if post_path == "/api/auth/password":
                 self.handle_auth_password()
+                return
+            if post_path == "/api/auth/forgot/send":
+                self.handle_auth_forgot_send()
+                return
+            if post_path == "/api/auth/forgot/reset":
+                self.handle_auth_forgot_reset()
                 return
             if post_path == "/api/users":
                 self.handle_user_create()
@@ -7994,7 +8377,128 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 if default_role != "viewer"
                 else "注册后为只读账号，可查看与只读查询；需要导入导出请让管理员提升为「可写」"
             ),
+            # 是否启用「邮箱验证码自助找回密码」。前端据此决定登录页的忘记密码
+            # 是走自助流程，还是退回「联系管理员重置」的静态说明。
+            # 判定为真需要 DC_SMTP_HOST 等配好（见 smtp_settings）。
+            "emailRecovery": email_recovery_enabled(),
         })
+
+    # ------------------------------------------------------------ 自助找回密码
+    def handle_auth_forgot_send(self) -> None:
+        """发送找回密码的邮箱验证码。
+
+        这里刻意**不区分**"账号不存在"与"已发送"：两种情况都返回同一句成功文案，
+        避免被拿来批量探测哪些账号存在。而"未绑定邮箱""冷却中""频率超限"
+        属于对账号本人有用、且在本工具（开放注册）语境下不敏感的信息，明确告知。
+        """
+        if not email_recovery_enabled():
+            json_response(
+                self,
+                {"ok": False, "error": "本工具没有启用邮箱找回，请让管理员在「账号管理」里重置密码。"},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
+        payload = read_json_body(self)
+        identifier = str(payload.get("identifier") or payload.get("username") or "").strip()
+        ip = self.request_ip()
+        # 与登录共用同一套「按 IP 每分钟」限流桶，防止被当成发信机刷
+        retry_after = login_rate_retry_after(ip)
+        if retry_after:
+            audit_log({"username": identifier}, "forgot", identifier, "触发找回密码频率限制", ip, "denied")
+            json_response(
+                self,
+                {"ok": False, "error": f"操作过于频繁，请 {retry_after} 秒后再试。"},
+                HTTPStatus.TOO_MANY_REQUESTS,
+            )
+            return
+        if not identifier:
+            raise ValueError("请填写账号名称、邮箱或手机号。")
+
+        row = find_user_by_identifier(identifier)
+        if not row:
+            audit_log({"username": identifier}, "forgot", identifier, "账号不存在", ip, "denied")
+            json_response(self, {"ok": True, "sent": True, "message": "如果该账号绑定了邮箱，验证码已发送，请查收。"})
+            return
+
+        try:
+            code, target, code_id = issue_reset_code(row)
+        except ValueError as error:
+            audit_log({"username": str(row["username"])}, "forgot", str(row["username"]), str(error), ip, "denied")
+            json_response(self, {"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        try:
+            send_reset_code_mail(target, code)
+        except RuntimeError as error:
+            discard_reset_code(code_id)  # 发不出去就别留着这个码
+            audit_log({"username": str(row["username"])}, "forgot", str(row["username"]), str(error), ip, "denied")
+            json_response(
+                self,
+                {"ok": False, "error": f"{error} 请联系管理员重置密码。"},
+                HTTPStatus.BAD_GATEWAY,
+            )
+            return
+
+        masked = mask_email(target)
+        audit_log({"username": str(row["username"])}, "forgot", str(row["username"]), f"验证码已发送至 {masked}", ip, "ok")
+        json_response(
+            self,
+            {
+                "ok": True,
+                "sent": True,
+                "target": masked,
+                "ttlMinutes": AUTH_RESET_CODE_TTL_MINUTES,
+                "message": f"验证码已发送至 {masked}，{AUTH_RESET_CODE_TTL_MINUTES} 分钟内有效。",
+            },
+        )
+
+    def handle_auth_forgot_reset(self) -> None:
+        """凭邮箱验证码设置新密码（未登录状态下的自助重置）。"""
+        if not email_recovery_enabled():
+            json_response(
+                self,
+                {"ok": False, "error": "本工具没有启用邮箱找回，请让管理员在「账号管理」里重置密码。"},
+                HTTPStatus.SERVICE_UNAVAILABLE,
+            )
+            return
+        payload = read_json_body(self)
+        identifier = str(payload.get("identifier") or payload.get("username") or "").strip()
+        code = payload.get("code")
+        password = payload.get("password") or payload.get("newPassword")
+        ip = self.request_ip()
+        retry_after = login_rate_retry_after(ip)
+        if retry_after:
+            audit_log({"username": identifier}, "forgot", identifier, "触发重置密码频率限制", ip, "denied")
+            json_response(
+                self,
+                {"ok": False, "error": f"操作过于频繁，请 {retry_after} 秒后再试。"},
+                HTTPStatus.TOO_MANY_REQUESTS,
+            )
+            return
+        if not identifier or not code:
+            raise ValueError("请填写账号与验证码。")
+        # 先校验新密码格式：格式不合格就不该浪费掉一次验证码
+        new_password = validate_new_password(password)
+
+        row = find_user_by_identifier(identifier)
+        if not row:
+            audit_log({"username": identifier}, "forgot", identifier, "账号不存在", ip, "denied")
+            json_response(self, {"ok": False, "error": "验证码不正确或已过期。"}, HTTPStatus.BAD_REQUEST)
+            return
+        try:
+            consume_reset_code(row, code)
+        except ValueError as error:
+            audit_log({"username": str(row["username"])}, "forgot", str(row["username"]), str(error), ip, "denied")
+            json_response(self, {"ok": False, "error": str(error)}, HTTPStatus.BAD_REQUEST)
+            return
+
+        # 复用管理端那套：改密 + 清失败计数与锁定 + 作废全部旧会话
+        _updated, changes = update_user({"id": str(row["id"]), "password": new_password}, None)
+        audit_log({"username": str(row["username"])}, "forgot", str(row["username"]), "邮箱验证码重置密码成功", ip, "ok")
+        json_response(
+            self,
+            {"ok": True, "message": "密码已重置，请用新密码登录。", "changes": changes},
+        )
 
     def handle_auth_login(self) -> None:
         payload = read_json_body(self)
@@ -8016,7 +8520,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 HTTPStatus.TOO_MANY_REQUESTS,
             )
             return
-        row = find_user(username)
+        # 账号名称 / 邮箱 / 手机号都可以用来登录（2026-09-30 起）。
+        # 表单字段名仍是 username，只为兼容既有前端与 acceptance 复跑脚本。
+        row = find_user_by_identifier(username)
         # 用户不存在与密码错误使用同一文案，避免暴露账号是否存在
         if not row:
             audit_log({"username": username}, "login", "", "用户不存在", ip, "denied")

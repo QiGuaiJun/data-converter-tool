@@ -24,6 +24,8 @@
     ["username", "账号名称"],
     ["role", "角色"],
     ["enabled", "状态"],
+    ["email", "邮箱"],
+    ["phone", "手机号"],
     ["activeSessions", "在线会话"],
     ["lastLoginAt", "最近登录"],
     ["createdAt", "创建时间"],
@@ -151,8 +153,20 @@
         .join("");
   }
 
-  function roleSelect(user) {
-    return (
+  // 邮箱 / 手机号单元格。邮箱用于「忘记密码」自助找回，手机号可作登录名；
+  // 两者都可空，缺失时显示"未绑定"，让管理员一眼看出谁还没法自助找回。
+  function contactCell(user) {
+    var parts = [];
+    if (user.email) {
+      parts.push('<span class="contact-item">' + escapeHtml(user.email) + "</span>");
+    }
+    if (user.phone) {
+      parts.push('<span class="contact-item">' + escapeHtml(user.phone) + "</span>");
+    }
+    return parts.length ? parts.join("") : '<span class="contact-empty">未绑定</span>';
+  }
+
+  function roleSelect(user) {    return (
       '<select class="role-select" data-role-for="' +
       escapeHtml(user.id) +
       '">' +
@@ -169,7 +183,7 @@
   function render() {
     var tbody = $("#userRows");
     if (!state.users.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无账号</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="empty">暂无账号</td></tr>';
       return;
     }
     tbody.innerHTML = state.users
@@ -195,6 +209,10 @@
           '">' +
           statusText +
           "</span></td>" +
+          // 登录别名 / 找回渠道：邮箱用于「忘记密码」自助找回，手机号可作登录名
+          '<td class="user-contact">' +
+          contactCell(user) +
+          "</td>" +
           "<td>" +
           user.activeSessions +
           "</td>" +
@@ -213,6 +231,9 @@
           '">' +
           (user.enabled ? "停用" : "启用") +
           "</button>" +
+          '<button type="button" data-action="contact" data-id="' +
+          escapeHtml(user.id) +
+          '">邮箱/手机</button>' +
           '<button type="button" data-action="reset" data-id="' +
           escapeHtml(user.id) +
           '">重置密码</button>' +
@@ -290,6 +311,28 @@
       });
       return;
     }
+    if (action === "contact") {
+      // 邮箱用于「忘记密码」自助找回，手机号也可作为登录名。
+      // 取消任一输入框 = 放弃本次修改；留空提交 = 清空该绑定。
+      var email = window.prompt(
+        "为 " + user.username + " 设置邮箱（忘记密码时用它收验证码；留空则清除绑定）",
+        user.email || ""
+      );
+      if (email === null) {
+        return;
+      }
+      var phone = window.prompt(
+        "为 " + user.username + " 设置手机号（也可用于登录；留空则清除绑定）",
+        user.phone || ""
+      );
+      if (phone === null) {
+        return;
+      }
+      postUpdate({ id: user.id, email: email.trim(), phone: phone.trim() }).catch(function (error) {
+        setStatus(error.message, "error");
+      });
+      return;
+    }
     if (action === "delete") {
       window
         .dcConfirm({
@@ -326,6 +369,8 @@
       '<div class="dialog-title"><strong>新建账号</strong><button type="button" data-close>×</button></div>' +
       '<label class="dc-field">账号名称<input id="dcNewUserName" autocomplete="off" placeholder="任意字符均可（中文、符号都行），最多 32 个字符" /></label>' +
       '<label class="dc-field">初始密码<input type="password" id="dcNewUserPassword" autocomplete="new-password" /></label>' +
+      '<label class="dc-field">邮箱（选填，用于忘密码时自助找回）<input type="email" id="dcNewUserEmail" autocomplete="off" placeholder="example@company.com" /></label>' +
+      '<label class="dc-field">手机号（选填，也可用于登录）<input type="tel" id="dcNewUserPhone" autocomplete="off" placeholder="11 位手机号" /></label>' +
       '<label class="dc-field">角色<select id="dcNewUserRole"></select></label>' +
       '<p id="dcUserError" class="dc-field-error"></p>' +
       '<div class="confirm-actions">' +
@@ -352,6 +397,8 @@
         username: dialog.querySelector("#dcNewUserName").value.trim(),
         password: dialog.querySelector("#dcNewUserPassword").value,
         role: dialog.querySelector("#dcNewUserRole").value,
+        email: dialog.querySelector("#dcNewUserEmail").value.trim(),
+        phone: dialog.querySelector("#dcNewUserPhone").value.trim(),
       };
       if (!body.username || !body.password) {
         errorEl.textContent = "请填写账号名称与初始密码。";
