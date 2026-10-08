@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import sqlite3
 import sys
@@ -39,10 +40,47 @@ _ENV_USED = load_env_file()
 
 # 这些函数就在 server.py 里，直接复用 —— 保证"历史重写"与"新日志"走的是同一套规则，
 # 不会出现两套文案风格。
-from server import compact_failure_reason, dedupe_log_paragraphs  # noqa: E402
+from server import compact_failure_reason, dedupe_log_paragraphs, translate_system_error  # noqa: E402
 
 # 与 server 用同一个真值来源，别再自己拼路径（否则又会连错库）
 DB_PATH = Path(str(__import__("server").DB_PATH))
+
+
+_DICT_REPR_RE = re.compile(r"\{([^{}]*'[^']+'\s*:\s*\d+[^{}]*)\}")
+
+
+def humanize_dict_repr(text: str) -> str:
+    """把漏到日志里的 Python 字典字面量排成人话。
+
+    历史步骤行里写着 `数据库校验行数：{'云购商城销售数据表': 104496}` ——
+    把 repr 直接摆给业务用户看太糙（2026-10-08）。新版代码已不再产生这种文本，
+    这里只负责把旧记录洗一遍。
+    """
+    def replace(match: "re.Match[str]") -> str:
+        pairs = re.findall(r"'([^']+)':\s*(\d+)", match.group(1))
+        return "、".join(f"{name} {count} 行" for name, count in pairs) if pairs else match.group(0)
+
+    return _DICT_REPR_RE.sub(replace, str(text or ""))
+
+
+_DOUBLED_PREFIX_RE = re.compile(
+    r"((?:子作业|作业)(?:「[^」]*」)?(?:执行成功|执行失败|已跳过)：)作业(?:执行成功|执行失败|已跳过)："
+)
+
+
+def collapse_doubled_prefix(text: str) -> str:
+    """把「子作业执行成功：作业执行成功：…」这种叠了两层的标签收成一层。
+
+    成功分支原来直接拼 `子作业执行成功：` + 子作业首行，而首行自带 `作业执行成功：`，
+    于是叠了一层；失败分支同理。属于展示层冗余，去掉不丢信息。
+    """
+    out = str(text or "")
+    for _ in range(4):  # 嵌套层数有限
+        collapsed = _DOUBLED_PREFIX_RE.sub(r"\1", out)
+        if collapsed == out:
+            break
+        out = collapsed
+    return out
 
 
 def normalize_message(text: str) -> str:
@@ -50,9 +88,11 @@ def normalize_message(text: str) -> str:
     original = str(text or "")
     if not original.strip():
         return original
-    deduped = dedupe_log_paragraphs(original)
+    deduped = collapse_doubled_prefix(dedupe_log_paragraphs(original))
     if "最后错误：" not in deduped:
-        return deduped
+        # 没有嵌套的（成功记录、步骤行）：把裸的英文系统错误翻成人话 +
+        # 把漏进来的 Python 字典字面量排成人话。两者对正常文本都是空操作。
+        return humanize_dict_repr(translate_system_error(deduped))
 
     lines = [line for line in deduped.splitlines() if line.strip()]
     conclusion = ""

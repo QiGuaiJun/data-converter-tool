@@ -5588,11 +5588,19 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             if step_type == "import":
                 config = resolve_import_step_config(config)
                 result = execute_import_step(config)
+                # verifiedRows 是 {表名: 行数}，直接 f-string 会把 Python 字典原样漏到界面上
+                # （`数据库校验行数：{'云购商城销售数据表': 104496}`），排成人话（2026-10-08）
+                verified = result["verifiedRows"]
+                verified_text = (
+                    "、".join(f"{name} {count} 行" for name, count in verified.items())
+                    if isinstance(verified, dict)
+                    else str(verified)
+                )
                 step_message = (
                     f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
                     f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
                     f"成功写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行；"
-                    f"数据库校验行数：{result['verifiedRows']}；{result['sqlStatus']}。"
+                    f"数据库校验行数：{verified_text}；{result['sqlStatus']}。"
                 )
                 if result.get("warning"):
                     step_message += f"\n{result['warning']}"
@@ -5638,14 +5646,22 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     )
                     raise ValueError(f"子作业「{step_label}」执行失败：{nested_reason}")
                 else:
-                    step_message = f"子作业执行成功：{nested_message.splitlines()[0] if nested_message else ''}"
+                    # 子作业的首行自带「作业执行成功：」前缀，别再叠一层 ——
+                    # 否则步骤行会写成「子作业执行成功：作业执行成功：3 个步骤成功…」。
+                    nested_first = (nested_message.splitlines() or [""])[0]
+                    nested_first = _NESTED_PREFIX_RE.sub("", nested_first).strip()
+                    step_message = f"子作业执行成功：{nested_first}"
             elif step_type == "sync":
                 raise ValueError("同步模块尚未开放。")
             else:
                 raise ValueError("不支持的子任务类型。")
         except Exception as exc:
             step_status = "失败"
-            step_message = str(exc)
+            # 步骤行也给人话：以前直接把 `str(exc)` 写进去，界面上就会出现
+            # `[Errno 13] Permission denied: '…xlsx'` 这种看不懂的英文。
+            # 原始异常仍然打到服务端标准输出（traceback 也在），排查不受影响。
+            step_message = translate_system_error(str(exc))
+            print(f"[job] 步骤失败 job_id={job_id} step={index}：{exc}", flush=True)
             failed_steps += 1
             status = "失败"
             last_error = step_message
