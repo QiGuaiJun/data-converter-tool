@@ -1,0 +1,145 @@
+"""把历史运行日志重写成新格式（去重 + 剥嵌套 + 系统错误翻译成人话）。
+
+背景（2026-10-08）：业主反馈"任务的运行日志特别乱"。乱在三点：
+  1. 父子套娃：父作业把子作业整段 message 内嵌进 last_error，出现
+     「子作业执行失败：作业执行失败：…最后错误：[Errno 13] Permission denied: …」；
+  2. 段落重复：「（本次触发执行…）」被子作业带进来一次、父作业又追加一次；
+  3. 英文报错直出，看不出真实原因（其实是那个 xlsx 正开在 Excel 里）。
+
+`server.py` 已经改好了**新产生**的日志；这个脚本负责把**已经存库**的旧日志按同一套规则
+重写一遍，否则业主打开历史记录看到的还是老样子。
+
+只改展示文本（`_job_runs.message` 与 `_job_run_steps.message`），
+**不碰任何判定字段**（状态、耗时、产物清单、步骤顺序都不动）。
+信息不会丢：最内层的真实错误一定保留，产物清单与括号段落原样保留（只去重复）。
+
+用法：
+    python scripts/normalize_run_logs.py            # 干跑，打印改写前后对照
+    python scripts/normalize_run_logs.py --apply    # 备份后写回
+"""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+DB_PATH = ROOT / "runtime" / "data" / "imports.db"
+
+# 这些函数就在 server.py 里，直接复用 —— 保证"历史重写"与"新日志"走的是同一套规则，
+# 不会出现两套文案风格。
+from server import compact_failure_reason, dedupe_log_paragraphs  # noqa: E402
+
+
+def normalize_message(text: str) -> str:
+    """把一条运行/步骤日志重写成新格式。"""
+    original = str(text or "")
+    if not original.strip():
+        return original
+    deduped = dedupe_log_paragraphs(original)
+    if "最后错误：" not in deduped:
+        return deduped
+
+    lines = [line for line in deduped.splitlines() if line.strip()]
+    conclusion = ""
+    outputs: list[str] = []
+    paragraphs: list[str] = []
+    extras: list[str] = []
+    in_outputs = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("产出文件"):
+            in_outputs = True
+            outputs.append(line)
+            continue
+        if stripped.startswith("（"):
+            in_outputs = False
+            paragraphs.append(line)
+            continue
+        if in_outputs:
+            outputs.append(line)
+            continue
+        if not conclusion and "最后错误：" in stripped:
+            # ⚠️ 结论句与嵌套错误**在同一行**上（「作业执行失败：N 个步骤…最后错误：子作业执行失败：…」），
+            # 这里必须从「最后错误：」处截断，只留前半句统计；否则第一行还是原来那坨糊的。
+            conclusion = stripped.split("最后错误：", 1)[0].strip()
+            continue
+        if not conclusion and stripped.startswith(("作业执行", "子作业", "本次任务执行")):
+            conclusion = stripped
+            continue
+        # 认不出来的行不静默丢掉（可能是原始错误的续行），放到最后原样保留
+        extras.append(line)
+    # 失败原因 = 整条日志里最内层那句话（compact_failure_reason 负责剥壳 + 翻译）
+    reason = compact_failure_reason(deduped)
+    parts: list[str] = []
+    if conclusion:
+        parts.append(conclusion)
+    parts.append(f"失败原因：{reason}")
+    if outputs:
+        parts.extend(outputs)
+    parts.extend(paragraphs)
+    parts.extend(extras)
+    return "\n".join(parts)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--apply", action="store_true", help="真正写回（默认只干跑）")
+    parser.add_argument("--limit", type=int, default=3, help="干跑时打印几条前后对照（默认 3）")
+    args = parser.parse_args()
+
+    if not DB_PATH.is_file():
+        print(f"找不到库文件：{DB_PATH}")
+        return 2
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+
+    changes: list[tuple[str, str, str, str]] = []  # (表, id, 旧, 新)
+    for table in ("_job_runs", "_job_run_steps"):
+        for row in conn.execute(f"select id, message from {table} where message is not null and message <> ''"):
+            new = normalize_message(str(row["message"]))
+            if new != str(row["message"]):
+                changes.append((table, str(row["id"]), str(row["message"]), new))
+
+    print(f"库文件：{DB_PATH}（{DB_PATH.stat().st_size} 字节）")
+    print(f"需要改写的记录：{len(changes)} 条"
+          f"（{sum(1 for c in changes if c[0] == '_job_runs')} 条运行 / "
+          f"{sum(1 for c in changes if c[0] == '_job_run_steps')} 条步骤）")
+    print()
+    for table, _id, old, new in changes[: args.limit]:
+        print(f"===== {table} =====")
+        print("--- 改写前 ---")
+        print(old)
+        print("--- 改写后 ---")
+        print(new)
+        print()
+
+    if not args.apply:
+        print("（干跑结束，未做任何修改。加 --apply 才会写回）")
+        return 0
+    if not changes:
+        return 0
+
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = DB_PATH.with_name(f"imports.db.bak-logfix-{stamp}")
+    shutil.copy2(DB_PATH, backup)
+    print(f"已备份到：{backup}")
+
+    with conn:  # 一个事务，失败全回滚
+        for table, row_id, _old, new in changes:
+            conn.execute(f"update {table} set message = ? where id = ?", (new, row_id))
+    conn.execute("vacuum")
+    conn.close()
+    print(f"已改写 {len(changes)} 条记录。")
+    print(f"如需回退：copy \"{backup}\" \"{DB_PATH}\"")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

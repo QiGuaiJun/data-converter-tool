@@ -795,8 +795,54 @@ body {
   border-left-color: #e6a23c;
 }
 
-.schedule-run-list .log-item > strong > span,
-.job-runs .log-item > strong > span,
+/* ------------------------------------------------- 运行记录折叠头（2026-10-08）
+   折叠时只显示：展开箭头 + 作业名/状态 + 一句话摘要 + 时间；
+   点开才看元信息、完整日志与各步骤。历史多了才扫得动。 */
+.schedule-run-list .log-item > summary,
+.job-runs .log-item > summary {
+  display: grid;
+  grid-template-columns: 14px minmax(0, auto) minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.schedule-run-list .log-item > summary::-webkit-details-marker,
+.job-runs .log-item > summary::-webkit-details-marker,
+.log-item > summary::-webkit-details-marker {
+  display: none;
+}
+.schedule-run-list .log-item > summary::before,
+.job-runs .log-item > summary::before {
+  content: "▸";
+  color: #98a2b3;
+  font-size: 11px;
+}
+.schedule-run-list .log-item[open] > summary::before,
+.job-runs .log-item[open] > summary::before {
+  content: "▾";
+}
+.log-summary {
+  font-style: normal;
+  color: #667085;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schedule-run-list .log-item > summary > time,
+.job-runs .log-item > summary > time {
+  color: #98a2b3;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.log-body {
+  margin-top: 8px;
+  padding-left: 24px;
+}
+
+.schedule-run-list .log-item > summary > strong > span,
+.job-runs .log-item > summary > strong > span,
 .run-step > strong > span {
   min-width: 46px;
   padding: 2px 8px;
@@ -805,22 +851,22 @@ body {
   font-size: 12px;
 }
 
-.schedule-run-list .log-item.success > strong > span,
-.job-runs .log-item.success > strong > span,
+.schedule-run-list .log-item.success > summary > strong > span,
+.job-runs .log-item.success > summary > strong > span,
 .run-step.success > strong > span {
   background: #e8f8ef;
   color: #08773a;
 }
 
-.schedule-run-list .log-item.failed > strong > span,
-.job-runs .log-item.failed > strong > span,
+.schedule-run-list .log-item.failed > summary > strong > span,
+.job-runs .log-item.failed > summary > strong > span,
 .run-step.failed > strong > span {
   background: #fff0ee;
   color: #b3261e;
 }
 
-.schedule-run-list .log-item.skipped > strong > span,
-.job-runs .log-item.skipped > strong > span,
+.schedule-run-list .log-item.skipped > summary > strong > span,
+.job-runs .log-item.skipped > summary > strong > span,
 .run-step.skipped > strong > span {
   background: #fdf6e6;
   color: #9a6700;

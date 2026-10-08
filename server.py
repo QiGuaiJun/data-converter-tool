@@ -5304,6 +5304,90 @@ def format_outputs_block(files: list[str], failed: bool = False) -> str:
     return "\n" + label.format(len(files)) + "\n" + "\n".join(files)
 
 
+# ------------------------------------------------------------ 运行日志文案整理（2026-10-08）
+# 业主反馈"任务的运行日志特别乱"。实测乱在三点，都有真实样本：
+#   1. 父子套娃：父作业把子作业整段 message 内嵌进 last_error，于是出现
+#      「子作业执行失败：作业执行失败：2 个步骤成功…最后错误：[Errno 13] …」这种前缀重复；
+#   2. 段落重复：子作业的「（本次触发执行…）」被内嵌进来后，父作业又追加一次自己的；
+#   3. 英文报错直出：`[Errno 13] Permission denied: 'C:\...\中秋试饮活动.xlsx'`
+#      —— 真实原因是那个文件正开在 Excel 里，但日志里完全看不出来。
+# 下面三个函数分别解决这三点。它们是**纯展示层**处理，不改判定逻辑。
+
+# 常见系统错误 → 人话。顺序敏感：先匹配到的生效，所以带路径的放前面。
+_ERROR_TRANSLATIONS: tuple[tuple[str, str], ...] = (
+    (r"\[Errno 13\] Permission denied: '([^']+)'",
+     "没有权限或文件被占用：{0}（若该文件正开在 Excel / WPS 里，关掉后重试）"),
+    (r"\[Errno 16\] Device or resource busy: '([^']+)'", "文件正被其他程序占用：{0}"),
+    (r"\[Errno 26\] Text file busy: '([^']+)'", "文件正被其他程序占用：{0}"),
+    (r"\[Errno 2\] No such file or directory: '([^']+)'", "找不到文件：{0}（可能已改名、移动或删除）"),
+    (r"\[Errno 17\] File exists: '([^']+)'", "目标已存在且不允许覆盖：{0}"),
+    (r"\[Errno 28\]", "磁盘空间不足，请清理磁盘后重试"),
+    (r"\[Errno 5\] Input/output error", "磁盘读写失败，请检查磁盘状态"),
+    (r"\[WinError 32\]|\[WinError 33\]", "文件正被其他程序占用（如 Excel / WPS 打开着）"),
+    (r"\[WinError 5\]", "没有权限访问该文件或目录"),
+    (r"\[WinError 112\]", "磁盘空间不足，请清理磁盘后重试"),
+)
+
+_NESTED_PREFIX_RE = re.compile(r"^(失败原因|(子作业|作业)(「[^」]*」)?(执行失败|已跳过|执行成功))\s*[:：]\s*")
+_STEP_SUMMARY_RE = re.compile(r"^\d+\s*个步骤(成功|失败|未启用)[^。]*。\s*")
+
+
+def translate_system_error(text: str) -> str:
+    """把裸的 Errno / Windows 错误码翻译成一句人话；认不出来就原样返回。"""
+    raw = str(text or "")
+    for pattern, template in _ERROR_TRANSLATIONS:
+        match = re.search(pattern, raw)
+        if match:
+            groups = [item for item in (match.groups() or ()) if item]
+            return template.format(*groups) if groups else template
+    return raw
+
+
+def compact_failure_reason(text: str) -> str:
+    """把嵌套的失败信息压成**一句人话**。
+
+    父作业失败时 last_error 的形状是「子作业执行失败：作业执行失败：N 个步骤…最后错误：<真原因>」，
+    每多一层嵌套就多套一次。这里反复剥离，直到只剩最内层的真原因，再翻译成中文。
+
+    只做"剥壳"与"翻译"，**不抽取信息**：真正的错误文本一定保留下来，不会因为整理而丢失。
+    """
+    current = str(text or "").strip()
+    for _ in range(12):  # 嵌套层数有限，加个上限防呆
+        before = current
+        # 括号段落（触发原因 / 未重跑说明）由外层统一追加，这里先摘掉，避免父子各带一份
+        current = "\n".join(
+            line for line in current.splitlines() if not line.strip().startswith("（")
+        ).strip()
+        # 每多一层嵌套就多一次「最后错误：」，最内层那句才是真正要看的
+        if "最后错误：" in current:
+            current = current.rsplit("最后错误：", 1)[1].strip()
+        current = _NESTED_PREFIX_RE.sub("", current).strip()
+        # "N 个步骤成功…" 这层统计外层会重新算，留着只会重复
+        current = _STEP_SUMMARY_RE.sub("", current).strip()
+        if current == before:
+            break
+    return translate_system_error(current) or "（无错误详情）"
+
+
+def dedupe_log_paragraphs(text: str) -> str:
+    """同一条运行日志里**逐字重复**的「（…）」段落只保留第一次。
+
+    父子作业嵌套时，「（本次触发执行：…）」会被内嵌一次、外层再追加一次 ——
+    两次内容完全相同，用户看到的就是"同一句话说了两遍"。
+    只按整行精确匹配去重，内容不同（比如两个不同的触发文件）不会误合并。
+    """
+    seen: set[str] = set()
+    kept: list[str] = []
+    for line in str(text or "").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("（"):
+            if stripped in seen:
+                continue
+            seen.add(stripped)
+        kept.append(line)
+    return "\n".join(kept)
+
+
 def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None = None) -> dict[str, object]:
     visited = visited or set()
     if job_id in visited:
@@ -5541,9 +5625,18 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     # 用户会在"确实没有新数据"时看到一条红色失败记录，误判成系统坏了。
                     step_message = f"子作业已跳过：{strip_outputs_block(nested_message, nested_outputs)}"
                 elif nested_result["status"] != "成功":
-                    raise ValueError(
-                        f"子作业执行失败：{strip_outputs_block(nested_message, nested_outputs)}"
+                    # 步骤行也只留一句人话：这里原样内嵌子作业整段 message 的话，
+                    # 步骤行会出现「子作业执行失败：作业执行失败：…最后错误：…」的长文，
+                    # 与运行摘要里那句重复。原始英文错误仍会打到服务端标准输出备查。
+                    nested_reason = compact_failure_reason(
+                        strip_outputs_block(nested_message, nested_outputs)
                     )
+                    step_label = str(step.get("name") or f"第 {index} 步")
+                    print(
+                        f"[job] 子作业失败 job_id={nested}：{nested_message}",
+                        flush=True,
+                    )
+                    raise ValueError(f"子作业「{step_label}」执行失败：{nested_reason}")
                 else:
                     step_message = f"子作业执行成功：{nested_message.splitlines()[0] if nested_message else ''}"
             elif step_type == "sync":
@@ -5593,7 +5686,13 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                             (guard_job_id, guard_step_index, fp, guard_item.get("source", ""), now_text()),
                         )
     else:
-        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。最后错误：{last_error}"
+        # 失败原因只留**一句人话**：剥掉父子嵌套的前缀、翻译系统错误。
+        # 原来的写法把 last_error 原样拼进来，父子嵌套时会变成
+        # 「子作业执行失败：作业执行失败：…最后错误：[Errno 13] Permission denied: …」。
+        reason = compact_failure_reason(str(last_error)) if last_error else ""
+        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。"
+        if reason:
+            message += f"\n失败原因：{reason}"
         if outputs:
             # 失败前已落盘的产物也要报出来：2 步作业第 1 步导出成功、第 2 步失败时，
             # 只给"最后错误"用户不知道半成品在哪，只能重跑一遍
@@ -5604,6 +5703,8 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         message += guard_note_text
     if guard_skipped_steps:
         message += "\n（以下步骤本轮未重跑：源文件无更新 — " + "、".join(guard_skipped_steps) + "）"
+    # 最后一道：父子嵌套会把同样的括号段落带进来两次（如「本次触发执行」），去重后再落库
+    message = dedupe_log_paragraphs(message)
     with connect_db() as conn:
         conn.execute(
             "update _job_runs set ended_at = ?, elapsed_ms = ?, status = ?, message = ?, outputs_json = ? where id = ?",

@@ -495,7 +495,9 @@ function mergeScheduleRuns(runs, rootJobId) {
           if (!structured && /^[A-Za-z]:[\\/]/.test(line)) return false;
           return true;
         })
-        .join(" ");
+        // ⚠️ 必须 "\n"：日志每一行都是独立语义，join(" ") 会把它糊成一整段
+        // （2026-10-08 业主反馈"运行日志特别乱"的直接原因之一）。
+        .join("\n");
     const detailLines = [...(outputFiles.length ? [`产出文件（${outputFiles.length} 个）：`, ...outputFiles] : []), ...warningLines];
     const detailText = detailLines.length ? `\n${detailLines.join("\n")}` : "";
     merged.push({
@@ -513,20 +515,40 @@ function mergeScheduleRuns(runs, rootJobId) {
   return merged.sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
 }
 
-function renderRunLog(run) {
+/** 折叠状态下的一句话摘要：失败优先给"失败原因"，成功给结论句。 */
+function runSummaryLine(run) {
+  const lines = String(run.message ?? "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const reason = lines.find((line) => line.startsWith("失败原因："));
+  if (reason) return reason;
+  const first = lines[0] || "";
+  return first.replace(/^本次任务执行(成功|失败)[，,]?/, "").replace(/^作业执行(成功|失败)：/, "");
+}
+
+// 单条运行记录：折叠时只显示「状态 + 一句话摘要 + 时间」，点开才看元信息与各步骤。
+// 定时任务页这里是把「父作业 + 各子作业」合并成一条的，全展开会非常长，折叠收益更大。
+function renderRunLog(run, index = 0) {
   const steps = run.steps || [];
   const successCount = steps.filter((step) => step.status === "成功").length;
   const failedCount = steps.filter((step) => step.status === "失败").length;
-  return `<div class="log-item ${run.status === "成功" ? "success" : "failed"}">
-    <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
-    <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms ?? "")} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
-    <div class="run-message">${escapeHtml(run.message)}</div>
-    ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
+  return `<details class="log-item ${run.status === "成功" ? "success" : "failed"}"${index === 0 ? " open" : ""}>
+    <summary>
+      <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
+      <em class="log-summary">${escapeHtml(runSummaryLine(run))}</em>
+      <time>${escapeHtml(run.started_at)}</time>
+    </summary>
+    <div class="log-body">
+      <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms ?? "")} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
+      <div class="run-message">${escapeHtml(run.message)}</div>
+      ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
       <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
       <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
       <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
     </div>`).join("")}
-  </div>`;
+    </div>
+  </details>`;
 }
 
 async function openLogDialog() {

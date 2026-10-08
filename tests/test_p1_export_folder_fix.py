@@ -483,7 +483,8 @@ def test_failed_run_lists_partial_outputs() -> None:
     message = str(run["message"])
     assert expected in message, "失败 message 必须含产物路径"
     assert "产出文件（1 个，失败前已落盘）：" in message
-    assert "最后错误" in message
+    # 2026-10-08 起失败原因统一写成「失败原因：…」（原来叫「最后错误：」且会嵌套套娃）
+    assert "失败原因" in message
     assert message.count(expected) == 1
 
     run_row, _ = fetch_run(str(run["id"]))
@@ -529,7 +530,8 @@ def test_failed_nested_job_same_file_keeps_single_outputs_block() -> None:
     assert message.count("产出文件（") == 1, f"「产出文件」表头只能出现 1 次：\n{message}"
     assert "产出文件（1 个，失败前已落盘）：" in message
     assert "no such table: p1_qa_missing" in message, "失败原因不得被剥掉"
-    assert "最后错误" in message
+    # 2026-10-08 起失败原因统一写成「失败原因：…」（原来叫「最后错误：」且会嵌套套娃）
+    assert "失败原因" in message
 
     run_row, step_rows = fetch_run(str(run["id"]))
     assert str(run_row["message"]) == message, "落库 message 必须与返回值一致"

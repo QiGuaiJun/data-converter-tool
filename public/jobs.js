@@ -96,9 +96,12 @@ function runMessageText(run) {
   if (!structured.length) return source;
   const keys = new Set(structured.map(outputPathKey));
   const lines = source.split(/\r?\n/).map((line) => line.trim());
+  // ⚠️ 这里必须用 "\n" 连接，**不能** join(" ")：日志里每一行都是独立语义
+  // （结论句 / 触发原因 / 未重跑说明 / 产出文件），拼成一整段会糊成一大坨，
+  // 这正是 2026-10-08 业主反馈"运行日志特别乱"的直接原因。
   const body = lines
     .filter((line) => line && !line.startsWith("产出文件") && !line.startsWith("（警告：") && !keys.has(outputPathKey(line)))
-    .join(" ");
+    .join("\n");
   const warnings = lines.filter((line) => line.startsWith("（警告："));
   const unique = [];
   const seen = new Set();
@@ -112,20 +115,42 @@ function runMessageText(run) {
   return [body, label, ...unique, ...warnings].filter(Boolean).join("\n");
 }
 
-function renderRunLog(run) {
+/** 折叠状态下显示的一句话摘要：失败优先给"失败原因"，成功给结论句。 */
+function runSummaryLine(run) {
+  const lines = runMessageText(run)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const reason = lines.find((line) => line.startsWith("失败原因："));
+  if (reason) return reason;
+  const first = lines[0] || "";
+  return first.replace(/^本次任务执行(成功|失败)[，,]?/, "").replace(/^作业执行(成功|失败)：/, "");
+}
+
+// 单条运行记录：折叠状态只显示「状态 + 一句话摘要 + 时间」，点开才看元信息与各步骤。
+// 2026-10-08：原来每条都全展开，8 条历史叠起来就是一面文字墙；改成折叠后能一眼扫完。
+// 最新一条默认展开（index 0），免得用户还要多点一次。
+function renderRunLog(run, index = 0) {
   const steps = run.steps || [];
   const successCount = steps.filter((step) => step.status === "成功").length;
   const failedCount = steps.filter((step) => step.status === "失败").length;
-  return `<div class="log-item ${runStateClass(run.status)}">
-    <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
-    <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms)} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
-    <div class="run-message">${escapeHtml(runMessageText(run))}</div>
-    ${steps.map((step) => `<div class="run-step ${runStateClass(step.status)}">
+  const summary = runSummaryLine(run);
+  return `<details class="log-item ${runStateClass(run.status)}"${index === 0 ? " open" : ""}>
+    <summary>
+      <strong>${escapeHtml(run.job_name)}<span>${escapeHtml(run.status)}</span></strong>
+      <em class="log-summary">${escapeHtml(summary)}</em>
+      <time>${escapeHtml(run.started_at)}</time>
+    </summary>
+    <div class="log-body">
+      <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms)} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
+      <div class="run-message">${escapeHtml(runMessageText(run))}</div>
+      ${steps.map((step) => `<div class="run-step ${runStateClass(step.status)}">
       <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
       <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
       <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
     </div>`).join("")}
-  </div>`;
+    </div>
+  </details>`;
 }
 
 async function loadConnections() {

@@ -199,3 +199,56 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# --------------------------------------------------------------- 运行日志文案整理
+# 2026-10-08 业主反馈"任务的运行日志特别乱"。乱在：父子嵌套套娃、括号段落重复、
+# 英文 Errno 直出。下面是纯字符串函数的用例（不碰数据库），守住这三条。
+
+_NESTED_SAMPLE = (
+    "作业执行失败：0 个步骤成功，1 个步骤失败，0 个步骤未启用。"
+    "最后错误：子作业执行失败：作业执行失败：2 个步骤成功，1 个步骤失败，0 个步骤未启用。"
+    "最后错误：[Errno 13] Permission denied: 'C://data//中秋试饮活动.xlsx'\n"
+    "（本次触发执行：源文件有更新 — C://data//云购商城销售数据源.xlsx）/n"
+    "（本次触发执行：源文件有更新 — C://data//云购商城销售数据源.xlsx）/n"
+    "（以下步骤本轮未重跑：源文件无更新 — 中秋权益导入）"
+)
+
+
+def test_compact_failure_reason_peels_nested_prefixes_and_translates():
+    """嵌套三层要能剥到最内层，并把 Errno 13 翻译成人话。"""
+    reason = server.compact_failure_reason(_NESTED_SAMPLE)
+    assert "子作业执行失败" not in reason, "嵌套前缀没剥干净"
+    assert "作业执行失败" not in reason
+    assert "最后错误" not in reason
+    assert "Permission denied" not in reason, "英文原始错误应被翻译掉"
+    assert "文件被占用" in reason or "没有权限" in reason
+    assert "中秋试饮活动.xlsx" in reason, "真实错误里的文件名必须保留"
+
+
+def test_compact_failure_reason_keeps_unknown_error_text():
+    """认不出来的错误不能吞掉 —— 原样保留，方便排查。"""
+    assert server.compact_failure_reason("no such table: 会员小票表") == "no such table: 会员小票表"
+    assert server.compact_failure_reason("") == "（无错误详情）"
+
+
+def test_translate_system_error_covers_common_cases():
+    assert "找不到文件" in server.translate_system_error("[Errno 2] No such file or directory: 'C://a.xlsx'")
+    assert "磁盘空间不足" in server.translate_system_error("[Errno 28] No space left on device")
+    assert "文件正被其他程序占用" in server.translate_system_error("[WinError 32] 另一个程序正在使用此文件")
+    # 认不出来的原样返回
+    assert server.translate_system_error("自定义错误") == "自定义错误"
+
+
+def test_dedupe_log_paragraphs_removes_exact_duplicates_only():
+    """只按整行精确去重：内容不同的两段（不同触发文件）不能被误合并。"""
+    text = "结论句\n（本次触发执行：A）\n（本次触发执行：A）\n（本次触发执行：B）"
+    out = server.dedupe_log_paragraphs(text)
+    assert out.count("（本次触发执行：A）") == 1
+    assert out.count("（本次触发执行：B）") == 1
+    assert out.startswith("结论句")
+
+
+def test_dedupe_log_paragraphs_keeps_normal_lines():
+    text = "第一行\n第二行\n第一行"
+    assert server.dedupe_log_paragraphs(text) == text, "非括号行不该被动"
