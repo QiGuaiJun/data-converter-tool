@@ -29,12 +29,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 
-DB_PATH = ROOT / "runtime" / "data" / "imports.db"
+from _env import load_env_file  # noqa: E402
+
+# ⚠️ 必须在 import server 之前加载 .env：云端 DATA_DIR 在应用目录之外，
+# 不加载会连到另一个（空的）库，表现为"日志一条都没有"。
+_ENV_USED = load_env_file()
 
 # 这些函数就在 server.py 里，直接复用 —— 保证"历史重写"与"新日志"走的是同一套规则，
 # 不会出现两套文案风格。
 from server import compact_failure_reason, dedupe_log_paragraphs  # noqa: E402
+
+# 与 server 用同一个真值来源，别再自己拼路径（否则又会连错库）
+DB_PATH = Path(str(__import__("server").DB_PATH))
 
 
 def normalize_message(text: str) -> str:
@@ -108,6 +116,7 @@ def main() -> int:
                 changes.append((table, str(row["id"]), str(row["message"]), new))
 
     print(f"库文件：{DB_PATH}（{DB_PATH.stat().st_size} 字节）")
+    print(f"环境文件：{_ENV_USED or '（未找到 .env，按默认路径取库）'}")
     print(f"需要改写的记录：{len(changes)} 条"
           f"（{sum(1 for c in changes if c[0] == '_job_runs')} 条运行 / "
           f"{sum(1 for c in changes if c[0] == '_job_run_steps')} 条步骤）")

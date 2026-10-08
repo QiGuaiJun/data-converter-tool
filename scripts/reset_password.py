@@ -42,34 +42,13 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 
-def load_env_file() -> str | None:
-    """像 systemd 的 EnvironmentFile 那样先加载应用的 .env。
+sys.path.insert(0, str(ROOT / "scripts"))
 
-    必须做：云端部署把 `DATA_DIR` 指到 `/opt/dc/runtime/data`（在应用目录**之外**），
-    直接跑脚本时环境变量不存在，会去连 `ROOT/runtime/data/imports.db` —— 那是另一个库，
-    表现为"账号不存在"，很容易误判成账号被删了。
-    """
-    for candidate in (os.environ.get("DC_ENV_FILE"), ROOT / ".env"):
-        if not candidate:
-            continue
-        path = Path(candidate)
-        if not path.is_file():
-            continue
-        for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            key = key.strip()
-            value = value.strip().strip("\"'")
-            # 已显式设置的以环境为准（便于临时覆盖）
-            os.environ.setdefault(key, value)
-        return str(path)
-    return None
+from _env import load_env_file  # noqa: E402
 
 
 def main() -> int:
-    env_used = load_env_file()
+    env_used = load_env_file()  # 见 scripts/_env.py：不先加载会连错库
 
     import server  # noqa: PLC0415  —— 必须在加载 .env 之后导入（DB_PATH 在导入时确定）
 
