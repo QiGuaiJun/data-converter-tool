@@ -841,6 +841,25 @@ body {
   padding-left: 24px;
 }
 
+/* 日志正文分层（2026-10-08）：标签行让「标签」固定宽度成列，路径行等宽字体。
+   只把换行显示出来还不够 —— 不分层的话仍是一大段同质文本，业主反馈的"没归类"。 */
+.run-message .log-line { display: block; }
+.run-message .log-line > b {
+  display: inline-block;
+  min-width: 78px;
+  padding-right: 6px;
+  color: #344054;
+  font-weight: 700;
+  vertical-align: top;
+}
+.run-message .log-line > b.log-wide { min-width: 0; }
+.run-message .log-path {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12.5px;
+  color: #475467;
+  word-break: break-all;
+}
+
 .schedule-run-list .log-item > summary > strong > span,
 .job-runs .log-item > summary > strong > span,
 .run-step > strong > span {
@@ -3312,7 +3331,11 @@ th {
 
 .job-grid {
   grid-template-columns: 340px minmax(420px, 1fr);
-  grid-template-rows: minmax(280px, 1fr) 250px;
+  /* 运行日志这一行原来被写死 250px —— 去掉面板头部只剩 ~183px 可视，
+     展开一条记录（内容 ~925px）就得在一个小框里翻。2026-10-08 改成随页面
+     高度伸缩、并让日志区拿到更大份额。
+     注意：文件前面还有一处 .job-grid（历史遗留），此处会覆盖它。 */
+  grid-template-rows: minmax(240px, 1fr) clamp(340px, 42vh, 560px);
   gap: 14px;
 }
 

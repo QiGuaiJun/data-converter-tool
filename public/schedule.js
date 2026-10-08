@@ -529,6 +529,42 @@ function runSummaryLine(run) {
 
 // 单条运行记录：折叠时只显示「状态 + 一句话摘要 + 时间」，点开才看元信息与各步骤。
 // 定时任务页这里是把「父作业 + 各子作业」合并成一条的，全展开会非常长，折叠收益更大。
+/** 把日志文本按行分层渲染：标签行（`标签：值`）的标签对齐加粗、路径行等宽、其余普通。
+ *  2026-10-08：业主反馈"该换行和归类并没有合理的处理"——只把 \n 显示出来还不够，
+ *  还需要在视觉上把「标签 / 值 / 路径」区分开，否则仍是一大段同质文本。 */
+function renderMessageLines(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "";
+      if (/^产出文件（/.test(trimmed)) {
+        return `<span class="log-line"><b class="log-wide">${escapeHtml(trimmed)}</b></span>`;
+      }
+      // 标签里不能出现括号或斜杠：否则 `源文件无更新（C://...）` 会被误判成
+      // 标签「源文件无更新（C」—— 盘符里的冒号把句子切断了（2026-10-08 实测踩到）。
+      const match = trimmed.match(/^([^：:（）()\\/]{2,8})[：:]\s*(.*)$/);
+      if (match) {
+        return `<span class="log-line"><b>${escapeHtml(match[1])}</b>${escapeHtml(match[2])}</span>`;
+      }
+      if (/^[A-Za-z]:[\\/]|^\\\\/.test(trimmed)) {
+        return `<span class="log-line log-path">${escapeHtml(trimmed)}</span>`;
+      }
+      return `<span class="log-line">${escapeHtml(line)}</span>`;
+    })
+    .join("");
+}
+
+/** 耗时人话化：47495 ms → 47.5 秒；小于 1 秒保留毫秒。 */
+function humanMs(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms < 0) return String(value ?? "");
+  if (ms < 1000) return `${ms} 毫秒`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} 秒`;
+  const minutes = Math.floor(ms / 60000);
+  return `${minutes} 分 ${Math.round((ms % 60000) / 1000)} 秒`;
+}
+
 function renderRunLog(run, index = 0) {
   const steps = run.steps || [];
   const successCount = steps.filter((step) => step.status === "成功").length;
@@ -540,12 +576,12 @@ function renderRunLog(run, index = 0) {
       <time>${escapeHtml(run.started_at)}</time>
     </summary>
     <div class="log-body">
-      <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(run.elapsed_ms ?? "")} ms</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
-      <div class="run-message">${escapeHtml(run.message)}</div>
+      <div class="run-meta-grid"><span><b>开始</b>${escapeHtml(run.started_at)}</span><span><b>结束</b>${escapeHtml(run.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(humanMs(run.elapsed_ms))}</span><span><b>步骤</b>成功 ${successCount} / 失败 ${failedCount}</span></div>
+      <div class="run-message">${renderMessageLines(run.message)}</div>
       ${steps.map((step) => `<div class="run-step ${step.status === "成功" ? "success" : "failed"}">
       <strong>步骤 ${step.step_index}：${escapeHtml(step.step_name)}<span>${escapeHtml(step.status)}</span></strong>
-      <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(step.elapsed_ms)} ms</span></div>
-      <div class="run-message">${escapeHtml(step.message || "无执行信息")}</div>
+      <div class="run-meta-grid step-meta"><span><b>类型</b>${escapeHtml(step.step_type)}</span><span><b>开始</b>${escapeHtml(step.started_at)}</span><span><b>结束</b>${escapeHtml(step.ended_at || "未结束")}</span><span><b>耗时</b>${escapeHtml(humanMs(step.elapsed_ms))}</span></div>
+      <div class="run-message">${renderMessageLines(step.message || "无执行信息")}</div>
     </div>`).join("")}
     </div>
   </details>`;

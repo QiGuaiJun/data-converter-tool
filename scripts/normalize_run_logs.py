@@ -83,12 +83,79 @@ def collapse_doubled_prefix(text: str) -> str:
     return out
 
 
+# ---------------------------------------------------------------- 旧格式 → 新格式
+# 2026-10-08 之前日志是「结论句 + （括号段落） + 分号长句」的写法；现在统一成
+# 「标签：值」一行一个维度。下面只认**已知的固定句式**，认不出一律原样保留（绝不丢信息）。
+_LEGACY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"^作业执行成功：(\d+) 个步骤成功，(\d+) 个步骤未启用。$"),
+     "执行结果：成功 · {0} 个步骤完成 · {1} 个未启用"),
+    (re.compile(r"^作业执行失败：(\d+) 个步骤成功，(\d+) 个步骤失败，(\d+) 个步骤未启用。$"),
+     "执行结果：失败 · {0} 个成功 · {1} 个失败 · {2} 个未启用"),
+    (re.compile(r"^（本次触发执行：源文件有更新 — (.*)）$"), "触发执行：源文件有更新 —— {0}"),
+    (re.compile(r"^（以下步骤本轮未重跑：源文件无更新 — (.*)）$"), "本轮未重跑：{0}（源文件无更新）"),
+    (re.compile(r"^（警告：以下源文件更新条件无法评估，本次已按「有更新」执行：(.*)）$"),
+     "更新条件无法评估：{0}（本次已按「有更新」执行）"),
+    (re.compile(r"^（警告：有文件写入服务端默认目录，说明对应导出步骤未配置目标文件夹）$"),
+     "警告：有文件写进服务端默认目录，说明对应导出步骤没配目标文件夹"),
+    (re.compile(r"^（(预检判定无新增.*。)）$"), "备注：{0}"),
+    (re.compile(r"^子作业执行成功：作业执行成功：(\d+) 个步骤成功，(\d+) 个步骤未启用。$"),
+     "子作业结果：成功 —— {0} 个步骤完成 · {1} 个未启用"),
+    (re.compile(r"^子作业执行失败：(\d+) 个步骤成功，(\d+) 个步骤失败，(\d+) 个步骤未启用。$"),
+     "子作业结果：失败 —— {0} 个成功 · {1} 个失败 · {2} 个未启用"),
+)
+
+_LEGACY_IMPORT_RE = re.compile(
+    r"^导入完成；来源：(?P<path>.*?)；文件：(?P<files>.*?)；目标表：(?P<tables>.*?)；"
+    r"读取 (?P<read>[\d,]+) 行，成功写入 (?P<written>[\d,]+) 行，"
+    r"更新 (?P<updated>[\d,]+) 行，跳过 (?P<skipped>[\d,]+) 行；"
+    r"数据库校验行数：(?P<verified>.*?)；(?P<sql>.*?)。?$"
+)
+_LEGACY_EXPORT_RE = re.compile(r"^导出 (?P<count>\d+) 个文件（(?P<rows>[\d,]+) 行）：(?P<paths>.*)$")
+_LEGACY_EXPORT_EMPTY_RE = re.compile(r"^导出 0 个文件，(?P<rows>[\d,]+) 行。$")
+
+
+def _convert_legacy_line(line: str) -> str | None:
+    """把一行旧格式文本转成新格式；不是已知句式就返回 None（由调用方原样保留）。"""
+    for pattern, template in _LEGACY_PATTERNS:
+        match = pattern.match(line)
+        if match:
+            return template.format(*match.groups())
+    match = _LEGACY_IMPORT_RE.match(line)
+    if match:
+        groups = match.groupdict()
+        return "\n".join([
+            f"目标表：{groups['tables']}",
+            f"来源：{groups['path']}",
+            f"行数：读取 {groups['read']} · 写入 {groups['written']}"
+            f" · 更新 {groups['updated']} · 跳过 {groups['skipped']}",
+            f"数据库复核：{groups['verified']}",
+            f"前置 SQL：{groups['sql']}",
+        ])
+    match = _LEGACY_EXPORT_RE.match(line)
+    if match:
+        paths = [item for item in match.group("paths").split("；") if item.strip()]
+        return "\n".join([f"导出文件：{match.group('count')} 个 · 共 {match.group('rows')} 行", *paths])
+    match = _LEGACY_EXPORT_EMPTY_RE.match(line)
+    if match:
+        return f"导出文件：0 个（共 {match.group('rows')} 行）"
+    return None
+
+
+def convert_legacy_message(text: str) -> str:
+    """逐行把旧格式改写成新格式；认不出的行原样保留。"""
+    out: list[str] = []
+    for raw in str(text or "").splitlines():
+        converted = _convert_legacy_line(raw.strip())
+        out.append(converted if converted is not None else raw)
+    return "\n".join(out)
+
+
 def normalize_message(text: str) -> str:
     """把一条运行/步骤日志重写成新格式。"""
     original = str(text or "")
     if not original.strip():
         return original
-    deduped = collapse_doubled_prefix(dedupe_log_paragraphs(original))
+    deduped = collapse_doubled_prefix(dedupe_log_paragraphs(convert_legacy_message(original)))
     if "最后错误：" not in deduped:
         # 没有嵌套的（成功记录、步骤行）：把裸的英文系统错误翻成人话 +
         # 把漏进来的 Python 字典字面量排成人话。两者对正常文本都是空操作。

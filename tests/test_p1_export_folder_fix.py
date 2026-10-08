@@ -771,7 +771,9 @@ def test_frontend_jobs_page_renders_outputs_field_once_and_degrades_for_legacy_r
     assert html.count(output_file) == 1, f"详情页只能列一次产物路径：{html}"
     assert html.count("产出文件（1 个，失败前已落盘）：") == 1
     assert html.count("产出文件（") == 1
-    assert "作业执行成功：1 个步骤成功，0 个步骤未启用。" in html, "历史记录必须原样渲染，不能报错/丢信息"
+    # 2026-10-08 起日志正文分层渲染（标签加粗成列），所以"原样子串"不再成立；
+    # 这条要守的是"历史记录不报错、不丢信息"，改为分段断言内容仍在。
+    assert "作业执行成功" in html and "1 个步骤成功，0 个步骤未启用。" in html, "历史记录必须原样渲染，不能报错/丢信息"
 
 
 # ---------------------------------------------------------------------------

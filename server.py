@@ -5197,17 +5197,47 @@ def is_server_default_export(path_text: str) -> bool:
 
 
 def format_export_step_message(files: list[str], rows: int) -> str:
-    """拼装导出步骤的运行日志文本，逐个列出产物的绝对路径。
+    """拼装导出步骤的运行日志：一行一个维度，产物路径逐行列出。
 
     只写"导出 N 个文件，M 行"时用户无法知道文件落在哪，所以把绝对路径一并写入；
     若全部产物都落在服务端默认目录，则附加警告（说明该步骤没配目标文件夹）。
     """
     if not files:
-        return f"导出 0 个文件，{rows} 行。"
-    message = f"导出 {len(files)} 个文件（{rows} 行）：" + "；".join(files)
+        return f"导出文件：0 个（共 {rows} 行）"
+    lines = [f"导出文件：{len(files)} 个 · 共 {rows} 行"]
+    lines.extend(files)
     if all(is_server_default_export(item) for item in files):
-        message += "（警告：该导出步骤未配置目标文件夹，文件已写入服务端默认目录）"
-    return message
+        lines.append("警告：该导出步骤未配置目标文件夹，文件写进了服务端默认目录")
+    return "\n".join(lines)
+
+
+def format_import_step_message(result: dict[str, object]) -> str:
+    """拼装导入步骤的运行日志：**一行一个维度**。
+
+    原写法是一句长句（「导入完成；来源：…；文件：…；目标表：…；读取 N 行，成功写入 M 行，
+    更新 0 行，跳过 0 行；数据库校验行数：…；执行前 SQL：已执行。」），业务用户在一堆分号里
+    找不到自己关心的那一项 —— 2026-10-08 业主反馈"该换行和归类并没有合理的处理"，这是主因。
+    现在改成标签行；来源只留完整路径（文件名是路径的一部分，重复写一遍纯属噪音）。
+    """
+    verified = result.get("verifiedRows")
+    if isinstance(verified, dict):
+        verified_text = "、".join(f"{name} {count} 行" for name, count in verified.items())
+    else:
+        verified_text = str(verified)
+
+    lines = [
+        f"目标表：{'、'.join(result['tableNames'])}",  # type: ignore[arg-type]
+        f"来源：{result['sourcePath']}",
+        (
+            f"行数：读取 {result['rowsRead']} · 写入 {result['rowsWritten']}"
+            f" · 更新 {result['rowsUpdated']} · 跳过 {result['rowsSkipped']}"
+        ),
+        f"数据库复核：{verified_text}",
+        f"前置 SQL：{result['sqlStatus']}",
+    ]
+    if result.get("warning"):
+        lines.append(f"提示：{result['warning']}")
+    return "\n".join(lines)
 
 
 def output_dedupe_key(path: str) -> str:
@@ -5328,7 +5358,9 @@ _ERROR_TRANSLATIONS: tuple[tuple[str, str], ...] = (
     (r"\[WinError 112\]", "磁盘空间不足，请清理磁盘后重试"),
 )
 
-_NESTED_PREFIX_RE = re.compile(r"^(失败原因|(子作业|作业)(「[^」]*」)?(执行失败|已跳过|执行成功))\s*[:：]\s*")
+_NESTED_PREFIX_RE = re.compile(
+    r"^(失败原因|(子作业|作业)(「[^」]*」)?(失败原因|结果|执行失败|已跳过|执行成功))\s*[:：]\s*"
+)
 _STEP_SUMMARY_RE = re.compile(r"^\d+\s*个步骤(成功|失败|未启用)[^。]*。\s*")
 
 
@@ -5369,18 +5401,27 @@ def compact_failure_reason(text: str) -> str:
     return translate_system_error(current) or "（无错误详情）"
 
 
-def dedupe_log_paragraphs(text: str) -> str:
-    """同一条运行日志里**逐字重复**的「（…）」段落只保留第一次。
+_LABEL_LINE_RE = re.compile(
+    r"^(执行结果|失败原因|触发执行|本轮未重跑|更新条件无法评估|备注|提示|产出文件"
+    r"|目标表|来源|行数|数据库复核|前置 SQL|影响/读取|导出文件|子作业结果|子作业失败原因)\s*[:：]"
+)
 
-    父子作业嵌套时，「（本次触发执行：…）」会被内嵌一次、外层再追加一次 ——
+
+def dedupe_log_paragraphs(text: str) -> str:
+    """同一条运行日志里**逐字重复的标签行**只保留第一次。
+
+    父子作业嵌套时，子作业的「触发执行：…」会被内嵌一次、外层再追加一次 ——
     两次内容完全相同，用户看到的就是"同一句话说了两遍"。
-    只按整行精确匹配去重，内容不同（比如两个不同的触发文件）不会误合并。
+    只按整行精确匹配去重；内容不同（比如两个不同的触发文件）不会误合并。
+
+    2026-10-08 之前日志段落写成「（本次触发执行…）」，所以按括号前缀判断；
+    现在统一成「标签：值」的行，这里改成认标签行（两种都认，历史数据也能处理）。
     """
     seen: set[str] = set()
     kept: list[str] = []
     for line in str(text or "").splitlines():
         stripped = line.strip()
-        if stripped.startswith("（"):
+        if stripped.startswith("（") or _LABEL_LINE_RE.match(stripped):
             if stripped in seen:
                 continue
             seen.add(stripped)
@@ -5513,9 +5554,11 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     # 以及"哪条守卫没评估成功、已被当作有更新处理"——都是用户排查配置的依据。
     guard_note_text = ""
     if guard_notes:
-        guard_note_text = "\n（警告：以下源文件更新条件无法评估，本次已按「有更新」执行：" + "；".join(guard_notes) + "）"
+        guard_note_text = (
+            "\n更新条件无法评估：" + "；".join(guard_notes) + "（本次已按「有更新」执行）"
+        )
     elif guard_changed:
-        guard_note_text = "\n（本次触发执行：源文件有更新 — " + "、".join(dict.fromkeys(guard_changed)) + "）"
+        guard_note_text = "\n触发执行：源文件有更新 —— " + "、".join(dict.fromkeys(guard_changed))
 
     # 步骤级跳过的明细（作业照常执行，但源文件没变的导入步骤不重跑）：逐个列在运行日志里，
     # 否则用户看到"本次触发执行"却不知道还有步骤被跳过了，会误以为数据被完整重导了一遍。
@@ -5587,23 +5630,10 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
             config = step.get("config") if isinstance(step.get("config"), dict) else {}
             if step_type == "import":
                 config = resolve_import_step_config(config)
-                result = execute_import_step(config)
-                # verifiedRows 是 {表名: 行数}，直接 f-string 会把 Python 字典原样漏到界面上
-                # （`数据库校验行数：{'云购商城销售数据表': 104496}`），排成人话（2026-10-08）
-                verified = result["verifiedRows"]
-                verified_text = (
-                    "、".join(f"{name} {count} 行" for name, count in verified.items())
-                    if isinstance(verified, dict)
-                    else str(verified)
-                )
-                step_message = (
-                    f"导入完成；来源：{result['sourcePath']}；文件：{', '.join(result['fileNames'])}；"
-                    f"目标表：{', '.join(result['tableNames'])}；读取 {result['rowsRead']} 行，"
-                    f"成功写入 {result['rowsWritten']} 行，更新 {result['rowsUpdated']} 行，跳过 {result['rowsSkipped']} 行；"
-                    f"数据库校验行数：{verified_text}；{result['sqlStatus']}。"
-                )
-                if result.get("warning"):
-                    step_message += f"\n{result['warning']}"
+                # warning 由 format_import_step_message 内部追加（别再引用 result，
+                # 2026-10-08 抽函数时漏删了 `if result.get("warning")`，导致每个导入步骤
+                # 都抛 NameError、整条作业全红）
+                step_message = format_import_step_message(execute_import_step(config))
             elif step_type == "export":
                 try:
                     result = run_export_job(config)
@@ -5616,7 +5646,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 step_message = format_export_step_message(step_files, int(result["rows"]))
             elif step_type == "query":
                 result = execute_query_step(config)
-                step_message = f"SQL 执行完成，影响/读取 {result['rows']} 行。"
+                step_message = f"影响/读取：{result['rows']} 行"
             elif step_type == "job":
                 nested = str(config.get("jobId") or "")
                 nested_result = run_saved_job(nested, schedule_id, visited.copy())
@@ -5631,7 +5661,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                 if nested_result["status"] == "跳过":
                     # 子作业因"源文件无更新"等执行条件跳过，这不是故障。若按失败抛出，
                     # 用户会在"确实没有新数据"时看到一条红色失败记录，误判成系统坏了。
-                    step_message = f"子作业已跳过：{strip_outputs_block(nested_message, nested_outputs)}"
+                    step_message = f"子作业结果：跳过 —— {strip_outputs_block(nested_message, nested_outputs)}"
                 elif nested_result["status"] != "成功":
                     # 步骤行也只留一句人话：这里原样内嵌子作业整段 message 的话，
                     # 步骤行会出现「子作业执行失败：作业执行失败：…最后错误：…」的长文，
@@ -5639,18 +5669,17 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     nested_reason = compact_failure_reason(
                         strip_outputs_block(nested_message, nested_outputs)
                     )
-                    step_label = str(step.get("name") or f"第 {index} 步")
                     print(
                         f"[job] 子作业失败 job_id={nested}：{nested_message}",
                         flush=True,
                     )
-                    raise ValueError(f"子作业「{step_label}」执行失败：{nested_reason}")
+                    raise ValueError(f"子作业失败原因：{nested_reason}")
                 else:
                     # 子作业的首行自带「作业执行成功：」前缀，别再叠一层 ——
                     # 否则步骤行会写成「子作业执行成功：作业执行成功：3 个步骤成功…」。
                     nested_first = (nested_message.splitlines() or [""])[0]
                     nested_first = _NESTED_PREFIX_RE.sub("", nested_first).strip()
-                    step_message = f"子作业执行成功：{nested_first}"
+                    step_message = f"子作业结果：成功 —— {nested_first}"
             elif step_type == "sync":
                 raise ValueError("同步模块尚未开放。")
             else:
@@ -5682,13 +5711,13 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     outputs = dedupe_export_outputs(outputs)
     ended = dt.datetime.now()
     if status == "成功":
-        message = f"作业执行成功：{completed_steps} 个步骤成功，{skipped_steps} 个步骤未启用。"
+        message = f"执行结果：成功 · {completed_steps} 个步骤完成 · {skipped_steps} 个未启用"
         if outputs:
             # 逐行列出产物绝对路径（前端按行渲染），用户点「立即运行」后一眼能看到文件在哪
             message += format_outputs_block(outputs)
             if any(is_server_default_export(item) for item in outputs):
                 # 顶层反馈也要提示，否则用户只看到一条服务端 exports 路径，意识不到是配置漏填
-                message += "\n（警告：有文件写入服务端默认目录，说明对应导出步骤未配置目标文件夹）"
+                message += "\n提示：有文件写进服务端默认目录，说明对应导出步骤没配目标文件夹"
         # 作业整体成功后才更新文件守卫指纹（下次执行以此为基线比对）。
         # 基线写在"守卫所属的那个作业"的 job_id 下（嵌套子作业用自己的 id），
         # 与 _guard_summary 的复合键保持一致，否则父子作业会互相覆盖基线。
@@ -5706,7 +5735,9 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
         # 原来的写法把 last_error 原样拼进来，父子嵌套时会变成
         # 「子作业执行失败：作业执行失败：…最后错误：[Errno 13] Permission denied: …」。
         reason = compact_failure_reason(str(last_error)) if last_error else ""
-        message = f"作业执行失败：{completed_steps} 个步骤成功，{failed_steps} 个步骤失败，{skipped_steps} 个步骤未启用。"
+        message = (
+            f"执行结果：失败 · {completed_steps} 个成功 · {failed_steps} 个失败 · {skipped_steps} 个未启用"
+        )
         if reason:
             message += f"\n失败原因：{reason}"
         if outputs:
@@ -5718,7 +5749,7 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
     if guard_note_text:
         message += guard_note_text
     if guard_skipped_steps:
-        message += "\n（以下步骤本轮未重跑：源文件无更新 — " + "、".join(guard_skipped_steps) + "）"
+        message += "\n本轮未重跑：" + "、".join(guard_skipped_steps) + "（源文件无更新）"
     # 最后一道：父子嵌套会把同样的括号段落带进来两次（如「本次触发执行」），去重后再落库
     message = dedupe_log_paragraphs(message)
     with connect_db() as conn:
@@ -6114,7 +6145,7 @@ def run_schedule_once(schedule_id: str) -> None:
             if cancel_note:
                 _append_run_message(
                     str(result.get("id") or ""),
-                    f"\n（预检判定无新增本可跳过，但复核发现源文件在预检后又发生变化（{cancel_note}），已取消跳过并执行本轮作业。）",
+                    f"\n备注：预检判定无新增本可跳过，但复核发现源文件在预检后又发生变化（{cancel_note}），已取消跳过并执行本轮作业",
                 )
     except Exception as exc:
         status = "失败"
