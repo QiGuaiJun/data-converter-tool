@@ -1,6 +1,6 @@
 const modules = {
   connections: { title: "新建连接", icon: "DB", color: "green", body: "管理数据库连接、测试连接、保存连接分组。当前连接弹窗仍保留在导入页，下一步可迁移到此独立页面。" },
-  sync: { title: "同步", icon: "SYNC", color: "red", status: "未开放", body: "配置数据库到数据库同步任务，包含源库、目标库、字段映射、同步模式和执行日志。" },
+  sync: { title: "同步", icon: "SYNC", color: "red", body: "配置数据库到数据库同步任务，包含源库、目标库、字段映射、同步模式和执行日志。" },
   query: { title: "查询", icon: "SQL", color: "dark", body: "执行 SQL 查询、保存常用查询、查看结果，并可把查询结果交给导出模块。" },
   tables: { title: "表", icon: "TAB", color: "blue", body: "查看数据库表、字段、行数、DDL 和数据预览。" },
   jobs: { title: "作业", icon: "JOB", color: "teal", body: "组合导入、导出、同步、查询子任务，配置执行顺序和失败策略。" },

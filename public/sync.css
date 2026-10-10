@@ -1,0 +1,1037 @@
+/* ==========================================================================
+   同步模块 · 无限画布
+   页面只有：画布 + 右下三个按钮 + 左下缩放控件。
+   节点卡面 = 步骤徽章 + 图标 + 标题 + 右侧状态 + 3 行要点；点节点才展开完整配置。
+   ========================================================================== */
+.sync-page-root,
+.canvas-view {
+  overflow: hidden;
+}
+
+.canvas-view .stage {
+  position: relative;
+  /* 画布填满"内容区减去顶部工具条"的剩余高度 —— 不是整屏（ribbon 与侧栏还在）。
+     min-width 必须给 0，否则面板让位时它不肯收缩，会把自己挤到侧栏底下。 */
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  background: #fff;
+  background-image: radial-gradient(circle, #ededed 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+.canvas-view .stage.dragging {
+  cursor: grabbing;
+}
+.canvas-view .world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3000px;
+  height: 2000px;
+  transform-origin: 0 0;
+}
+.canvas-view .edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3000px;
+  height: 2000px;
+  overflow: visible;
+  pointer-events: none;
+}
+.canvas-view .edge {
+  fill: none;
+  stroke: #cfcfcf;
+  stroke-width: 1.4;
+}
+.canvas-view .flow-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+}
+.canvas-view .edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid #dcdcdc;
+  border-radius: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  line-height: 16px;
+  color: #8a8a8a;
+}
+
+/* ---------------------------------------------------------- 节点卡片 */
+.canvas-view .node {
+  position: absolute;
+  width: 340px;
+  padding: 12px 14px 0;
+  background: #fff;
+  border: 1px solid #e4e4e4;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 8px 22px rgba(16, 24, 40, 0.055);
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.canvas-view .node:hover {
+  border-color: #d6d6d6;
+}
+.canvas-view .node.start {
+  background: #f4f6fd;
+  border-color: #e3e9f8;
+}
+.canvas-view .node.terminal {
+  background: #fbfbfb;
+  border-color: #e8e8e8;
+}
+.canvas-view .node.selected {
+  border-color: #e8bd51;
+  box-shadow: 0 0 0 3px rgba(232, 189, 81, 0.2), 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.canvas-view .n-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.canvas-view .n-step {
+  flex: 0 0 auto;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: #7fc67f;
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.canvas-view .n-step.gray {
+  background: #c7c7c7;
+}
+.canvas-view .n-ico {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1;
+}
+.canvas-view .ico-green {
+  background: #7fc67f;
+}
+.canvas-view .ico-blue {
+  background: #5b8ddb;
+}
+.canvas-view .ico-amber {
+  background: #e8bd51;
+}
+.canvas-view .ico-gray {
+  background: #c2c2c2;
+}
+.canvas-view .n-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2f2f2f;
+  letter-spacing: 0.2px;
+}
+.canvas-view .n-state {
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: 152px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: #7a7a7a;
+  background: #f4f4f4;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.canvas-view .n-state.warn {
+  color: #c9932b;
+  background: #fdf6e8;
+}
+.canvas-view .n-state.ok {
+  color: #4a9d4a;
+  background: #f0f8f0;
+}
+.canvas-view .n-state.bad {
+  color: #c0504d;
+  background: #fdf0ef;
+}
+.canvas-view .n-lines {
+  padding: 9px 0 0;
+}
+.canvas-view .n-line {
+  position: relative;
+  padding-left: 14px;
+  line-height: 1.6;
+  margin-top: 2px;
+  word-break: break-word;
+  color: #3d3d3d;
+  font-size: 12px;
+}
+.canvas-view .n-line::before {
+  content: "•";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  color: #e8bd51;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.canvas-view .n-line b {
+  color: #c9932b;
+  font-weight: 600;
+}
+.canvas-view .n-line b::after {
+  content: "：";
+}
+
+/* ＋ / − 在卡片右下角 */
+.canvas-view .n-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  border-top: 1px solid #f1f1f1;
+  margin-top: 11px;
+  padding: 7px 0 8px;
+}
+.canvas-view .n-foot button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid #e2e2e2;
+  background: #fff;
+  color: #8a8a8a;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.canvas-view .n-foot button:hover:not([disabled]) {
+  border-color: #7fc67f;
+  color: #2f8043;
+}
+.canvas-view .n-foot button.op-del:hover:not([disabled]) {
+  border-color: #dc9a9a;
+  color: #c96a6a;
+}
+.canvas-view .n-foot button[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   组件区 —— 一律走主题变量（--canvas / --panel / --hairline / --primary / --r-*）
+   --------------------------------------------------------------------------
+   与导入、导出、作业、定时任务是**同一套**视觉：米白底、暖灰 1px 边、
+   12px 圆角、14px 字号、陶土色主按钮、无阴影。
+   按钮与输入框不再单独定义外观 —— 全局 button / input / select 已由 theme.css 驱动，
+   这里只补"摆哪儿、多宽"这类布局。
+   节点（.node / .n-head / .n-line …）不在这里：那块业主自己会重新设计。
+   ========================================================================== */
+
+/* ---------------------------------------------------------- 左下缩放 / 右下按钮 */
+.canvas-view .flow-hud {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+}
+.canvas-view .flow-hud button {
+  width: 30px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1;
+}
+.canvas-view .flow-hud button:not(:disabled):hover {
+  background: var(--surface-card);
+  transform: none;
+  box-shadow: none;
+}
+.canvas-view .zoomval {
+  min-width: 46px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 右下三个按钮：外观交给全局 button，这里只负责摆位置。
+   ⚠️ bottom 要抬到 62px：shell.js 注入的「素色」开关固定在 right:12px bottom:12px，
+   贴底会让「立即同步」点不到。 */
+.canvas-view .flow-actions {
+  position: absolute;
+  right: 16px;
+  bottom: 62px;
+  display: flex;
+  gap: 8px;
+  z-index: 10;
+}
+
+/* ---------------------------------------------------------------- 视图与骨架 */
+.sync-view {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.sync-view.on {
+  display: flex;
+}
+/* 画布视图自己撑满内容区，不留滚动 */
+.canvas-view.on {
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------- 工具条（两层共用） */
+/* 与作业页 .job-toolbar 同一张卡片：圆角 12 / 1px 暖灰边 / 米白底 / 高 48 */
+body[data-page="sync"] .sync-toolbar {
+  flex: 0 0 auto;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  box-sizing: border-box;
+}
+/* 只给状态文字定样式 —— 不要写成 `.sync-toolbar span`，那会把画布顶部条里的
+   任务名和保存状态徽章一起吃掉（它们也是 span）。 */
+body[data-page="sync"] #listStatus {
+  margin-left: auto;
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+/* 画布顶部条：左边「← 同步任务」，中间任务名，右边保存状态 */
+.canvas-view .tb-name {
+  padding-left: 12px;
+  border-left: 1px solid var(--hairline);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- 徽章 */
+.cb-flag,
+.off-tag {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-card);
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  white-space: nowrap;
+}
+.cb-flag.new,
+.cb-flag.dirty {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+.cb-flag.saved {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.off-tag {
+  margin-left: 6px;
+}
+.st {
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+}
+.st.ok {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.st.bad {
+  background: var(--error-bg);
+  color: var(--error);
+}
+body[data-page="sync"] .muted {
+  color: var(--muted-soft);
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- 卡片面板 */
+body[data-page="sync"] .sync-panel {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  overflow: hidden;
+}
+body[data-page="sync"] .sync-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+body[data-page="sync"] .sync-panel-head strong {
+  font-size: 14px;
+  color: var(--ink);
+}
+body[data-page="sync"] .sync-count {
+  color: var(--muted-soft);
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- 任务表 */
+body[data-page="sync"] .sync-table-wrap {
+  overflow: auto;
+}
+body[data-page="sync"] .sync-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 14px;
+}
+body[data-page="sync"] .sync-table th {
+  height: 34px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+}
+body[data-page="sync"] .sync-table td {
+  height: 36px;
+  padding: 4px 14px;
+  border-bottom: 1px solid var(--hairline-soft);
+  color: var(--body);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body[data-page="sync"] .sync-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+body[data-page="sync"] .sync-table tbody tr {
+  cursor: pointer;
+}
+body[data-page="sync"] .sync-table tbody tr:hover td {
+  background: var(--surface-soft);
+}
+body[data-page="sync"] .sync-table tbody tr.on td {
+  background: var(--surface-card);
+}
+body[data-page="sync"] .sync-table .c-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+body[data-page="sync"] .sync-table th:nth-child(1) { width: 26%; }
+body[data-page="sync"] .sync-table th:nth-child(2) { width: 22%; }
+body[data-page="sync"] .sync-table th:nth-child(3) { width: 22%; }
+body[data-page="sync"] .sync-table th:nth-child(4) { width: 12%; }
+body[data-page="sync"] .sync-table th:nth-child(5) { width: 18%; }
+body[data-page="sync"] .sync-empty {
+  padding: 18px 14px;
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- 运行历史 */
+body[data-page="sync"] .sync-runs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  color: var(--muted-soft);
+  font-size: 13px;
+}
+body[data-page="sync"] .run-row {
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+body[data-page="sync"] .run-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+body[data-page="sync"] .run-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+body[data-page="sync"] .run-err {
+  margin-top: 4px;
+  color: var(--error);
+  font-size: 12.5px;
+}
+body[data-page="sync"] .sync-tip {
+  margin: 0;
+  color: var(--muted-soft);
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- 画布区 */
+.canvas-view .canvas-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+}
+/* 面板**盖在**画布上，画布尺寸与缩放保持原样（业主 2026-10-10 明确要求：
+   开着面板时不要缩略，遮住就遮住）。 */
+.canvas-view .drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 632px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas);
+  border-left: 1px solid var(--hairline);
+  transform: translateX(101%);
+  transition: transform 0.22s ease;
+}
+.canvas-view .drawer.open {
+  transform: translateX(0);
+}
+.canvas-view .dw-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--panel);
+}
+.canvas-view .dw-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  background: var(--surface-card);
+  font-size: 13px;
+}
+.canvas-view .dw-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.canvas-view .dw-sub {
+  color: var(--muted-soft);
+  font-size: 12.5px;
+}
+.canvas-view .dw-close {
+  margin-left: auto;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+.canvas-view .dw-close:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--canvas);
+  transform: none;
+  box-shadow: none;
+}
+.canvas-view .dw-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 20px 18px;
+}
+.canvas-view .dw-foot {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 88px 10px 20px;
+  border-top: 1px solid var(--hairline);
+  background: var(--panel);
+}
+
+/* ---------------------------------------------------------------- 面板表单 */
+.canvas-view .frm-sec {
+  padding-top: 18px;
+}
+.canvas-view .frm-sec:first-child {
+  padding-top: 14px;
+}
+.canvas-view .frm-sec > h4 {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--hairline-soft);
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.canvas-view .frm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.canvas-view .frm-lab {
+  flex: 0 0 92px;
+  text-align: right;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 34px;
+}
+.canvas-view .frm-lab.req::before {
+  content: "*";
+  color: var(--error);
+  margin-right: 3px;
+}
+.canvas-view .frm-ctl {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* 输入控件只补布局：宽占满一行。外观（边框 / 圆角 / 聚焦）交给全局
+   input / select / textarea —— 它们已经由 theme.css 驱动，别再自己画一套。 */
+.canvas-view .inp,
+.canvas-view .sel,
+.canvas-view textarea.inp {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.canvas-view .inp.sm {
+  width: 110px;
+}
+.canvas-view textarea.inp {
+  min-height: 96px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.canvas-view .hint {
+  margin: 6px 0 0;
+  color: var(--muted-soft);
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.canvas-view .hint.warn {
+  color: var(--warning);
+}
+.canvas-view .hint.bad {
+  color: var(--error);
+}
+.canvas-view .dim {
+  color: var(--muted-soft);
+}
+.canvas-view .inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.canvas-view .unit {
+  color: var(--muted-soft);
+  font-size: 12.5px;
+  line-height: 34px;
+}
+
+/* 取数方式：整表 / 自定义 SQL 两段 */
+.canvas-view .seg2 {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+.canvas-view .seg2 button {
+  min-height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.canvas-view .seg2 button:not(:disabled):hover {
+  background: transparent;
+  color: var(--ink);
+  transform: none;
+  box-shadow: none;
+}
+.canvas-view .seg2 button.on {
+  background: var(--canvas);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 同步模式四张卡 */
+.canvas-view .opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.canvas-view .opt {
+  width: 174px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  cursor: pointer;
+}
+.canvas-view .opt:hover {
+  border-color: var(--primary);
+}
+.canvas-view .opt.on {
+  border-color: var(--primary);
+  background: var(--surface-card);
+}
+.canvas-view .opt.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.canvas-view .opt-t {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.canvas-view .opt-d {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.canvas-view .opt-tag {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 400;
+}
+.canvas-view .opt-tag.rec {
+  background: var(--success-bg);
+  color: var(--success);
+}
+.canvas-view .opt-tag.lim {
+  background: var(--surface-card);
+  color: var(--muted);
+}
+
+/* 列清单（多选） */
+.canvas-view .cols {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--panel);
+}
+.canvas-view .colrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--body);
+  cursor: pointer;
+}
+.canvas-view .colrow.chk > i {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+}
+.canvas-view .colrow.chk.on > i {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.canvas-view .colrow .nm {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.canvas-view .colrow .ty {
+  color: var(--muted-soft);
+  font-size: 12px;
+}
+.canvas-view .colrow:hover {
+  background: var(--surface-soft);
+}
+
+/* 只读块（由别的节点推导出来的配置） */
+.canvas-view .locked {
+  padding: 9px 11px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.canvas-view .locked b {
+  color: var(--ink);
+}
+
+/* 开关 */
+.canvas-view .chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--body);
+  cursor: pointer;
+}
+.canvas-view .chk > i {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xs);
+  background: var(--canvas);
+}
+.canvas-view .chk.on > i {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+/* ---------------------------------------------------------------- 对话框 */
+/* 卡片样式与作业、定时任务、连接页共用同一组（styles.css 的 .job-dialog-card 组），
+   这里只补同步自己的类名与内部块。 */
+body[data-page^="sync"] .sync-dialog {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+body[data-page^="sync"] .sync-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.22);
+}
+body[data-page^="sync"] .sync-dialog-card {
+  width: min(820px, 94vw);
+  max-height: 90vh;
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-xl);
+  background: var(--canvas);
+  box-shadow: none;
+}
+body[data-page^="sync"] .sync-dialog-card.narrow {
+  width: min(480px, 94vw);
+}
+body[data-page^="sync"] .sync-dialog-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+body[data-page^="sync"] .sync-dialog-card > header strong {
+  font-size: 15px;
+  color: var(--ink);
+}
+body[data-page^="sync"] .sync-dialog-card > header button {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--canvas);
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+}
+body[data-page^="sync"] .sync-dialog-card > header button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--canvas);
+  transform: none;
+  box-shadow: none;
+}
+body[data-page^="sync"] .sync-dialog-body {
+  color: var(--body);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+body[data-page^="sync"] .sync-dialog-body .ln {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+body[data-page^="sync"] .sync-dialog-body .ln:last-child {
+  border-bottom: 0;
+}
+body[data-page^="sync"] .sync-dialog-body .ln span:first-child {
+  color: var(--muted-soft);
+}
+body[data-page^="sync"] .sync-dialog-body .ln span:last-child {
+  text-align: right;
+  color: var(--ink);
+}
+body[data-page^="sync"] .sync-dialog-body ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+body[data-page^="sync"] .sync-dialog-card > footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+body[data-page^="sync"] .sync-dialog-card > footer button.danger {
+  border-color: var(--error);
+  background: var(--error);
+  color: #fff;
+}
+
+/* ==========================================================================
+   连线拖拽 + 新增节点菜单（2026-10-10 业主新增交互）
+   ========================================================================== */
+/* 目标端的小圆点：拖它把这条线改接到别的节点 */
+.canvas-view .edge-hook {
+  fill: var(--canvas);
+  stroke: var(--primary);
+  stroke-width: 1.6;
+  pointer-events: auto; /* .edges 整体是 none，这里必须单独打开 */
+  cursor: crosshair;
+}
+.canvas-view .edge-hook:hover {
+  fill: var(--primary);
+}
+/* 拖拽中的临时线 */
+.canvas-view .edge.temp {
+  stroke: var(--primary);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+}
+/* 可落点 / 当前悬停的落点 */
+.canvas-view .node.drop-ok {
+  outline: 2px dashed var(--primary);
+  outline-offset: 3px;
+}
+.canvas-view .node.drop-hot {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.canvas-view .add-menu {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 184px;
+  padding: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-lg);
+  background: var(--canvas);
+  box-shadow: 0 12px 32px rgba(41, 37, 30, 0.18);
+}
+.canvas-view .add-menu[hidden] {
+  display: none;
+}
+.canvas-view .am-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: transparent;
+  box-shadow: none;
+  color: var(--body);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.canvas-view .am-item:not(:disabled):hover {
+  background: var(--surface-card);
+  transform: none;
+  box-shadow: none;
+}
+.canvas-view .am-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  background: var(--surface-card);
+  font-size: 12px;
+}
+.canvas-view .am-title {
+  flex: 1 1 auto;
+}
+.canvas-view .am-rec {
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 11px;
+}
+
+/* 节点可以拖着挪位置（业主 2026-10-10）。只补指针样式，节点外观不在这里改。 */
+.canvas-view .node {
+  cursor: move;
+}
+.canvas-view .node.moving {
+  cursor: grabbing;
+  z-index: 5; /* 拖动时压在别的节点上面 */
+}

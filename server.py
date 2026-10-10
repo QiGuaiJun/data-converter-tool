@@ -21,6 +21,7 @@ import zipfile
 from collections.abc import Iterable, Iterator
 from contextlib import nullcontext
 from dataclasses import dataclass
+from decimal import Decimal
 from email.message import EmailMessage
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
@@ -426,6 +427,77 @@ def connect_db() -> sqlite3.Connection:
             updated_at text not null
         )
         """
+    )
+    # ---- 同步模块（2026-10-08 起）----
+    # 任务配置与水位**分两张表**：任务配置会被用户随时编辑，水位必须独立存活，
+    # 否则改一次名称/映射就会把「同步到哪儿了」弄丢（丢水位 = 下次要么重跑要么漏数据）。
+    conn.execute(
+        """
+        create table if not exists _sync_tasks (
+            id text primary key,
+            name text not null,
+            source_connection_id text not null default '',
+            source_mode text not null default 'table',
+            source_table text not null default '',
+            source_sql text not null default '',
+            target_connection_id text not null default '',
+            target_table text not null default '',
+            columns_json text not null default '[]',
+            sync_mode text not null default 'full',
+            key_columns_json text not null default '[]',
+            watermark_column text not null default '',
+            batch_rows integer not null default 5000,
+            commit_mode text not null default 'batch',
+            stop_on_error integer not null default 1,
+            enabled integer not null default 1,
+            created_at text not null,
+            updated_at text not null
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists _sync_watermarks (
+            task_id text primary key,
+            watermark_value text,
+            last_run_at text,
+            last_status text,
+            rows_read integer not null default 0,
+            rows_written integer not null default 0,
+            rows_updated integer not null default 0,
+            message text not null default ''
+        )
+        """
+    )
+    # 运行历史。与 _sync_watermarks 刻意分开：水位是「同步到哪儿了」的状态量，只保留最新一份；
+    # 历史是「跑过哪些次、结果如何」的证据，要留多条。两者生命周期不同，混在一张表会让
+    # 「清历史」误伤水位（清完水位下次就退化成全量重灌）。
+    conn.execute(
+        """
+        create table if not exists _sync_runs (
+            id text primary key,
+            task_id text not null,
+            task_name text not null default '',
+            sync_mode text not null default 'full',
+            source_label text not null default '',
+            target_label text not null default '',
+            started_at text not null,
+            ended_at text not null default '',
+            elapsed_ms integer not null default 0,
+            status text not null default '',
+            rows_read integer not null default 0,
+            rows_written integer not null default 0,
+            rows_updated integer not null default 0,
+            target_rows integer not null default 0,
+            watermark_from text,
+            watermark_to text,
+            trigger_kind text not null default 'manual',
+            message text not null default ''
+        )
+        """
+    )
+    conn.execute(
+        "create index if not exists idx_sync_runs_task on _sync_runs(task_id, started_at desc)"
     )
     _migrate_legacy_secrets_once(conn)
     return conn
@@ -4928,6 +5000,1367 @@ def resolve_import_step_config(config: dict[str, object], visited: set[str] | No
     raise ValueError(f"导入任务“{row['name']}”中没有可用的导入步骤。")
 
 
+# ---------------------------------------------------------------------------
+# 同步模块（2026-10-08 起）
+#
+# 为什么一期默认「全量覆盖」而不是增量 —— 实测生产库（本机 lcdp_fe 副本，未碰线上）发现：
+#   · 全库没有任何 `ON UPDATE CURRENT_TIMESTAMP` 列，也没有"更新时间/修改时间"这类列；
+#   · 核心表没有主键、没有唯一索引；会员小票表.提单编号 还不唯一（一行一商品）；
+#   · 有会被事后修改的列（订单状态 / 商品退款状态），且变动跨 1,498 天。
+# 用时间戳做增量 → 改过的行永远同步不过去，而且一条错都不报（静默不一致）。
+# 全量覆盖结果确定，且够快：302,938 行 / 173 MB 实测 14.1 秒（21,472 行/秒，内存 +26 MB）。
+# 详见 docs/同步模块-前期调研与实施方案-20261008.md
+# ---------------------------------------------------------------------------
+
+SYNC_MODES = ("full", "upsert", "incremental", "append")
+SYNC_MODE_LABELS = {
+    "full": "全量覆盖",
+    "upsert": "按业务键 upsert",
+    "incremental": "按时间戳增量",
+    "append": "仅追加",
+}
+# 四档模式全部接上执行链路（2026-10-09）。
+# ⚠️ 这里宁可是空的也不要放"半可用"的模式：此前只有 full 时，选到别的模式会在执行入口
+# 直接报错，就是为了不让"选了增量却按全量跑"这种静默不一致发生。既然全接上了，
+# 各模式的差异必须在运行日志里写明（sync_mode_scope 负责生成那句话）。
+SYNC_MODES_READY = ("full", "upsert", "incremental", "append")
+SYNC_DEFAULT_BATCH = 5000
+SYNC_MAX_BATCH = 50000
+# 会被事后修改的列名特征。用于在界面上提示"这张表不适合时间戳增量"。
+_SYNC_MUTABLE_HINTS = ("状态", "状态名", "退款", "核销", "进度", "结果", "stage", "status", "state")
+# "行修改时间"列名特征 —— 实测现有库一个都没有，但要把判据写死，将来新表能自动识别。
+_SYNC_UPDATED_AT_HINTS = ("更新时间", "修改时间", "更新日期", "update_time", "updated_at", "gmt_modified", "modify_time")
+
+
+def normalize_sync_mode(value: object) -> str:
+    mode = str(value or "full").strip().lower()
+    return mode if mode in SYNC_MODES else "full"
+
+
+def sync_name_list(value: object) -> list[str]:
+    """把 columns_json / key_columns_json 归一成去重的字符串列表。"""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value or "[]")
+        except (TypeError, ValueError):
+            return []
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        text = str(item).strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def sync_batch_rows(value: object) -> int:
+    try:
+        rows = int(value or SYNC_DEFAULT_BATCH)
+    except (TypeError, ValueError):
+        rows = SYNC_DEFAULT_BATCH
+    return max(100, min(rows, SYNC_MAX_BATCH))
+
+
+def sync_task_public(row: sqlite3.Row) -> dict[str, object]:
+    mode = normalize_sync_mode(row["sync_mode"])
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "sourceConnectionId": row["source_connection_id"],
+        "sourceMode": row["source_mode"] or "table",
+        "sourceTable": row["source_table"],
+        "sourceSql": row["source_sql"],
+        "targetConnectionId": row["target_connection_id"],
+        "targetTable": row["target_table"],
+        "columns": sync_name_list(row["columns_json"]),
+        "syncMode": mode,
+        "syncModeLabel": SYNC_MODE_LABELS.get(mode, mode),
+        "syncModeReady": mode in SYNC_MODES_READY,
+        "keyColumns": sync_name_list(row["key_columns_json"]),
+        "watermarkColumn": row["watermark_column"],
+        "batchRows": int(row["batch_rows"] or SYNC_DEFAULT_BATCH),
+        "commitMode": row["commit_mode"] or "batch",
+        "stopOnError": bool(row["stop_on_error"]),
+        "enabled": bool(row["enabled"]),
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def list_sync_tasks() -> list[dict[str, object]]:
+    with connect_db() as conn:
+        rows = conn.execute("select * from _sync_tasks order by created_at desc").fetchall()
+        marks = {
+            mark["task_id"]: mark
+            for mark in conn.execute("select * from _sync_watermarks").fetchall()
+        }
+    items: list[dict[str, object]] = []
+    for row in rows:
+        item = sync_task_public(row)
+        mark = marks.get(row["id"])
+        item["watermark"] = mark["watermark_value"] if mark else None
+        item["lastRunAt"] = (mark["last_run_at"] if mark else "") or ""
+        item["lastStatus"] = (mark["last_status"] if mark else "") or ""
+        item["lastRowsRead"] = int(mark["rows_read"]) if mark else 0
+        item["lastRowsWritten"] = int(mark["rows_written"]) if mark else 0
+        items.append(item)
+    return items
+
+
+def load_sync_task_row(task_id: str) -> sqlite3.Row:
+    with connect_db() as conn:
+        row = conn.execute("select * from _sync_tasks where id = ?", (task_id,)).fetchone()
+    if not row:
+        raise ValueError("同步任务不存在，请刷新后重试。")
+    return row
+
+
+def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("请填写同步任务名称。")
+    source_connection_id = str(payload.get("sourceConnectionId") or "").strip()
+    target_connection_id = str(payload.get("targetConnectionId") or "").strip()
+    if not source_connection_id:
+        raise ValueError("请选择源连接。")
+    if not target_connection_id:
+        raise ValueError("请选择目标连接。")
+    if source_connection_id == target_connection_id:
+        raise ValueError("源连接与目标连接是同一个。同步会清空并重写目标表，请确认后换一个连接。")
+
+    source_mode = str(payload.get("sourceMode") or "table").strip().lower()
+    source_mode = source_mode if source_mode in ("table", "sql") else "table"
+    source_table = str(payload.get("sourceTable") or "").strip()
+    source_sql = str(payload.get("sourceSql") or "").strip()
+    if source_mode == "table" and not source_table:
+        raise ValueError("请选择源表。")
+    if source_mode == "sql" and not source_sql:
+        raise ValueError("请填写源端 SQL。")
+
+    target_table = str(payload.get("targetTable") or "").strip() or source_table
+    if not target_table:
+        raise ValueError("请填写目标表名。")
+
+    sync_mode = normalize_sync_mode(payload.get("syncMode"))
+    key_columns = sync_name_list(payload.get("keyColumns"))
+    watermark_column = str(payload.get("watermarkColumn") or "").strip()
+    if sync_mode == "upsert" and not key_columns:
+        raise ValueError("「按业务键 upsert」需要至少指定一个键列。")
+    if sync_mode == "incremental" and not watermark_column:
+        raise ValueError("「按时间戳增量」需要指定水位列。")
+
+    task_id = str(payload.get("id") or uuid.uuid4().hex)
+    now = now_text()
+    columns_json = json.dumps(sync_name_list(payload.get("columns")), ensure_ascii=False)
+    key_json = json.dumps(key_columns, ensure_ascii=False)
+    with connect_db() as conn:
+        existing = conn.execute("select created_at from _sync_tasks where id = ?", (task_id,)).fetchone()
+        if existing:
+            conn.execute(
+                "update _sync_tasks set name=?, source_connection_id=?, source_mode=?, source_table=?,"
+                " source_sql=?, target_connection_id=?, target_table=?, columns_json=?, sync_mode=?,"
+                " key_columns_json=?, watermark_column=?, batch_rows=?, commit_mode=?, stop_on_error=?,"
+                " enabled=?, updated_at=? where id=?",
+                (
+                    name, source_connection_id, source_mode, source_table, source_sql,
+                    target_connection_id, target_table, columns_json, sync_mode, key_json,
+                    watermark_column, sync_batch_rows(payload.get("batchRows")),
+                    "batch" if str(payload.get("commitMode") or "batch") == "batch" else "all",
+                    1 if payload.get("stopOnError", True) not in (False, "false", "0", 0) else 0,
+                    1 if payload.get("enabled", True) not in (False, "false", "0", 0) else 0,
+                    now, task_id,
+                ),
+            )
+        else:
+            conn.execute(
+                "insert into _sync_tasks (id, name, source_connection_id, source_mode, source_table,"
+                " source_sql, target_connection_id, target_table, columns_json, sync_mode,"
+                " key_columns_json, watermark_column, batch_rows, commit_mode, stop_on_error,"
+                " enabled, created_at, updated_at)"
+                " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    task_id, name, source_connection_id, source_mode, source_table, source_sql,
+                    target_connection_id, target_table, columns_json, sync_mode, key_json,
+                    watermark_column, sync_batch_rows(payload.get("batchRows")),
+                    "batch" if str(payload.get("commitMode") or "batch") == "batch" else "all",
+                    1 if payload.get("stopOnError", True) not in (False, "false", "0", 0) else 0,
+                    1 if payload.get("enabled", True) not in (False, "false", "0", 0) else 0,
+                    now, now,
+                ),
+            )
+        row = conn.execute("select * from _sync_tasks where id = ?", (task_id,)).fetchone()
+    return sync_task_public(row)
+
+
+def delete_sync_task(task_id: str) -> None:
+    with connect_db() as conn:
+        conn.execute("delete from _sync_tasks where id = ?", (task_id,))
+        # 水位随之清掉：任务都没了，留一条水位只会让下次重建同名任务时误判"已同步过"。
+        conn.execute("delete from _sync_watermarks where task_id = ?", (task_id,))
+        # 运行历史同理。任务列表是按 task_id 读历史的，任务一删这些记录就再也点不开，
+        # 只会赖在库和「全部运行」视图里 —— 业主在列表页删完任务还看到孤儿历史会当成 bug。
+        conn.execute("delete from _sync_runs where task_id = ?", (task_id,))
+
+
+def connect_sync_db(connection_id: str):
+    """按连接 id 打开一个数据库连接。
+
+    直接复用 connect_target_db —— 它就是"按 fields 打开连接"的通用实现（mysql / sqlite 都覆盖），
+    这里包一层只是让调用点上"这是源端还是目标端"读得出来。
+    """
+    return connect_target_db({"connectionId": connection_id})
+
+
+def resolve_sync_db_name(connection_id: str) -> str:
+    saved = load_saved_connection(connection_id)
+    return str(saved.get("dbName") or "")
+
+
+def sync_table_exists(conn, db_name: str, table: str) -> bool:
+    with conn.cursor() as cur:
+        cur.execute(
+            "select count(*) from information_schema.tables"
+            " where table_schema = %s and table_name = %s",
+            (db_name, table),
+        )
+        return int(cur.fetchone()[0]) > 0
+
+
+def sync_source_columns(conn, db_name: str, table: str) -> list[dict[str, object]]:
+    """源表列清单（含类型、可空、注释）。"""
+    with conn.cursor() as cur:
+        cur.execute(
+            "select column_name, column_type, data_type, is_nullable, column_key, column_comment"
+            " from information_schema.columns where table_schema = %s and table_name = %s"
+            " order by ordinal_position",
+            (db_name, table),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "name": row[0],
+            "type": row[1],
+            "dataType": row[2],
+            "nullable": row[3] == "YES",
+            "columnKey": row[4] or "",
+            "comment": row[5] or "",
+        }
+        for row in rows
+    ]
+
+
+def sync_source_keys(conn, db_name: str, table: str) -> dict[str, list[list[str]]]:
+    """源表的主键与唯一键。
+
+    实测现有库的核心表**一个主键都没有**，所以这里不能假设有主键；
+    返回空列表是正常结果，界面要据此提示"需要手工指定业务键"。
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "select index_name, non_unique, column_name, seq_in_index"
+            " from information_schema.statistics"
+            " where table_schema = %s and table_name = %s order by index_name, seq_in_index",
+            (db_name, table),
+        )
+        rows = cur.fetchall()
+    grouped: dict[tuple[str, int], list[tuple[int, str]]] = {}
+    for index_name, non_unique, column_name, seq in rows:
+        grouped.setdefault((index_name, int(non_unique)), []).append((int(seq), column_name))
+    primary: list[list[str]] = []
+    unique: list[list[str]] = []
+    for (index_name, non_unique), cols in grouped.items():
+        ordered = [name for _, name in sorted(cols)]
+        if index_name == "PRIMARY":
+            primary.append(ordered)
+        elif non_unique == 0:
+            unique.append(ordered)
+    return {"primary": primary, "unique": unique}
+
+
+def sync_probe_source(task: sqlite3.Row) -> dict[str, object]:
+    """探测源端：列、键、行数、以及"这张表适不适合哪档模式"的结论。
+
+    界面上的列下拉、键选择、风险提示全部来自这里 —— 判据写在服务端，
+    避免前端各写一套、两边口径不一致。
+    """
+    source_mode = str(task["source_mode"] or "table")
+    table = str(task["source_table"] or "")
+    connection_id = str(task["source_connection_id"] or "")
+    db_name = resolve_sync_db_name(connection_id)
+    conn = connect_sync_db(connection_id)
+    try:
+        if source_mode == "sql":
+            with conn.cursor() as cur:
+                cur.execute(f"select * from ({str(task['source_sql']).strip()} ) sync_probe limit 0")
+                describe = cur.description or []
+            columns = [
+                {"name": item[0], "type": "（由 SQL 决定）", "dataType": "", "nullable": True,
+                 "columnKey": "", "comment": ""}
+                for item in describe
+            ]
+            keys = {"primary": [], "unique": []}
+            row_count = None
+        else:
+            if not sync_table_exists(conn, db_name, table):
+                raise ValueError(
+                    f"源表 {db_name}.{table} 不存在，或该连接没有读它的权限。"
+                    "请检查源连接与表名（区分大小写）。"
+                )
+            columns = sync_source_columns(conn, db_name, table)
+            keys = sync_source_keys(conn, db_name, table)
+            with conn.cursor() as cur:
+                cur.execute(f"select count(*) from {db_quote(db_name, {'targetDbType': 'mysql'})}."
+                            f"{db_quote(table, {'targetDbType': 'mysql'})}")
+                row_count = int(cur.fetchone()[0])
+    finally:
+        conn.close()
+
+    names = [str(item["name"]) for item in columns]
+    lowered = [name.lower() for name in names]
+    update_stamps = [name for name, low in zip(names, lowered)
+                     if any(hint in low for hint in _SYNC_UPDATED_AT_HINTS)]
+    mutable = [name for name, low in zip(names, lowered)
+               if any(hint in low for hint in _SYNC_MUTABLE_HINTS)]
+    # 只到"天"的字符串时间列：实测 会员小票表.提单时间 varchar(100) 值形如 2025-01-30
+    string_time = [name for name, low in zip(names, lowered)
+                   if any(hint in low for hint in ("时间", "日期", "time", "date"))]
+
+    warnings: list[str] = []
+    if not keys["primary"]:
+        warnings.append(
+            "该表没有主键。用「按业务键 upsert」时必须手工指定键列，"
+            "且建议先做唯一性检测——否则一行会被更新多次或定位不到。"
+        )
+    if mutable and not update_stamps:
+        warnings.append(
+            f"该表有会被事后修改的列（{'、'.join(mutable[:4])}），"
+            "但没有任何「行修改时间」列。用「按时间戳增量」时，已经改过的行不会被同步过去，"
+            "而且不会报错——建议改用「全量覆盖」。"
+        )
+    if string_time:
+        warnings.append(
+            f"时间类列里有字符串类型（{'、'.join(string_time[:4])}），"
+            "按字符串比较大小依赖格式统一，用于增量水位时需谨慎。"
+        )
+
+    return {
+        "sourceMode": source_mode,
+        "database": db_name,
+        "table": table,
+        "columns": columns,
+        "primaryKeys": keys["primary"],
+        "uniqueKeys": keys["unique"],
+        "rowCount": row_count,
+        "updateTimestampColumns": update_stamps,
+        "mutableColumns": mutable,
+        "stringTimeColumns": string_time,
+        "warnings": warnings,
+    }
+
+
+_SYNC_TYPE_CODE_TO_SQL: dict[int, str] = {
+    pymysql.constants.FIELD_TYPE.TINY: "tinyint",
+    pymysql.constants.FIELD_TYPE.SHORT: "smallint",
+    pymysql.constants.FIELD_TYPE.INT24: "int",
+    pymysql.constants.FIELD_TYPE.LONG: "int",
+    pymysql.constants.FIELD_TYPE.LONGLONG: "bigint",
+    pymysql.constants.FIELD_TYPE.FLOAT: "float",
+    pymysql.constants.FIELD_TYPE.DOUBLE: "double",
+    pymysql.constants.FIELD_TYPE.DECIMAL: "decimal(38,10)",
+    pymysql.constants.FIELD_TYPE.NEWDECIMAL: "decimal(38,10)",
+    pymysql.constants.FIELD_TYPE.DATE: "date",
+    pymysql.constants.FIELD_TYPE.NEWDATE: "date",
+    pymysql.constants.FIELD_TYPE.TIME: "time",
+    pymysql.constants.FIELD_TYPE.DATETIME: "datetime",
+    pymysql.constants.FIELD_TYPE.TIMESTAMP: "datetime",
+    pymysql.constants.FIELD_TYPE.YEAR: "year",
+    pymysql.constants.FIELD_TYPE.JSON: "json",
+    pymysql.constants.FIELD_TYPE.BIT: "bit(64)",
+    # BLOB 家族**刻意都给 longtext**：MySQL 协议里 TEXT 和 BLOB 共用 type_code 252，
+    # 光看 type_code 分不清（要靠 charsetnr，而 description 里没有）。业务库里这个类型
+    # 绝大多数是文本；真要是二进制，这份草稿本来也不会自动执行，人核一眼就能改。
+    #
+    # 全部走"最宽"的类型而不是推断宽度：宁可表大一点也不让数据被截断。
+    pymysql.constants.FIELD_TYPE.BLOB: "longtext",
+    pymysql.constants.FIELD_TYPE.TINY_BLOB: "longtext",
+    pymysql.constants.FIELD_TYPE.MEDIUM_BLOB: "longtext",
+    pymysql.constants.FIELD_TYPE.LONG_BLOB: "longtext",
+    pymysql.constants.FIELD_TYPE.GEOMETRY: "longtext",
+    pymysql.constants.FIELD_TYPE.STRING: "longtext",
+    pymysql.constants.FIELD_TYPE.VAR_STRING: "longtext",
+    pymysql.constants.FIELD_TYPE.VARCHAR: "longtext",
+    pymysql.constants.FIELD_TYPE.CHAR: "longtext",
+    pymysql.constants.FIELD_TYPE.ENUM: "longtext",
+    pymysql.constants.FIELD_TYPE.SET: "longtext",
+}
+
+
+def sync_suggest_ddl(description, table: str) -> str:
+    """按结果集元数据类型给出一份 CREATE TABLE 草稿。
+
+    **只用于给人看**（错误信息 / 预览提示），绝不自动执行 —— 它比 SHOW CREATE TABLE 差得远：
+    丢精度、丢默认值、丢索引、丢字符集。这就是为什么源端是自定义 SQL 时不代为建表，
+    而是把这份草稿交给人确认后再贴到目标库执行。
+    """
+    lines = []
+    for item in description or []:
+        name = str(item[0])
+        type_code = int(item[1])
+        column_type = _SYNC_TYPE_CODE_TO_SQL.get(type_code, "longtext")
+        lines.append(f"  {db_quote(name, _SYNC_MYSQL_FIELDS)} {column_type} null")
+    if not lines:
+        return ""
+    body = ",\n".join(lines)
+    return (
+        f"create table {db_quote(table, _SYNC_MYSQL_FIELDS)} (\n{body}\n)"
+        " engine=InnoDB default charset=utf8mb4;"
+    )
+
+
+def ensure_sync_target_table(src_conn, dst_conn, db_name: str, source_mode: str,
+                             source_table: str, source_description, table: str,
+                             dst_fields: dict[str, str]) -> bool:
+    """目标表不存在时，按**源端结构**建一张同构的表。返回是否新建。
+
+    整表源：用 SHOW CREATE TABLE 拿源表 DDL 而不是按数据推断类型 ——
+    推断会把 text 变 varchar(255)、把 datetime 变 varchar，**静默改变语义**；
+    而且实测源表列全部可空，推断会都建成 not null。
+    ⚠️ 解析列定义段时不能用 rpartition(")") —— KEY 行里也有括号，会截错（实测踩到）。
+
+    自定义 SQL 源：**不代为建表**。此时没有源表可抄，只能从结果集元数据猜类型，
+    而猜出来的表可能悄悄丢精度（decimal→double）。这里给出 CREATE TABLE 草稿让人确认，
+    而不是自己执行——宁可多一步，也不要建出一张"看着能跑、实际在掉精度"的表。
+    """
+    with dst_conn.cursor() as cur:
+        cur.execute(
+            "select count(*) from information_schema.tables"
+            " where table_schema = %s and table_name = %s",
+            (str(dst_fields.get("dbName") or ""), table),
+        )
+        if int(cur.fetchone()[0]) > 0:
+            return False
+    if str(source_mode or "table") == "sql":
+        draft = sync_suggest_ddl(source_description, table)
+        hint = f"\n可参考这份草稿先在目标库建表（类型仅为推断，请按实际调整）：\n{draft}" if draft else ""
+        raise ValueError(
+            f"目标表 {dst_fields.get('dbName')}.{table} 不存在。"
+            "源端是自定义 SQL 时无法沿用源表结构，自动建表可能掉精度，因此这一步不做。"
+            f"{hint}"
+        )
+    with src_conn.cursor() as cur:
+        cur.execute(f"show create table {db_quote(db_name, {'targetDbType': 'mysql'})}."
+                    f"{db_quote(source_table, {'targetDbType': 'mysql'})}")
+        ddl = cur.fetchone()[1]
+    start = ddl.index("(") + 1
+    end = ddl.rindex("\n)")
+    kept: list[str] = []
+    for line in ddl[start:end].splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        low = stripped.lower()
+        if low.startswith(("primary key", "unique key", "key ", "index ", "constraint", "fulltext")):
+            continue
+        # 索引行被剔掉了，AUTO_INCREMENT 必须跟着剔掉：MySQL 要求自增列必须建在键上，
+        # 留着它就会报 1075（Incorrect table definition ... must be defined as a key）——
+        # 而这里恰恰是我们刻意没复制索引。目标表的 id 由源端原值写入，本来也不需要自增。
+        kept.append(re.sub(r"\s+auto_increment\b", "", stripped, flags=re.I).rstrip(",").strip())
+    if not kept:
+        raise ValueError(f"无法从源表 {table} 解析出列定义，已中止（不会建出空表）。")
+    columns = ",\n  ".join(kept)
+    sql = (
+        f"create table {db_quote(table, dst_fields)} (\n  {columns}\n)"
+        " engine=InnoDB default charset=utf8mb4"
+    )
+    with dst_conn.cursor() as cur:
+        cur.execute(sql)
+    return True
+
+
+def sync_fetch_batches(conn, sql: str, batch_rows: int, *params) -> Iterator[list[tuple]]:
+    """流式读源端，一批一批吐出来。
+
+    ⚠️ 必须用 SSCursor：默认 Cursor 会把整表拉进内存。
+    实测 302,938 行用 SSCursor 全程内存只涨 26 MB；换成 fetchall 会一次吃掉几百 MB。
+    """
+    stream = conn.cursor(pymysql.cursors.SSCursor)
+    stream.execute(sql, params or None)
+    while True:
+        rows = stream.fetchmany(batch_rows)
+        if not rows:
+            break
+        yield rows
+
+
+# 目标表按业务键替换时，一次构造多长的键列表。键列表太长会把 SQL 撑成几十 KB，
+# 分批既控制单条语句体积，也让失败点更细（报错能指向具体是哪一段）。
+_SYNC_KEY_CHUNK = 1000
+# NULL 安全的 OR 链每行要展开完整列比较，SQL 更长，所以用更小的分组。
+_SYNC_KEY_CHUNK_NULL = 200
+
+
+def sync_key_clause(columns: list[str], rows: list[tuple], index: list[int], fields: dict[str, str]) -> tuple[str, list]:
+    """构造「与本批行的键值匹配」的 WHERE 条件（NULL 安全）。
+
+    正常情况用行构造器 `(k1,k2) in ((%s,%s),(%s,%s))`：MySQL 能用上索引、SQL 也短。
+    但只要键值里有 NULL，等号语义就失效（`NULL = NULL` 结果是 NULL，永远不匹配），
+    必须换成 `<=>`（NULL 安全等于）。
+
+    **绝不能默默漏掉这些行** —— 那会变成"日志显示同步成功、实际有行没同步"的静默不一致，
+    正是这个模块最该避免的形态。
+    """
+    has_null = any(any(row[i] is None for i in index) for row in rows)
+    if has_null:
+        groups: list[str] = []
+        params: list = []
+        for row in rows:
+            groups.append(
+                "(" + " and ".join(
+                    f"{db_quote(columns[i], fields)} <=> {db_placeholder(fields)}" for i in index
+                ) + ")"
+            )
+            params.extend(row[i] for i in index)
+        return "(" + " or ".join(groups) + ")", params
+    if len(index) == 1:
+        column = db_quote(columns[index[0]], fields)
+        marks = ", ".join([db_placeholder(fields)] * len(rows))
+        return f"{column} in ({marks})", [row[index[0]] for row in rows]
+    cols = "(" + ", ".join(db_quote(columns[i], fields) for i in index) + ")"
+    tuples = ", ".join(
+        "(" + ", ".join([db_placeholder(fields)] * len(index)) + ")" for _ in rows
+    )
+    params = []
+    for row in rows:
+        params.extend(row[i] for i in index)
+    return f"{cols} in ({tuples})", params
+
+
+def sync_upsert_batch(cursor, table: str, out_columns: list[str], key_columns: list[str],
+                      rows: list[tuple], fields: dict[str, str]) -> tuple[int, int]:
+    """按业务键替换一批行，返回（新增, 更新）。
+
+    刻意**不用** `insert ... on duplicate key update`：它要求目标表在键列上有唯一索引，
+    而实测源表连主键都没有，目标表是按源结构复制的（同样没唯一索引），用它只会静默插出
+    一堆重复行。也刻意**不用**逐行 select + update：30 万行会变成 30 万次往返。
+    这里是「每批按键删一段、再整批插入」—— 固定几条语句，且不依赖任何索引前提。
+    """
+    key_index: list[int] = []
+    for name in key_columns:
+        if name not in out_columns:
+            raise ValueError(f"键列「{name}」不在本次同步的字段里，请先在字段映射里保留它。")
+        key_index.append(out_columns.index(name))
+    if not key_index:
+        raise ValueError("「按业务键 upsert」需要至少一个键列。")
+
+    table_sql = db_quote(table, fields)
+    placeholders = ", ".join([db_placeholder(fields)] * len(out_columns))
+    insert_sql = (
+        f"insert into {table_sql} ({', '.join(db_quote(name, fields) for name in out_columns)})"
+        f" values ({placeholders})"
+    )
+    inserted = 0
+    updated = 0
+    size = _SYNC_KEY_CHUNK_NULL if any(
+        any(row[i] is None for i in key_index) for row in rows[:50]
+    ) else _SYNC_KEY_CHUNK
+    for start in range(0, len(rows), size):
+        chunk = rows[start:start + size]
+        clause, params = sync_key_clause(out_columns, chunk, key_index, fields)
+        cursor.execute(f"select count(*) from {table_sql} where {clause}", params)
+        existing = int(cursor.fetchone()[0])
+        if existing:
+            cursor.execute(f"delete from {table_sql} where {clause}", params)
+        cursor.executemany(insert_sql, chunk)
+        updated += existing
+        inserted += len(chunk) - existing
+    return inserted, updated
+
+
+def sync_watermark_value(task_id: str) -> str:
+    """读当前水位。空字符串表示「还没有水位」。"""
+    if not task_id:
+        return ""
+    with connect_db() as conn:
+        row = conn.execute(
+            "select watermark_value from _sync_watermarks where task_id = ?", (task_id,)
+        ).fetchone()
+    return str(row["watermark_value"] or "") if row else ""
+
+
+def sync_mode_scope(mode: str, key_columns: list[str], watermark_column: str) -> str:
+    """一句话说清这一档模式到底同步了什么范围。写进运行日志，避免"以为同步了全部"。"""
+    if mode == "full":
+        return "源表全量（清空目标后重写）"
+    if mode == "upsert":
+        return f"源表全量，按业务键替换（{'、'.join(key_columns)}）"
+    if mode == "incremental":
+        return f"仅「{watermark_column}」大于上次水位的行"
+    return "源表全量，直接追加（不去重）"
+
+
+def sync_save_state(task_id: str, *, status: str, rows_read: int, rows_written: int,
+                    rows_updated: int, message: str, watermark_value: str | None,
+                    advance_watermark: bool) -> None:
+    """写回水位表的一行。
+
+    advance_watermark=False（失败时）**只更新状态与计数，不动 watermark_value** ——
+    水位一旦在失败时前进，下一轮就会跳过本来没同步成功的行，数据永久缺失；
+    这正是"水位必须与数据写入同生命周期"的要求。
+    """
+    if not task_id:
+        return
+    with connect_db() as conn:
+        if advance_watermark:
+            conn.execute(
+                "insert into _sync_watermarks (task_id, watermark_value, last_run_at, last_status,"
+                " rows_read, rows_written, rows_updated, message) values (?,?,?,?,?,?,?,?)"
+                " on conflict(task_id) do update set watermark_value=excluded.watermark_value,"
+                " last_run_at=excluded.last_run_at, last_status=excluded.last_status,"
+                " rows_read=excluded.rows_read, rows_written=excluded.rows_written,"
+                " rows_updated=excluded.rows_updated, message=excluded.message",
+                (task_id, watermark_value, now_text(), status, rows_read, rows_written,
+                 rows_updated, message),
+            )
+        else:
+            conn.execute(
+                "insert into _sync_watermarks (task_id, watermark_value, last_run_at, last_status,"
+                " rows_read, rows_written, rows_updated, message) values (?,?,?,?,?,?,?,?)"
+                " on conflict(task_id) do update set last_run_at=excluded.last_run_at,"
+                " last_status=excluded.last_status, rows_read=excluded.rows_read,"
+                " rows_written=excluded.rows_written, rows_updated=excluded.rows_updated,"
+                " message=excluded.message",
+                (task_id, None, now_text(), status, rows_read, rows_written, rows_updated, message),
+            )
+
+
+# 每个任务保留多少条运行历史。水位只留最新一份，历史留多条用于排查，
+# 但不设上限会让这个表无限长（定时任务每天跑一次就是 365 行/年）。
+SYNC_RUN_KEEP = 200
+
+
+def record_sync_run(payload: dict[str, object]) -> str:
+    run_id = uuid.uuid4().hex
+    columns = [
+        "id", "task_id", "task_name", "sync_mode", "source_label", "target_label",
+        "started_at", "ended_at", "elapsed_ms", "status", "rows_read", "rows_written",
+        "rows_updated", "target_rows", "watermark_from", "watermark_to", "trigger_kind", "message",
+    ]
+    values = [
+        run_id,
+        str(payload.get("task_id") or ""),
+        str(payload.get("task_name") or ""),
+        str(payload.get("sync_mode") or "full"),
+        str(payload.get("source_label") or ""),
+        str(payload.get("target_label") or ""),
+        str(payload.get("started_at") or now_text()),
+        str(payload.get("ended_at") or ""),
+        int(payload.get("elapsed_ms") or 0),
+        str(payload.get("status") or ""),
+        int(payload.get("rows_read") or 0),
+        int(payload.get("rows_written") or 0),
+        int(payload.get("rows_updated") or 0),
+        int(payload.get("target_rows") or 0),
+        payload.get("watermark_from"),
+        payload.get("watermark_to"),
+        str(payload.get("trigger_kind") or "manual"),
+        str(payload.get("message") or ""),
+    ]
+    task_id = str(payload.get("task_id") or "")
+    with connect_db() as conn:
+        conn.execute(
+            f"insert into _sync_runs ({', '.join(columns)})"
+            f" values ({', '.join(['?'] * len(columns))})",
+            values,
+        )
+        if task_id:
+            conn.execute(
+                "delete from _sync_runs where task_id = ? and id not in"
+                " (select id from _sync_runs where task_id = ? order by started_at desc limit ?)",
+                (task_id, task_id, SYNC_RUN_KEEP),
+            )
+    return run_id
+
+
+def list_sync_runs(task_id: str = "", limit: int = 50) -> list[dict[str, object]]:
+    limit = max(1, min(int(limit or 50), 200))
+    with connect_db() as conn:
+        if task_id:
+            rows = conn.execute(
+                "select * from _sync_runs where task_id = ? order by started_at desc limit ?",
+                (task_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "select * from _sync_runs order by started_at desc limit ?", (limit,)
+            ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "taskId": row["task_id"],
+            "taskName": row["task_name"],
+            "syncMode": row["sync_mode"],
+            "syncModeLabel": SYNC_MODE_LABELS.get(row["sync_mode"], row["sync_mode"]),
+            "sourceLabel": row["source_label"],
+            "targetLabel": row["target_label"],
+            "startedAt": row["started_at"],
+            "endedAt": row["ended_at"],
+            "elapsedMs": int(row["elapsed_ms"]),
+            "status": row["status"],
+            "rowsRead": int(row["rows_read"]),
+            "rowsWritten": int(row["rows_written"]),
+            "rowsUpdated": int(row["rows_updated"]),
+            "targetRows": int(row["target_rows"]),
+            "watermarkFrom": row["watermark_from"] or "",
+            "watermarkTo": row["watermark_to"] or "",
+            "triggerKind": row["trigger_kind"],
+            "message": row["message"],
+        }
+        for row in rows
+    ]
+
+
+def sync_resolve_task(config: dict[str, object]) -> dict[str, object]:
+    """把「任务 id」或「整份临时配置」统一成一个 dict 形态的任务。
+
+    execute 与 preview **必须共用这一个解析入口**：若各自写一份，迟早出现
+    「预览说这是任务 A、执行却按 ad-hoc 跑」这类只在特定分支才复现的偏差。
+
+    返回值里额外带：
+      · `id` —— 持久化任务就是真实任务号，临时配置则是占位串（写进日志便于区分）；
+      · `persistedId` —— **只有真的落库了才有值**。水位、运行历史都以它为准，
+        临时同步不写水位（没有 id 就没有"上次同步到哪儿"的语义）。
+    """
+    task_id = str(config.get("id") or config.get("taskId") or "").strip()
+    if task_id:
+        row = load_sync_task_row(task_id)
+        task: dict[str, object] = {key: row[key] for key in row.keys()}
+        task["persistedId"] = task_id
+        return task
+    raw = dict(config)
+    return {
+        "id": str(raw.get("id") or "ad-hoc"),
+        "persistedId": "",
+        "name": str(raw.get("name") or "临时同步"),
+        "source_connection_id": str(raw.get("sourceConnectionId") or ""),
+        "source_mode": str(raw.get("sourceMode") or "table"),
+        "source_table": str(raw.get("sourceTable") or ""),
+        "source_sql": str(raw.get("sourceSql") or ""),
+        "target_connection_id": str(raw.get("targetConnectionId") or ""),
+        "target_table": str(raw.get("targetTable") or ""),
+        "columns_json": json.dumps(sync_name_list(raw.get("columns")), ensure_ascii=False),
+        "sync_mode": normalize_sync_mode(raw.get("syncMode")),
+        "key_columns_json": json.dumps(sync_name_list(raw.get("keyColumns")), ensure_ascii=False),
+        "watermark_column": str(raw.get("watermarkColumn") or ""),
+        "batch_rows": sync_batch_rows(raw.get("batchRows")),
+        "commit_mode": str(raw.get("commitMode") or "batch"),
+        "stop_on_error": 1,
+        "enabled": 1,
+    }
+
+
+_SYNC_MYSQL_FIELDS: dict[str, str] = {"targetDbType": "mysql"}
+
+
+def sync_select_sql(source_mode: str, source_sql: str, db_name: str, table: str,
+                    columns: list[str]) -> str:
+    """源端读数据的 SELECT 骨架（**不含** where / order / limit）。
+
+    preview 与 execute 必须共用它 —— 一旦两边各写一份，
+    「预览说 100 行、跑起来读了 1000 行」这种漂移不会被任何单侧测试发现。
+    """
+    selected = ", ".join(db_quote(name, _SYNC_MYSQL_FIELDS) for name in columns)
+    if str(source_mode or "table") == "sql":
+        return f"select {selected} from ({str(source_sql).strip()}) sync_src"
+    return (
+        f"select {selected} from {db_quote(db_name, _SYNC_MYSQL_FIELDS)}"
+        f".{db_quote(table, _SYNC_MYSQL_FIELDS)}"
+    )
+
+
+def sync_source_columns_of(task: dict[str, object], src_conn, db_name: str) -> tuple[list[str], object]:
+    """按 source_mode 解析源端列名，**连同结果集元数据一起返回**。
+
+    整表走 information_schema；自定义 SQL 走 limit 0 取描述（同时拿到类型要做两件事：
+    ① sql 源且目标表不存在时，给出 CREATE TABLE 草稿；② 后续类型相关的提示）。
+    两种取值路径不同，但都必须落在同一个函数里 —— 否则 execute 支持 SQL、
+    preview 却只在整表模式下可用，界面上就会出现"预览能过、执行报错"。
+    """
+    if str(task.get("source_mode") or "table") == "sql":
+        sql = str(task.get("source_sql") or "").strip()
+        if not sql:
+            raise ValueError("请填写源端 SQL。")
+        # 源端 SQL 必须是**单条只读语句**。理由有两层：
+        #   1. /api/sync/probe 与 /api/sync/preview 的最小角色是 viewer（只读），
+        #      若这里能跑 DROP/DELETE，那两个只读接口就成了只读账号的提权通道；
+        #   2. 即便是 operator，这也只该是"读源数据"的入口，写语句是查询控制台的职责。
+        # 判据直接复用查询控制台的现成分级，不另立一套口径。
+        statements = split_sql_statements(sql)
+        if len(statements) != 1:
+            raise ValueError(
+                f"源端 SQL 只能写一条语句，当前解析出 {len(statements)} 条。"
+                "要跑多条请去「数据查询」模块。"
+            )
+        risk = classify_sql_risk(statements[0])
+        if str(risk.get("level")) != "safe":
+            reasons = "；".join(str(item) for item in (risk.get("reasons") or []))
+            raise ValueError(
+                f"源端 SQL 必须是只读查询，当前判定为「{risk.get('level')}」"
+                f"（{str(risk.get('keyword') or '').upper()}）：{reasons or '不是只读语句'}。"
+            )
+        with src_conn.cursor() as cur:
+            cur.execute(f"select * from ({sql}) sync_probe limit 0")
+            return [str(item[0]) for item in (cur.description or [])], cur.description
+    table = str(task.get("source_table") or "")
+    if not sync_table_exists(src_conn, db_name, table):
+        # 报错必须指向可操作的原因：否则用户分不清是表名写错、连接选错还是没权限。
+        raise ValueError(
+            f"源表 {db_name}.{table} 不存在，或该连接没有读它的权限。"
+            "请检查源连接与表名（区分大小写）。"
+        )
+    return [str(item["name"]) for item in sync_source_columns(src_conn, db_name, table)], None
+
+
+def sync_target_columns(dst_conn, db_name: str, table: str) -> list[str] | None:
+    """目标表现有列；表不存在返回 None（区别于「存在但没有列」，后者是 0 长度列表）。"""
+    with dst_conn.cursor() as cur:
+        cur.execute(
+            "select column_name from information_schema.columns"
+            " where table_schema = %s and table_name = %s order by ordinal_position",
+            (db_name, table),
+        )
+        rows = cur.fetchall()
+        cur.execute(
+            "select count(*) from information_schema.tables"
+            " where table_schema = %s and table_name = %s",
+            (db_name, table),
+        )
+        exists = int(cur.fetchone()[0]) > 0
+    if not exists:
+        return None
+    return [str(row[0]) for row in rows]
+
+
+def sync_preview_task(config: dict[str, object], *, sample_rows: int = 3) -> dict[str, object]:
+    """只读预演：算出这一跑会读多少行、写到哪儿、有没有拦路的问题，**一个字都不写**。
+
+    存在的理由 —— 四档模式跑起来都不是只读的：full 会清空目标表、upsert 会删键段重插。
+    保存前必须能先看清楚会发生什么，否则一次误配就是一次生产事故。
+
+    刻意的三条"不"：
+      · **不创建目标表**：目标不存在只是结论里的一句"将会新建"，预演本身不许产生副作用；
+      · **不碰目标库的数据**：目标端只查 information_schema 判断列是否齐全；
+      · **不推进水位、不写运行历史**：只有真正执行才会动这些状态。
+    """
+    task = sync_resolve_task(config)
+    mode = normalize_sync_mode(task.get("sync_mode"))
+    if mode not in SYNC_MODES_READY:
+        raise ValueError(
+            f"「{SYNC_MODE_LABELS.get(mode, mode)}」还没接上执行链路（当前已开放"
+            f"「{'」「'.join(SYNC_MODE_LABELS[m] for m in SYNC_MODES_READY)}」）。"
+        )
+
+    key_columns = sync_name_list(task.get("key_columns_json"))
+    watermark_column = str(task.get("watermark_column") or "").strip()
+    source_table = str(task.get("source_table") or "")
+    target_table = str(task.get("target_table") or "") or source_table
+    source_id = str(task.get("source_connection_id") or "")
+    target_id = str(task.get("target_connection_id") or "")
+    if not source_id:
+        raise ValueError("请选择源连接。")
+    if not target_id:
+        raise ValueError("请选择目标连接。")
+    if source_id == target_id:
+        raise ValueError("源连接与目标连接是同一个，请换一个目标连接。")
+
+    db_name = resolve_sync_db_name(source_id)
+    dst_fields = resolve_connection_fields({"connectionId": target_id})
+    dst_db = str(dst_fields.get("dbName") or "")
+    task_id = str(task.get("persistedId") or "")
+    previous_watermark = sync_watermark_value(task_id) if mode == "incremental" else ""
+
+    src_conn = connect_sync_db(source_id)
+    dst_conn = connect_sync_db(target_id)
+    try:
+        source_columns, source_description = sync_source_columns_of(task, src_conn, db_name)
+        if not source_columns:
+            raise ValueError("源端没有解析到任何列，请检查源表或 SQL。")
+
+        mapped = sync_name_list(task.get("columns_json"))
+        write_columns = mapped if (mapped and len(mapped) == len(source_columns)) else list(source_columns)
+
+        blockers: list[str] = []
+        warnings: list[str] = []
+        if mode == "upsert" and not key_columns:
+            blockers.append("「按业务键 upsert」必须指定至少一个键列。")
+        missing_keys = [name for name in key_columns if name not in write_columns]
+        if missing_keys:
+            blockers.append(
+                f"键列「{'、'.join(missing_keys)}」不在本次写入的列里，执行时会被拒绝。"
+            )
+        if mode == "incremental" and not watermark_column:
+            blockers.append("「按时间戳增量」必须指定水位列。")
+        if mode == "incremental" and watermark_column and watermark_column not in source_columns:
+            blockers.append(f"水位列「{watermark_column}」在源端不存在。")
+
+        select_columns = list(source_columns)
+        if mode == "incremental" and watermark_column and watermark_column not in select_columns:
+            select_columns.append(watermark_column)
+        base_sql = sync_select_sql(
+            str(task.get("source_mode") or "table"), str(task.get("source_sql") or ""),
+            db_name, source_table, select_columns,
+        )
+
+        where_sql = ""
+        params: list = []
+        if mode == "incremental" and watermark_column and previous_watermark:
+            where_sql = (
+                f" where {db_quote(watermark_column, _SYNC_MYSQL_FIELDS)}"
+                f" > {db_placeholder(_SYNC_MYSQL_FIELDS)}"
+            )
+            params.append(previous_watermark)
+        read_sql = base_sql + where_sql
+
+        existing_target = sync_target_columns(dst_conn, dst_db, target_table)
+        missing_in_target: list[str] = []
+        create_hint = ""
+        if existing_target is None:
+            will_create = True
+            if str(task.get("source_mode") or "table") == "sql":
+                # 这条路 execute 也会拦（ensure_sync_target_table 拒绝猜类型），
+                # 必须在预览就讲清楚并给出可执行的建表草稿，否则用户只会看到"执行失败"。
+                create_hint = sync_suggest_ddl(source_description, target_table)
+                blockers.append(
+                    f"目标表 {dst_db}.{target_table} 不存在，而源端是自定义 SQL ——"
+                    "没有可沿用的源表结构，自动建表可能掉精度，所以不会代建。"
+                    "请按下面草稿先在目标库建表（类型仅为推断，请核对后再执行）。"
+                )
+        else:
+            will_create = False
+            missing_in_target = [name for name in write_columns if name not in existing_target]
+            if missing_in_target:
+                blockers.append(
+                    f"目标表 {dst_db}.{target_table} 已存在，但缺少本次要写入的列："
+                    f"{'、'.join(missing_in_target[:8])}"
+                    f"{' 等' if len(missing_in_target) > 8 else ''}。"
+                    "表已存在时不会自动改结构——请手工加列，或换一个目标表名让它重建。"
+                )
+
+        # 配置有问题时**不再去源端跑计数/取样例**：那些 SQL 会引用不存在的列（比如被
+        # 错指的水位列），一跑就是一句 MySQL 报错，把"缺业务键"这种人话替换成天书。
+        blocked = bool(blockers)
+        rows_to_process: int | None = None
+        rows_total: int | None = None
+        watermark_max = ""
+        taken = max(0, min(int(sample_rows or 0), 20))
+        samples: list[list[object]] = []
+        if not blocked:
+            with src_conn.cursor() as cur:
+                cur.execute(f"select count(*) from ({read_sql}) sync_count", params or None)
+                rows_to_process = int(cur.fetchone()[0])
+            if where_sql:
+                with src_conn.cursor() as cur:
+                    cur.execute(f"select count(*) from ({base_sql}) sync_count")
+                    rows_total = int(cur.fetchone()[0])
+            else:
+                rows_total = rows_to_process
+
+            if mode == "incremental" and watermark_column:
+                with src_conn.cursor() as cur:
+                    cur.execute(
+                        f"select max({db_quote(watermark_column, _SYNC_MYSQL_FIELDS)})"
+                        f" from ({base_sql}) sync_max"
+                    )
+                    value = cur.fetchone()[0]
+                if value is not None:
+                    watermark_max = (
+                        value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else str(value)
+                    )
+
+        if mode == "full" and existing_target:
+            warnings.append(
+                f"「全量覆盖」会先清空 {dst_db}.{target_table} 里的全部现有数据再重写。"
+            )
+        if mode == "incremental" and not previous_watermark:
+            warnings.append("还没有水位，本轮会按全量读取来建立基线。")
+        if mode == "incremental" and not key_columns:
+            warnings.append("未指定业务键 → 本轮按追加写入（不去重），重复运行可能产生重复行。")
+        if str(task.get("source_mode") or "table") == "sql":
+            warnings.append("源端是自定义 SQL：计数与样例基于该 SQL 的当前结果。")
+
+        if taken and rows_to_process:
+            with src_conn.cursor() as cur:
+                cur.execute(f"{read_sql} limit {taken}", params or None)
+                for row in cur.fetchall():
+                    samples.append([sync_preview_value(item) for item in row[:len(write_columns)]])
+    finally:
+        src_conn.close()
+        dst_conn.close()
+
+    batch_rows = sync_batch_rows(task.get("batch_rows"))
+    scope = sync_mode_scope(mode, key_columns, watermark_column)
+    # 有 blocker 时不给行数结论（此时 rows_to_process 是 None）：给个"未测"比给个错数强。
+    if rows_to_process is None:
+        scope_line = "本轮将读取 —— 行（配置有问题，未去源端统计，先修好上面的拦路项）"
+        batch_line = f"写入 {len(write_columns)} 列，每批 {batch_rows:,} 行"
+    else:
+        scope_line = (
+            f"本轮将读取 {rows_to_process:,} 行" + (
+                f"（源端合计 {rows_total:,} 行，水位 {previous_watermark} 之后的部分）"
+                if rows_total != rows_to_process else ""
+            )
+        )
+        batch_line = (
+            f"写入 {len(write_columns)} 列，每批 {batch_rows:,} 行，"
+            f"约 {max(1, -(-rows_to_process // batch_rows)):,} 批"
+        )
+    plan = [
+        f"模式：{SYNC_MODE_LABELS.get(mode, mode)} · 同步范围：{scope}",
+        f"源：{db_name}.{source_table}" if str(task.get("source_mode")) != "sql" else f"源：自定义 SQL（{db_name}）",
+        f"目标：{dst_db}.{target_table}"
+        + ("（不存在，将按源结构自动创建）" if will_create else "（已存在）"),
+        scope_line,
+        batch_line,
+    ]
+
+    return {
+        "taskId": task_id,
+        "taskName": str(task.get("name") or ""),
+        "syncMode": mode,
+        "syncModeLabel": SYNC_MODE_LABELS.get(mode, mode),
+        "scope": scope,
+        "sourceLabel": (
+            f"{db_name}.{source_table}" if str(task.get("source_mode")) != "sql"
+            else f"自定义 SQL（{db_name}）"
+        ),
+        "targetLabel": f"{dst_db}.{target_table}",
+        "sourceColumns": source_columns,
+        "writeColumns": write_columns,
+        "keyColumns": key_columns,
+        "watermarkColumn": watermark_column,
+        "watermarkFrom": previous_watermark,
+        "watermarkMax": watermark_max,
+        "rowsTotal": rows_total,
+        "rowsToProcess": rows_to_process,
+        "targetExists": existing_target is not None,
+        "willCreateTarget": will_create,
+        "createTableHint": create_hint,
+        "missingInTarget": missing_in_target,
+        "batchRows": batch_rows,
+        "estimatedBatches": 0 if rows_to_process is None else max(1, -(-rows_to_process // batch_rows)),
+        "plan": plan,
+        "blockers": blockers,
+        "warnings": warnings,
+        "sampleRows": samples,
+        "canRun": not blockers,
+    }
+
+
+def sync_preview_value(item: object) -> object:
+    """样例单元格转成 JSON 安全值。date/datetime 不能原样进 json.dumps。"""
+    if item is None or isinstance(item, (str, int, float, bool)):
+        return item
+    if hasattr(item, "strftime"):
+        return item.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(item, (bytes, bytearray)):
+        return item.decode("utf-8", "replace")
+    if isinstance(item, Decimal):
+        return float(item)
+    return str(item)
+
+
+def execute_sync_task(config: dict[str, object]) -> dict[str, object]:
+    """执行一次同步，四档模式都接在同一套链路里。
+
+    模式差异只体现在两处：**读源时的 WHERE / ORDER** 与**写目标的方式**。
+
+    | 模式 | 读源 | 写目标 |
+    |---|---|---|
+    | full | 全表 | 清空 + 批量插入（delete 而不是 truncate） |
+    | upsert | 全表 | 按业务键删一段再插入 |
+    | incremental | `水位列 > 上次水位` | 有键则按业务键替换，无键则直接追加 |
+    | append | 全表 | 直接插入，不去重 |
+
+    复核不变量按模式区分（见函数尾部）。**不做统一的行数相等断言** ——
+    只有 full 才成立，其它模式那样断言会误报。
+    """
+    task = sync_resolve_task(config)
+    task_id = str(task["persistedId"] or "")
+    mode = normalize_sync_mode(task["sync_mode"])
+    if mode not in SYNC_MODES_READY:
+        raise ValueError(
+            f"「{SYNC_MODE_LABELS.get(mode, mode)}」还没接上执行链路（当前已开放"
+            f"「{'」「'.join(SYNC_MODE_LABELS[m] for m in SYNC_MODES_READY)}」）。"
+            "为避免静默降级成别的模式，这里直接拒绝执行。"
+        )
+
+    key_columns = sync_name_list(task["key_columns_json"])
+    watermark_column = str(task["watermark_column"] or "").strip()
+    if mode == "upsert" and not key_columns:
+        raise ValueError("「按业务键 upsert」需要至少一个键列。")
+    if mode == "incremental" and not watermark_column:
+        raise ValueError("「按时间戳增量」需要指定水位列。")
+
+    source_table = str(task["source_table"] or "")
+    target_table = str(task["target_table"] or "") or source_table
+    source_id = str(task["source_connection_id"] or "")
+    target_id = str(task["target_connection_id"] or "")
+    db_name = resolve_sync_db_name(source_id)
+
+    # 增量模式：只有「有水位」且不是首次运行时才加 WHERE。
+    # 首次运行没有水位 → 必须全量读取来建立基线，这是增量语义的一部分，不是降级。
+    previous_watermark = sync_watermark_value(task_id) if mode == "incremental" else ""
+    incremental_full_load = mode == "incremental" and not previous_watermark
+
+    started_at = now_text()
+    started = time.time()
+    src_conn = connect_sync_db(source_id)
+    dst_conn = connect_sync_db(target_id)
+    dst_fields = resolve_connection_fields({"connectionId": target_id})
+
+    read = 0
+    written = 0
+    updated = 0
+    created = False
+    target_rows = 0
+    new_watermark: str | None = previous_watermark or None
+    batch_errors: list[str] = []
+
+    def build_failure_message(exc: Exception) -> str:
+        head = (
+            f"{SYNC_MODE_LABELS.get(mode, mode)} · 同步范围："
+            f"{sync_mode_scope(mode, key_columns, watermark_column)}。"
+            f"已读取 {read:,} 行、写入 {written:,} 行、更新 {updated:,} 行。"
+        )
+        tail = translate_system_error(str(exc))
+        if len(batch_errors) > 1:
+            # 只在"确实还有别的批次也失败"时才提这句，否则首次失败会被写成"此前已有 1 个批次失败"
+            tail = f"{tail}（此前已有 {len(batch_errors) - 1} 个批次失败：{batch_errors[0]}）"
+        return f"{head}\n失败原因：{tail}"
+
+    try:
+        # 源列共用 preview 的解析入口：表名写错 / 没权限 / SQL 为空都在这里一次性报出，
+        # 且报错文案与预演一致（用户在预览里看到的，执行时也会看到）。
+        source_columns, source_description = sync_source_columns_of(task, src_conn, db_name)
+
+        # 字段映射：columns_json 为空 = 同名同序全量映（默认路径）。
+        # sqlite3.Row 也支持按列名取值，不要用 isinstance(task, dict) 去分岔。
+        mapped = sync_name_list(task["columns_json"])
+        if mapped and len(mapped) == len(source_columns):
+            out_columns = mapped
+            in_columns = list(source_columns)
+        else:
+            out_columns = list(source_columns)
+            in_columns = list(source_columns)
+        if not out_columns:
+            raise ValueError("源端没有解析到任何列，已中止（不会清空目标表）。")
+
+        # 水位列可能被字段映射排除在外。补进 SELECT 尾部单独取值，插入时再切掉，
+        # 这样"只同步部分列"的配置也能正确推进水位（否则水位永远不动，增量变成每轮全量）。
+        watermark_index: int | None = None
+        select_columns = list(in_columns)
+        if mode == "incremental" and watermark_column:
+            if watermark_column in select_columns:
+                watermark_index = select_columns.index(watermark_column)
+            else:
+                select_columns.append(watermark_column)
+                watermark_index = len(select_columns) - 1
+            if watermark_column not in out_columns:
+                # 水位列不在写入列里：读出来只用于推进水位，写目标时丢弃。
+                pass
+
+        mysql = {"targetDbType": "mysql"}
+        # ⚠️ 源表名走的是 source_table、目标表名走的是 target_table：
+        # 之前这里把目标表名拿去源库 SHOW CREATE TABLE，凡是"换名落地"的任务一进来就失败，
+        # 且报错写成"源库里不存在目标表"，看着像用户写错了表名。
+        created = ensure_sync_target_table(
+            src_conn, dst_conn, db_name, str(task["source_mode"] or "table"),
+            source_table, source_description, target_table, dst_fields,
+        )
+
+        # ⚠️ 骨架必须与 sync_preview_task 同源：预览报的行数要等于真实跑出来的 rowsRead。
+        select_sql = sync_select_sql(
+            str(task["source_mode"] or "table"), str(task["source_sql"] or ""),
+            db_name, source_table, select_columns,
+        )
+        select_params: list = []
+        if mode == "incremental" and previous_watermark:
+            select_sql += f" where {db_quote(watermark_column, mysql)} > {db_placeholder(mysql)}"
+            select_params.append(previous_watermark)
+        batch_rows = int(task["batch_rows"] or SYNC_DEFAULT_BATCH)
+        trim = len(select_columns) - len(out_columns)
+
+        with dst_conn.cursor() as cur:
+            cur.execute(f"select count(*) from {db_quote(target_table, dst_fields)}")
+            target_before = int(cur.fetchone()[0])
+
+        if mode == "full":
+            # 清空 + 写入放在同一个事务里：中途失败则整体回滚，目标表不会只剩半批数据。
+            # 用 delete 而不是 truncate —— truncate 是 DDL、会隐式提交，一旦写入失败目标表就空了。
+            with dst_conn.cursor() as cur:
+                cur.execute(f"delete from {db_quote(target_table, dst_fields)}")
+
+        insert_placeholders = ", ".join([db_placeholder(dst_fields)] * len(out_columns))
+        insert_sql = (
+            f"insert into {db_quote(target_table, dst_fields)}"
+            f" ({', '.join(db_quote(name, dst_fields) for name in out_columns)})"
+            f" values ({insert_placeholders})"
+        )
+
+        def flush(batch: list[tuple]) -> tuple[int, int]:
+            """写入一批，返回（新增, 更新）。"""
+            nonlocal written, updated
+            if mode == "upsert" or (mode == "incremental" and key_columns):
+                with dst_conn.cursor() as cur:
+                    batch_inserted, batch_updated = sync_upsert_batch(
+                        cur, target_table, out_columns, key_columns or [], batch, dst_fields
+                    )
+                written += batch_inserted
+                updated += batch_updated
+                return batch_inserted, batch_updated
+            with dst_conn.cursor() as cur:
+                cur.executemany(insert_sql, batch)
+            written += len(batch)
+            return len(batch), 0
+
+        for batch in sync_fetch_batches(src_conn, select_sql, batch_rows, *select_params):
+            read += len(batch)
+            if watermark_index is not None:
+                for row in batch:
+                    value = row[watermark_index]
+                    if value is None:
+                        continue
+                    text = value.strftime("%Y-%m-%d %H:%M:%S") if hasattr(value, "strftime") else str(value)
+                    if new_watermark is None or text > str(new_watermark):
+                        new_watermark = text
+            payload_rows = [row[:len(out_columns)] for row in batch] if trim else batch
+            try:
+                flush(payload_rows)
+                if str(task["commit_mode"] or "batch") == "batch":
+                    dst_conn.commit()
+            except Exception as exc:  # 单批失败
+                batch_errors.append(translate_system_error(str(exc)))
+                if int(task["stop_on_error"] or 0):
+                    raise
+        dst_conn.commit()
+
+        with dst_conn.cursor() as cur:
+            cur.execute(f"select count(*) from {db_quote(target_table, dst_fields)}")
+            target_rows = int(cur.fetchone()[0])
+    except Exception as exc:
+        try:
+            dst_conn.rollback()
+        except Exception:  # pragma: no cover - defensive
+            pass
+        elapsed_ms = int((time.time() - started) * 1000)
+        message = build_failure_message(exc)
+        sync_save_state(
+            task_id, status="失败", rows_read=read, rows_written=written, rows_updated=updated,
+            message=message, watermark_value=None, advance_watermark=False,
+        )
+        record_sync_run({
+            "task_id": task_id, "task_name": str(task["name"]), "sync_mode": mode,
+            "source_label": f"{db_name}.{source_table}",
+            "target_label": f"{dst_fields.get('dbName')}.{target_table}",
+            "started_at": started_at, "ended_at": now_text(), "elapsed_ms": elapsed_ms,
+            "status": "失败", "rows_read": read, "rows_written": written, "rows_updated": updated,
+            "target_rows": 0,
+            "watermark_from": previous_watermark or None,
+            "watermark_to": None,
+            "message": message,
+        })
+        raise ValueError(message) from exc
+    finally:
+        src_conn.close()
+        dst_conn.close()
+
+    elapsed_ms = int((time.time() - started) * 1000)
+
+    # ------------------------------------------------ 复核（按模式区分不变量）
+    # 统一断言"目标行数 == 源读取行数"只在 full 下成立；其它模式那样断言会误报成失败。
+    if mode == "full":
+        if read != target_rows:
+            raise ValueError(
+                f"同步后复核不一致：源读 {read:,} 行，目标表 {target_rows:,} 行。"
+                "目标表可能被别的写入影响，请检查后重跑。"
+            )
+    elif mode == "append":
+        if target_rows != target_before + read:
+            raise ValueError(
+                f"同步后复核不一致：写入前 {target_before:,} 行，读取 {read:,} 行，"
+                f"现在却是 {target_rows:,} 行。目标表可能被别的写入影响，请检查后重跑。"
+            )
+    else:
+        # upsert / incremental（带键）：每一行源数据要么新增、要么更新，合计必须等于读取行数。
+        if written + updated != read:
+            raise ValueError(
+                f"同步后复核不一致：读取 {read:,} 行，但新增 {written:,} + 更新 {updated:,} "
+                f"= {written + updated:,} 行。目标表可能被别的写入影响，请检查后重跑。"
+            )
+        if target_rows != target_before + written:
+            raise ValueError(
+                f"同步后复核不一致：写入前 {target_before:,} 行，新增 {written:,} 行，"
+                f"现在却是 {target_rows:,} 行。目标表可能被别的写入影响，请检查后重跑。"
+            )
+
+    scope = sync_mode_scope(mode, key_columns, watermark_column)
+    status = "部分成功" if batch_errors else "成功"
+    headline = (
+        f"{SYNC_MODE_LABELS.get(mode, mode)} · 同步范围：{scope}。"
+        f"读取 {read:,} 行、新增 {written:,} 行、更新 {updated:,} 行、目标表合计 {target_rows:,} 行，"
+        f"耗时 {elapsed_ms / 1000:.1f} 秒。"
+    )
+    notes: list[str] = []
+    if created:
+        notes.append("目标表原来不存在，已按源表结构自动创建")
+    if incremental_full_load:
+        notes.append(
+            f"首次运行（此前没有水位），已按全量读取建立水位基线（{watermark_column}）"
+        )
+    elif mode == "incremental":
+        notes.append(f"水位 {previous_watermark or '（空）'} → {new_watermark or '（无新数据）'}")
+    if mode == "incremental" and not key_columns:
+        notes.append("未指定业务键 → 本轮按追加写入（不去重）；重复运行可能产生重复行")
+    if batch_errors:
+        notes.append(f"有 {len(batch_errors)} 个批次写入失败，数据不完整：{batch_errors[0]}")
+
+    sync_save_state(
+        task_id, status=status, rows_read=read, rows_written=written, rows_updated=updated,
+        message=headline, watermark_value=new_watermark,
+        advance_watermark=True,
+    )
+    record_sync_run({
+        "task_id": task_id, "task_name": str(task["name"]), "sync_mode": mode,
+        "source_label": f"{db_name}.{source_table}",
+        "target_label": f"{dst_fields.get('dbName')}.{target_table}",
+        "started_at": started_at, "ended_at": now_text(), "elapsed_ms": elapsed_ms,
+        "status": status, "rows_read": read, "rows_written": written, "rows_updated": updated,
+        "target_rows": target_rows,
+        "watermark_from": previous_watermark or None,
+        "watermark_to": new_watermark,
+        "message": "\n".join([headline, *notes]),
+    })
+    return {
+        "taskName": str(task["name"]),
+        "syncMode": mode,
+        "syncModeLabel": SYNC_MODE_LABELS.get(mode, mode),
+        "scope": scope,
+        "sourceLabel": f"{db_name}.{source_table}",
+        "targetLabel": f"{dst_fields.get('dbName')}.{target_table}",
+        "targetCreated": created,
+        "rowsRead": read,
+        "rowsWritten": written,
+        "rowsUpdated": updated,
+        "targetRows": target_rows,
+        "watermarkFrom": previous_watermark or "",
+        "watermarkTo": new_watermark or "",
+        "elapsedMs": elapsed_ms,
+        "status": status,
+        "notes": notes,
+        "message": "\n".join([headline, *notes]),
+    }
+
+
 def execute_import_step(config: dict[str, object]) -> dict[str, object]:
     fields = {key: str(value) for key, value in config.items() if not isinstance(value, (list, dict))}
     source_path = str(config.get("path") or config.get("sourcePath") or "")
@@ -5356,6 +6789,25 @@ _ERROR_TRANSLATIONS: tuple[tuple[str, str], ...] = (
     (r"\[WinError 32\]|\[WinError 33\]", "文件正被其他程序占用（如 Excel / WPS 打开着）"),
     (r"\[WinError 5\]", "没有权限访问该文件或目录"),
     (r"\[WinError 112\]", "磁盘空间不足，请清理磁盘后重试"),
+    # ---- MySQL / 数据库侧（pymysql 报错原样是 `(1062, "Duplicate entry ...")`，
+    #      直接把元组摆到界面上等于没报错；下面把最常见的几种说成人话）----
+    (r"\(1062, \"Duplicate entry '([^']*)' for key '([^']+)'\"\)",
+     "目标表已有这个键的数据（唯一约束冲突）：值 {0}、约束 {1}。"
+     "「仅追加」会直接插重复行，请改用「按业务键 upsert」或「全量覆盖」。"),
+    (r"\(1406, \"Data too long for column '([^']+)'\"\)",
+     "字段内容超长：{0}。目标列比源端窄，请先加宽该列或开启自动拓宽。"),
+    (r"\(1054, \"Unknown column '([^']+)' in '([^']*)'\"\)",
+     "没有这个字段：{0}（出现在 {1}）。请检查字段映射与水位列/键列的名字。"),
+    (r"\(1146, \"Table '([^']+)' doesn't exist\"\)", "表不存在：{0}"),
+    (r"\(1049, \"Unknown database '([^']+)'\"\)", "数据库不存在：{0}"),
+    (r"\(1044, \"Access denied for user '[^']*'@'[^']*' to database '([^']+)'\"\)",
+     "该账号没有访问数据库「{0}」的权限，请联系数据库管理员授权。"),
+    (r"\(1045, \"Access denied for user", "数据库拒绝登录：账号或密码不对，或该账号不允许从这台机器连接。"),
+    (r"\(2003, \"Can't connect to MySQL server on '([^']+)'\"\)",
+     "连不上数据库服务器 {0}：请检查主机地址、端口与网络是否可达。"),
+    (r"\(2013, ", "与数据库的连接中断了（网络抖动或被服务端断开），请重试。"),
+    # 兜底：至少把 Python 元组形状去掉，留下错误号与原文，别让用户看 `(1062, "...")`
+    (r"\((\d{4}), \"(.*)\"\)", "数据库报错 {0}：{1}"),
 )
 
 _NESTED_PREFIX_RE = re.compile(
@@ -7237,6 +8689,18 @@ ROUTE_MIN_ROLE: dict[tuple[str, str], str] = {
     ("POST", "/api/schedules/start"): "operator",
     ("POST", "/api/schedules/pause"): "operator",
     ("DELETE", "/api/schedules"): "operator",
+    # 同步：列表与历史纯读元数据库，viewer 即可。
+    # probe / preview 虽然一般会连远端 MySQL，但源端 SQL 已被限制为**单条只读语句**
+    # （sync_source_columns_of 用查询控制台同一套风险分级把关），所以它们不会成为
+    # 只读账号的提权通道 —— 这条限制是它们能给 viewer 的前提，删了就要同步改这里。
+    ("GET", "/api/sync/tasks"): "viewer",
+    ("POST", "/api/sync/probe"): "viewer",
+    ("POST", "/api/sync/preview"): "viewer",
+    ("GET", "/api/sync/runs"): "viewer",
+    # 保存任务会落库口令指向的连接组合，执行会清空目标表 —— 等同导入，给 operator。
+    ("POST", "/api/sync/tasks"): "operator",
+    ("DELETE", "/api/sync/tasks"): "operator",
+    ("POST", "/api/sync/run"): "operator",
     # ---- 管理员 ----
     # 连接是生产库入口（含库口令），只有管理员能增删改
     ("POST", "/api/connections"): "admin",
@@ -7801,6 +9265,12 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/audit-logs":
                 self.handle_audit_logs(parsed.query)
                 return
+            if parsed.path == "/api/sync/tasks":
+                self.handle_sync_tasks()
+                return
+            if parsed.path == "/api/sync/runs":
+                self.handle_sync_runs(parsed.query)
+                return
         except Exception as exc:
             error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
             return
@@ -7902,6 +9372,18 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
             if self.path == "/api/schedules/pause":
                 self.handle_schedule_state(False)
                 return
+            if self.path == "/api/sync/tasks":
+                self.handle_sync_task_save()
+                return
+            if self.path == "/api/sync/probe":
+                self.handle_sync_probe()
+                return
+            if self.path == "/api/sync/preview":
+                self.handle_sync_preview()
+                return
+            if self.path == "/api/sync/run":
+                self.handle_sync_run()
+                return
             error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
         except Exception as exc:
             error_response(self, str(exc), HTTPStatus.BAD_REQUEST)
@@ -7924,6 +9406,9 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/queries":
                 self.handle_query_delete(parsed.query)
+                return
+            if parsed.path == "/api/sync/tasks":
+                self.handle_sync_task_delete(parsed.query)
                 return
             error_response(self, "未知接口。", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -9062,6 +10547,105 @@ class ImportPrototypeHandler(SimpleHTTPRequestHandler):
                 if not chunk:
                     break
                 self.wfile.write(chunk)
+
+    # ------------------------------------------------------------------ 同步模块
+    # 接口分工（7 个）：
+    #   GET    /api/sync/tasks   任务列表（含水位与上次结果）
+    #   POST   /api/sync/tasks   保存任务
+    #   DELETE /api/sync/tasks   删除任务
+    #   POST   /api/sync/probe   只读探测源端（列 / 键 / 行数 / 适用性）
+    #   POST   /api/sync/preview 只读预演（**不写任何东西**）
+    #   POST   /api/sync/run     真正执行
+    #   GET    /api/sync/runs    运行历史
+    #
+    # 为什么 probe / preview 与 run 分成三个而不是塞进 run —— run 一旦被调用就会动目标表，
+    # 而"列清单"和"这一跑会发生什么"是配成了才敢问的问题。合并只会让人不敢点。
+
+    def _sync_mode_options(self) -> list[dict[str, object]]:
+        """四档模式连同"是否已接通"一起返回，让界面的可选集合由服务端决定。
+
+        SYNC_MODES_READY 是唯一真值来源：新模式接上链路前这里就是 false，
+        前端据此置灰，不必两边各维护一份"哪些能用"。
+        """
+        descriptions = {
+            "full": "清空目标表后按源表全量重写。结果确定，是会改的历史表唯一可靠的选择。",
+            "upsert": "读全量，按业务键先删再插。已存在的行被替换，目标不产生重复。需要指定键列。",
+            "incremental": "只读水位列大于上次水位的行。最快，但改过的行不会重来——只留给只增不改的流水表。",
+            "append": "读全量直接追加，不去重。重复运行会翻倍。",
+        }
+        return [
+            {
+                "value": mode,
+                "label": SYNC_MODE_LABELS.get(mode, mode),
+                "description": descriptions.get(mode, ""),
+                "ready": mode in SYNC_MODES_READY,
+            }
+            for mode in SYNC_MODES
+        ]
+
+    def handle_sync_tasks(self) -> None:
+        json_response(self, {
+            "ok": True,
+            "tasks": list_sync_tasks(),
+            "modes": self._sync_mode_options(),
+            "defaultBatchRows": SYNC_DEFAULT_BATCH,
+            "maxBatchRows": SYNC_MAX_BATCH,
+        })
+
+    def handle_sync_task_save(self) -> None:
+        json_response(self, {"ok": True, "task": save_sync_task(read_json_body(self))})
+
+    def handle_sync_task_delete(self, query: str) -> None:
+        params = parse_qs(query)
+        task_id = (params.get("id") or params.get("taskId") or [""])[0].strip()
+        if not task_id:
+            raise ValueError("缺少同步任务编号。")
+        delete_sync_task(task_id)
+        json_response(self, {"ok": True})
+
+    def handle_sync_probe(self) -> None:
+        """探测源端。既可以传已保存任务的 id，也可以传还没保存的配置——
+        配置阶段需要先看到列，才谈得上选映射和键，所以不能要求先保存。
+        """
+        payload = read_json_body(self)
+        task_id = str(payload.get("id") or payload.get("taskId") or "").strip()
+        if task_id:
+            task = load_sync_task_row(task_id)
+        else:
+            task = {
+                "source_connection_id": str(payload.get("sourceConnectionId") or "").strip(),
+                "source_mode": str(payload.get("sourceMode") or "table"),
+                "source_table": str(payload.get("sourceTable") or "").strip(),
+                "source_sql": str(payload.get("sourceSql") or "").strip(),
+            }
+            if not str(task["source_connection_id"]):
+                raise ValueError("请先选择源连接。")
+        json_response(self, {"ok": True, "probe": sync_probe_source(task)})
+
+    def handle_sync_preview(self) -> None:
+        # 预演里校验不通过会抛 ValueError。这里不包 try —— 让它照常冒泡到 do_POST 的统一出口，
+        # 若在这里吃掉换成别的措辞，用户看到的原因就和"点执行"时的不一致了。
+        json_response(self, {"ok": True, "preview": sync_preview_task(read_json_body(self))})
+
+    def handle_sync_run(self) -> None:
+        payload = read_json_body(self)
+        json_response(self, {"ok": True, "run": execute_sync_task(payload)})
+
+    def handle_sync_runs(self, query: str) -> None:
+        params = parse_qs(query)
+        task_id = (params.get("taskId") or [""])[0].strip()
+        limit_raw = (params.get("limit") or [""])[0].strip()
+        limit = SYNC_RUN_KEEP
+        if limit_raw:
+            try:
+                limit = int(limit_raw)
+            except ValueError:
+                raise ValueError("limit 必须是整数。") from None
+        json_response(self, {
+            "ok": True,
+            "runs": list_sync_runs(task_id, limit),
+            "modes": self._sync_mode_options(),
+        })
 
 
 class ResilientHTTPServer(ThreadingHTTPServer):

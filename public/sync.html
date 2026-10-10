@@ -7,8 +7,181 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="stylesheet" href="/styles.css?v=20261008_logs2" />
     <link rel="stylesheet" href="/theme.css?v=20260912_claude" />
+    <link rel="stylesheet" href="/sync.css?v=20261010_views1" />
   </head>
-  <body data-module="sync">
-    <script src="/module-pages.js?v=20260707_desktop_pages"></script>
-  <script src="/shell.js?v=20260922_auth2"></script></body>
+  <body data-page="sync">
+    <div class="desktop-shell">
+      <header class="app-ribbon">
+        <a class="ribbon-item" href="/connections.html"><span class="ribbon-icon green">DB</span><span>新建连接</span></a>
+        <a class="ribbon-item" href="/"><span class="ribbon-icon orange">IN</span><span>导入</span></a>
+        <a class="ribbon-item" href="/export.html"><span class="ribbon-icon cyan">OUT</span><span>导出</span></a>
+        <a class="ribbon-item active" href="/sync.html"><span class="ribbon-icon red">SYNC</span><span>同步</span></a>
+        <a class="ribbon-item" href="/query.html"><span class="ribbon-icon dark">SQL</span><span>查询</span></a>
+        <a class="ribbon-item" href="/tables.html"><span class="ribbon-icon blue">TAB</span><span>表</span></a>
+        <a class="ribbon-item" href="/jobs.html"><span class="ribbon-icon teal">JOB</span><span>作业</span></a>
+        <a class="ribbon-item" href="/schedule.html"><span class="ribbon-icon purple">TIME</span><span>定时任务</span></a>
+        <a class="ribbon-item" href="/api.html"><span class="ribbon-icon black">API</span><span>API</span></a>
+      </header>
+      <div class="desktop-main">
+        <aside class="app-sidebar">
+          <div class="sidebar-title">功能</div>
+          <nav class="module-tree">
+            <a class="tree-node" href="/connections.html"><span>DB</span> 新建连接</a>
+            <a class="tree-node" href="/"><span>IN</span> 导入</a>
+            <a class="tree-node" href="/export.html"><span>OUT</span> 导出</a>
+            <a class="tree-node active" href="/sync.html"><span>SYNC</span> 同步</a>
+            <a class="tree-node" href="/query.html"><span>SQL</span> 查询</a>
+            <a class="tree-node" href="/tables.html"><span>TAB</span> 表</a>
+            <a class="tree-node" href="/jobs.html"><span>JOB</span> 作业</a>
+            <a class="tree-node" href="/schedule.html"><span>TIME</span> 定时任务</a>
+          </nav>
+          <div class="sidebar-version" id="appVersion">数据导表工具</div>
+        </aside>
+
+        <section class="app-workspace">
+          <!-- ============================ 第一层：任务列表 ============================ -->
+          <main class="sync-view on" id="listView">
+            <section class="sync-toolbar">
+              <button id="openTask" class="primary" type="button">打开同步</button>
+              <button id="newTask" type="button">新建同步任务</button>
+              <button id="deleteTask" type="button">删除</button>
+              <span id="listStatus"></span>
+            </section>
+
+            <section class="sync-panel">
+              <div class="sync-panel-head">
+                <strong>同步任务</strong>
+                <span class="sync-count" id="taskCount">0 个</span>
+              </div>
+              <div class="sync-table-wrap">
+                <table class="sync-table">
+                  <thead>
+                    <tr>
+                      <th>任务名称</th>
+                      <th>源</th>
+                      <th>目标</th>
+                      <th>同步模式</th>
+                      <th>上次运行</th>
+                    </tr>
+                  </thead>
+                  <tbody id="taskList"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="sync-panel">
+              <div class="sync-panel-head">
+                <strong>运行历史</strong>
+                <span class="sync-count" id="runCount"></span>
+              </div>
+              <div id="runList" class="sync-runs">选中一个任务后显示它的运行记录</div>
+            </section>
+
+            <p class="sync-tip">双击一行直接打开画布；也可以选中后点「打开同步」。</p>
+          </main>
+
+          <!-- ============================ 第二层：任务画布 ============================ -->
+          <main class="sync-view canvas-view" id="canvasView">
+            <section class="sync-toolbar canvas-toolbar">
+              <button id="backToList" type="button">← 同步任务</button>
+              <span class="tb-name" id="cbName">未命名任务</span>
+              <span class="cb-flag" id="cbFlag">新建</span>
+            </section>
+
+            <div class="canvas-body" id="canvasBody">
+            <div class="stage" id="stage">
+              <div class="world" id="world">
+                <svg class="edges" id="edges">
+                  <defs>
+                    <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+                      <path d="M0,0 L8,4 L0,8 z" fill="#cfcfcf"></path>
+                    </marker>
+                  </defs>
+                </svg>
+
+                <div class="flow-labels" id="edgeLabels"></div>
+              </div>
+
+              <div class="flow-hud">
+                <button id="zoomOut" type="button" title="缩小">−</button>
+                <span class="zoomval" id="zoomVal">100%</span>
+                <button id="zoomIn" type="button" title="放大">＋</button>
+                <button id="fit" type="button" title="适应画布">⤢</button>
+              </div>
+
+              <div class="flow-actions">
+                <button id="btnPreview" type="button">任务预览</button>
+                <button id="btnSave" type="button">保存任务</button>
+                <button id="btnRun" class="primary" type="button">立即同步</button>
+              </div>
+            </div>
+
+            <!-- 点节点上的「＋」才弹出来：列出还没加过的节点角色。
+                 ⚠️ 必须在 .stage **外面**：放里面的话，点菜单项会先触发画布的
+                 pointerdown → setPointerCapture 把指针劫到 stage，click 永远到不了按钮。 -->
+            <div class="add-menu" id="addMenu" hidden></div>
+
+            <!-- 面板是盖在画布上的（业主明确要求开面板时画布不缩略）。 -->
+            <aside class="drawer" id="drawer">
+              <div class="dw-head">
+                <span class="dw-ico" id="dwIco">▤</span>
+                <span class="dw-title" id="dwTitle">源</span>
+                <span class="dw-sub" id="dwSub"></span>
+                <button class="dw-close" id="dwClose" type="button">×</button>
+              </div>
+              <div class="dw-body" id="drawerBody"></div>
+              <div class="dw-foot">
+                <button id="dwCancel" type="button">取消</button>
+                <button id="dwOk" class="primary" type="button">确定</button>
+              </div>
+            </aside>
+            </div>
+          </main>
+        </section>
+      </div>
+    </div>
+
+    <!-- 列表层的结果 / 确认对话框（id 带 list 前缀，避免与画布的 dlgBody 撞车） -->
+    <dialog id="listDialog" class="sync-dialog">
+      <div class="sync-dialog-card">
+        <header>
+          <strong id="listDlgTitle">提示</strong>
+          <button id="listDlgClose" type="button">×</button>
+        </header>
+        <div class="sync-dialog-body" id="listDlgBody"></div>
+        <footer id="listDlgFoot">
+          <button id="listDlgOk" class="primary" type="button">知道了</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <!-- 画布层的对话框 -->
+    <dialog id="syncDialog" class="sync-dialog">
+      <div class="sync-dialog-card">
+        <header>
+          <strong id="dlgTitle">结果</strong>
+          <button id="dlgClose" type="button">×</button>
+        </header>
+        <div class="sync-dialog-body" id="dlgBody"></div>
+      </div>
+    </dialog>
+
+    <dialog id="nameDialog" class="sync-dialog">
+      <div class="sync-dialog-card narrow">
+        <header><strong>保存同步任务</strong><button id="nameClose" type="button">×</button></header>
+        <div class="sync-dialog-body">
+          <label>任务名称：<input class="inp" id="nameInput" placeholder="例如：会员小票表 → 分析库" /></label>
+          <p class="hint">保存后下次进入可继续编辑。执行会写目标表，命名最好能一眼看出源与目标。</p>
+        </div>
+        <footer>
+          <button id="nameCancel" type="button">取消</button>
+          <button id="nameOk" class="primary" type="button">保存</button>
+        </footer>
+      </div>
+    </dialog>
+
+    <script src="/sync-canvas.js?v=20261010_views1"></script>
+    <script src="/sync.js?v=20261010_views1"></script>
+    <script src="/shell.js?v=20260922_auth2"></script>
+  </body>
 </html>
