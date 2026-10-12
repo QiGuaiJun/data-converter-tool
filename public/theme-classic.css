@@ -1,0 +1,163 @@
+/* ==========================================================================
+   经典（亮蓝）主题 —— 2026-09-16 之前那套配色的移植版
+   --------------------------------------------------------------------------
+   来由：业主想在当前功能（同步模块、认证、日志改造……）上继续用旧主题的观感。
+   旧主题的完整界面在 archive/audit/head_tree/public/，那份是 09-12 的快照，
+   直接回退会丢掉一个月的新功能 —— 所以这里**只移植观感，不搬旧结构**。
+
+   激活方式：body 上有 `theme-classic` 类（shell.js 切换 + localStorage 记住）。
+   本文件在 theme.css **之后**加载，靠变量覆盖生效，不改任何组件结构。
+
+   旧主题的原始定义（archive/audit/head_tree/public/styles.css 第 2560 行起）：
+     --bg #f4f8ff  --line #dce7f4  --soft #f8fbff  --active #e8f3ff
+     --text #203047  --muted #7f91aa  --blue #5a9cff  --blue-strong #2f80ed
+     --card rgba(255,255,255,.88)   --shadow 0 10px 30px rgba(81,119,171,.10)
+     字体 微软雅黑
+   ========================================================================== */
+
+body.theme-classic {
+  /* 底色系 */
+  --canvas: #f4f8ff;
+  --surface-soft: #f8fbff;
+  --surface-card: #ffffff;
+  --surface-strong: #e8f3ff;
+  --panel: #f8fbff;
+  --panel-edge: #dce7f4;
+  --hairline: #dce7f4;
+  --hairline-soft: #e8f0fa;
+
+  /* 主色系 */
+  --primary: #5a9cff;
+  --primary-active: #2f80ed;
+  --primary-disabled: #cfe4ff;
+
+  /* 文字系 */
+  --ink: #12203a;
+  --body: #203047;
+  --body-strong: #111827;
+  --muted: #7f91aa;
+  --muted-soft: #9aabc2;
+
+  /* 语义色 */
+  --success: #128a4d;
+  --success-bg: #dcfce9;
+  --warning: #9a6a00;
+  --warning-bg: #fff2cf;
+  --error: #c9364f;
+  --error-bg: #ffe4e8;
+
+  /* 代码配色沿用旧主题的冷色 */
+  --code-key: #2f80ed;
+  --code-str: #128a4d;
+  --code-num: #9a6a00;
+  --code-cm: #9aabc2;
+
+  /* 字体：旧主题是微软雅黑 */
+  --sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
+  --mono: Consolas, "Microsoft YaHei", monospace;
+
+  /* 阴影：新主题全站 box-shadow: none，这里显式恢复（见下方卡片规则） */
+  --shadow: 0 10px 30px rgba(81, 119, 171, 0.10);
+  --shadow-sm: 0 4px 14px rgba(81, 119, 171, 0.08);
+
+  /* 侧栏与各色 soft 底（旧主题是各自有色的，不是统一的奶油色） */
+  --side-color: var(--primary);
+  --side-soft: #e8f3ff;
+  --side-border: var(--hairline);
+  --green-soft: #dcfce9;
+  --orange-soft: #fff2cf;
+  --cyan-soft: #dffbff;
+  --red-soft: #ffe4e8;
+  --purple-soft: #f0e6ff;
+  --pink-soft: #ffe7f3;
+}
+
+/* 旧主题的卡片是半透明白，叠在淡蓝底上 */
+body.theme-classic:not(.plain-mode) {
+  background:
+    linear-gradient(rgba(248, 251, 255, 0.05), rgba(244, 248, 255, 0.12)),
+    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
+}
+body.theme-classic:not(.plain-mode) .desktop-shell,
+body.theme-classic:not(.plain-mode) .app-ribbon,
+body.theme-classic:not(.plain-mode) .app-workspace {
+  background: rgba(244, 248, 255, 0.78);
+}
+body.theme-classic:not(.plain-mode) .app-sidebar {
+  background: rgba(238, 245, 255, 0.84);
+}
+
+/* 素色模式：淡蓝纯色，不带任何背景图 */
+body.theme-classic.plain-mode,
+body.theme-classic.plain-mode .desktop-shell,
+body.theme-classic.plain-mode .app-ribbon,
+body.theme-classic.plain-mode .app-workspace {
+  background: var(--canvas);
+}
+body.theme-classic.plain-mode .app-sidebar {
+  background: #eef5ff;
+}
+
+/* 面板 / 卡片恢复柔和阴影（新主题把它们统一成了 box-shadow: none） */
+body.theme-classic .module-card,
+body.theme-classic .module-task-panel,
+body.theme-classic .module-task-toolbar,
+body.theme-classic .job-toolbar,
+body.theme-classic .job-panel,
+body.theme-classic .connection-list-panel,
+body.theme-classic .connection-editor-panel,
+body.theme-classic .query-toolbar,
+body.theme-classic .query-saved-panel,
+body.theme-classic .query-editor-panel,
+body.theme-classic .query-result-panel,
+body.theme-classic .query-history-panel,
+body.theme-classic .table-toolbar,
+body.theme-classic .table-list-panel,
+body.theme-classic .table-detail-panel,
+body.theme-classic .sync-toolbar,
+body.theme-classic .sync-panel,
+body.theme-classic .import-shell > section,
+body.theme-classic .export-shell > section {
+  box-shadow: var(--shadow-sm);
+}
+
+/* --------------------------------------------------------------------------
+   图标：styles.css 里对 .ribbon-icon 定义了**两套** ——
+   第 68 行是实色小方块（彩色底 + 白字），第 2698 行是浅底彩字（默认生效的最新的那套）。
+   业主明确说"认可第二套的组件图标"，指的就是这套实色的，所以在经典主题下恢复它。
+   -------------------------------------------------------------------------- */
+body.theme-classic .ribbon-icon.green { background: #18a05e; color: #fff; }
+body.theme-classic .ribbon-icon.orange { background: #f58a1f; color: #fff; }
+body.theme-classic .ribbon-icon.cyan { background: #29a6b8; color: #fff; }
+body.theme-classic .ribbon-icon.red { background: #d94655; color: #fff; }
+body.theme-classic .ribbon-icon.dark { background: #222; color: #fff; }
+body.theme-classic .ribbon-icon.blue { background: #3a8ee6; color: #fff; }
+body.theme-classic .ribbon-icon.teal { background: #48b7a3; color: #fff; }
+body.theme-classic .ribbon-icon.purple { background: #aa63d6; color: #fff; }
+body.theme-classic .ribbon-icon.black { background: #111; color: #fff; }
+body.theme-classic .ribbon-icon.violet { background: #7655d6; color: #fff; }
+body.theme-classic .ribbon-icon.sky { background: #3aa4ef; color: #fff; }
+
+/* --------------------------------------------------------------------------
+   侧栏图标：ribbon 用的是 .ribbon-icon（实色小方块），侧栏用的是 .tree-node span
+   （--side-color / --side-soft 浅底彩字），**两套颜色体系各走各的**。
+   业主指出"左侧图标还没有换过来" —— 经典主题下让侧栏跟 ribbon 完全对齐：
+   色值逐一取 ribbon 的实色，外观也改成实底白字。
+   -------------------------------------------------------------------------- */
+body.theme-classic .module-tree > .tree-node:nth-of-type(1) { --side-color: #18a05e; --side-soft: #e9f7f0; --side-border: #c7e9d8; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(2) { --side-color: #f58a1f; --side-soft: #fef4e8; --side-border: #f8ddbe; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(3) { --side-color: #29a6b8; --side-soft: #e8f8fa; --side-border: #c5ebef; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(4) { --side-color: #d94655; --side-soft: #fdeef0; --side-border: #f8d3d8; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(5) { --side-color: #222222; --side-soft: #f0f0f0; --side-border: #dcdcdc; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(6) { --side-color: #3a8ee6; --side-soft: #ecf4fd; --side-border: #cfe3f9; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(7) { --side-color: #48b7a3; --side-soft: #eaf8f5; --side-border: #c9ebe4; }
+body.theme-classic .module-tree > .tree-node:nth-of-type(8) { --side-color: #aa63d6; --side-soft: #f6eefa; --side-border: #e6d3f3; }
+
+/* 与 ribbon 一致：实底 + 白字 */
+body.theme-classic .module-tree > .tree-node span {
+  border-color: var(--side-color);
+  background: var(--side-color);
+  color: #fff;
+  box-shadow: none;
+  font-weight: 700;
+}

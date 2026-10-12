@@ -5206,11 +5206,19 @@ body.plain-mode {
   background: var(--canvas, #faf9f5);
 }
 
-.plain-mode-toggle {
+/* 右下角两个外观开关（配色 + 背景）共用这个 dock 定位。
+   ⚠️ 别把 position:fixed 写回单个按钮上 —— 两个各自 fixed 时，
+   文字长度一变（素色↔壁纸、奶油↔经典）就会互相压住。 */
+.appearance-dock {
   position: fixed;
   right: 12px;
   bottom: 12px;
   z-index: 60;
+  display: flex;
+  gap: 6px;
+}
+
+.plain-mode-toggle {
   padding: 6px 12px;
   border: 1px solid var(--hairline, #e6dfd8);
   border-radius: 999px;

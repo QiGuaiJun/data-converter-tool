@@ -12,6 +12,7 @@
   "use strict";
 
   var PLAIN_MODE_KEY = "dc_plain_mode_v1";
+  var THEME_KEY = "dc_theme_v1"; // "cream"（默认） | "classic"（亮蓝）
 
   function applyPlainMode(enabled) {
     if (document.body) {
@@ -35,32 +36,71 @@
     }
   }
 
-  function initAppearance() {
-    var enabled = readPlainMode();
-    applyPlainMode(enabled);
-
-    var button = document.createElement("button");
-    button.type = "button";
-    button.id = "plainModeToggle";
-    button.className = "plain-mode-toggle";
-
-    function sync() {
-      button.textContent = enabled ? "壁纸" : "素色";
-      button.title = enabled
-        ? "当前为素色模式（无背景壁纸），点击恢复壁纸"
-        : "当前为壁纸模式，点击切换为素色模式（去背景图，观感更干净）";
-      button.setAttribute("aria-pressed", enabled ? "true" : "false");
-      button.setAttribute("aria-label", button.title);
+  /* 配色主题：经典（亮蓝，2026-09-16 之前那套） / 奶油（默认）。
+     这里只负责在 body 上挂类，具体样式全在 theme-classic.css 里。 */
+  function applyTheme(name) {
+    if (document.body) {
+      document.body.classList.toggle("theme-classic", name === "classic");
     }
+  }
+  function readTheme() {
+    try {
+      return window.localStorage.getItem(THEME_KEY) === "classic" ? "classic" : "cream";
+    } catch (_) {
+      return "cream";
+    }
+  }
+  function writeTheme(name) {
+    try {
+      window.localStorage.setItem(THEME_KEY, name);
+    } catch (_) {
+      /* 隐私模式下写不进去：本次会话照样能切，只是下次进来回到默认 */
+    }
+  }
 
-    sync();
-    button.addEventListener("click", function () {
-      enabled = !enabled;
-      applyPlainMode(enabled);
-      writePlainMode(enabled);
-      sync();
+  function makeToggle(id) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.id = id;
+    b.className = "plain-mode-toggle";
+    return b;
+  }
+
+  function initAppearance() {
+    var theme = readTheme();
+    applyTheme(theme);
+    /* 「素色 / 壁纸」开关已按业主要求移除（右下角只留「经典 / 奶油」）——
+       但老浏览器里 localStorage 还存着 dc_plain_mode_v1=1，不清掉那台机器的壁纸
+       就永远不出现，而用户已经找不到关它的入口了。所以这里强制归位一次。 */
+    if (readPlainMode()) {
+      writePlainMode(false);
+    }
+    applyPlainMode(false);
+
+    /* 开关放在右下角 dock 里定位，而不是给按钮自己写 position: fixed ——
+       文字长度一变（奶油↔经典）就会和别的东西互相压住。 */
+    var dock = document.createElement("div");
+    dock.className = "appearance-dock";
+
+    var themeBtn = makeToggle("themeToggle");
+    function syncTheme() {
+      themeBtn.textContent = theme === "classic" ? "经典" : "奶油";
+      themeBtn.title = theme === "classic"
+        ? "当前是经典主题（亮蓝配色），点击切回奶油主题"
+        : "当前是奶油主题，点击切换到经典主题（2026-09-16 之前那套亮蓝配色）";
+      themeBtn.setAttribute("aria-pressed", theme === "classic" ? "true" : "false");
+      themeBtn.setAttribute("aria-label", themeBtn.title);
+    }
+    syncTheme();
+    themeBtn.addEventListener("click", function () {
+      theme = theme === "classic" ? "cream" : "classic";
+      applyTheme(theme);
+      writeTheme(theme);
+      syncTheme();
     });
-    document.body.appendChild(button);
+
+    dock.appendChild(themeBtn);
+    document.body.appendChild(dock);
   }
 
   // 站内跳转（点侧边栏/按钮切页面）不触发关闭提醒，否则每次换页都弹窗。
