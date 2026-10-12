@@ -2069,3 +2069,39 @@ em,
   border-color: var(--hairline) !important;
   color: var(--ink) !important;
 }
+
+/* ==========================================================================
+   7. 外观双模式：壁纸 / 素色
+   --------------------------------------------------------------------------
+   shell.js 会在 body 上挂 `plain-mode` 类（localStorage 记住），右下角那个
+   小圆按钮负责切换。但主题把每一块外壳都刷成了**不透明**奶油色
+   （body / .desktop-shell / .app-ribbon / .app-workspace / .app-sidebar），
+   铺满整屏之后 body 的背景图根本透不出来 ——
+   于是"素色"和"壁纸"画面一模一样，用户点了按钮只会以为按钮坏了。
+
+   修法：壁纸模式让外壳半透明，背景图从缝里透出来；素色模式维持纯色。
+   透明度取在"看得见壁纸"和"正文仍然清楚"之间，别调得太透。
+   ========================================================================== */
+body:not(.plain-mode) {
+  background:
+    linear-gradient(rgba(250, 249, 245, 0.04), rgba(250, 249, 245, 0.10)),
+    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
+}
+body:not(.plain-mode) .desktop-shell,
+body:not(.plain-mode) .app-ribbon,
+body:not(.plain-mode) .app-workspace {
+  background: rgba(250, 249, 245, 0.78);
+}
+body:not(.plain-mode) .app-sidebar {
+  background: rgba(244, 239, 230, 0.84);
+}
+/* 素色模式：一块纯色到底，没有任何背景图 */
+body.plain-mode,
+body.plain-mode .desktop-shell,
+body.plain-mode .app-ribbon,
+body.plain-mode .app-workspace {
+  background: var(--canvas);
+}
+body.plain-mode .app-sidebar {
+  background: var(--surface-soft);
+}
