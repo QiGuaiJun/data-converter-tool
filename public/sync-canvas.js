@@ -205,8 +205,15 @@
 
   function removeNode(kind) {
     if (!NODES[kind] || kind === "src") return; // 起点不给删，否则流程没有入口
+    /* 先把它的上下游记下来。删完要把两边接上 —— 否则删掉中间的「字段映射」，
+       源和目标之间的线跟着断，看着像流程坏了（功能其实不受影响）。 */
+    var ups = EDGES.filter(function (e) { return e.to === kind; }).map(function (e) { return e.from; });
+    var downs = EDGES.filter(function (e) { return e.from === kind; }).map(function (e) { return e.to; });
     delete NODES[kind];
     EDGES = EDGES.filter(function (e) { return e.from !== kind && e.to !== kind; });
+    ups.forEach(function (u) {
+      downs.forEach(function (d) { addEdge(u, d); }); // addEdge 自己会校验层级，连不了就跳过
+    });
     var node = el(nodeId(kind));
     if (node) node.remove();
     if (openId === nodeId(kind)) closeDrawer();
@@ -215,20 +222,45 @@
     fitView();
   }
 
-  /* 把已存任务还原成画布上的节点与连线 */
+  /* 按层级把该有的边连起来（新建、以及没有布局信息的老任务都走这里） */
+  function autoEdges() {
+    addEdge("src", "map");
+    addEdge("map", "mode");
+    addEdge("mode", "dst");
+    if (NODES.skip) addEdge("mode", "skip");
+  }
+
+  /* 把已存任务还原成画布上的节点与连线。
+     优先用任务里存下来的 layout —— 用户拖过的位置必须原样回来。
+     老任务没有 layout 字段（或存的是空的），退回按层级自动排列，不影响使用。 */
   function resetFlow(task) {
     NODES = {}; EDGES = [];
-    NODES.src = placeFor("src");
-    if (task) {
-      // 打开已存任务 = 它本来就是配全的，把五个角色都摆出来
-      NODES.map = placeFor("map");
-      NODES.mode = placeFor("mode");
-      NODES.dst = placeFor("dst");
-      if ((task.syncMode || "full") === "incremental") NODES.skip = placeFor("skip");
-      addEdge("src", "map");
-      addEdge("map", "mode");
-      addEdge("mode", "dst");
-      if (NODES.skip) addEdge("mode", "skip");
+    var layout = (task && task.layout) || null;
+    var savedKinds = layout && layout.nodes ? Object.keys(layout.nodes) : [];
+
+    if (savedKinds.length) {
+      savedKinds.forEach(function (k) {
+        if (!KINDS[k]) return;
+        var p = layout.nodes[k] || {};
+        NODES[k] = { x: Number(p.x) || 0, y: Number(p.y) || 0 };
+      });
+      if (!NODES.src) NODES.src = placeFor("src"); // 起点缺了就补上，不然流程没有入口
+      (layout.edges || []).forEach(function (e) {
+        if (!e || !NODES[e.from] || !NODES[e.to]) return;
+        if (EDGES.some(function (x) { return x.from === e.from && x.to === e.to; })) return;
+        EDGES.push({ from: e.from, to: e.to, label: e.label || "" });
+      });
+      if (!EDGES.length) autoEdges();
+    } else {
+      NODES.src = placeFor("src");
+      if (task) {
+        // 打开已存任务 = 它本来就是配全的，把五个角色都摆出来
+        NODES.map = placeFor("map");
+        NODES.mode = placeFor("mode");
+        NODES.dst = placeFor("dst");
+        if ((task.syncMode || "full") === "incremental") NODES.skip = placeFor("skip");
+        autoEdges();
+      }
     }
     rebuildNodes();
   }
@@ -241,11 +273,37 @@
     if (p === "b") return { x: b.x + b.w / 2, y: b.y + b.h };
     return { x: b.x + b.w / 2, y: b.y };
   }
+  /* 水平连线中间有没有别的节点挡路。
+     跨级连（比如「映射」直连「目标」）时线会横穿「同步模式」，看着像画错了。 */
+  function blockedBy(a, b, y) {
+    var x1 = Math.min(a.x + a.w, b.x), x2 = Math.max(a.x, b.x + b.w);
+    var hit = null;
+    ids().forEach(function (id) {
+      var o = nodeBox(id);
+      if ((o.x === a.x && o.y === a.y) || (o.x === b.x && o.y === b.y)) return; // 首尾自己不算
+      if (o.x + o.w < x1 || o.x > x2) return; // 不在水平区间内
+      if (y >= o.y - 4 && y <= o.y + o.h + 4) { // 高度上正好压住
+        if (!hit || o.y + o.h > hit.y + hit.h) hit = o;
+      }
+    });
+    return hit;
+  }
+
   function route(a, b, fp, tp, fy) {
     var p1 = port(a, fp, fy), p2 = port(b, tp), d, lx, ly;
     if (fp === "r" && tp === "l") {
       var mx = (p1.x + p2.x) / 2;
-      if (Math.abs(p1.y - p2.y) < 3) {
+      var blocker = blockedBy(a, b, (p1.y + p2.y) / 2);
+      if (blocker) {
+        // 从挡路节点的上方或下方绕过去，取离两端更近的一侧
+        var above = blocker.y - 28, below = blocker.y + blocker.h + 28;
+        var detour = Math.abs(above - p1.y) + Math.abs(above - p2.y) <=
+          Math.abs(below - p1.y) + Math.abs(below - p2.y) ? above : below;
+        detour = Math.max(8, detour);
+        d = "M " + p1.x + " " + p1.y + " H " + (p1.x + 22) +
+          " V " + detour + " H " + (p2.x - 22) + " V " + p2.y + " H " + p2.x;
+        lx = mx; ly = detour;
+      } else if (Math.abs(p1.y - p2.y) < 3) {
         d = "M " + p1.x + " " + p1.y + " H " + p2.x; lx = (p1.x + p2.x) / 2; ly = p1.y - 12;
       } else {
         d = "M " + p1.x + " " + p1.y + " H " + mx + " V " + p2.y + " H " + p2.x;
@@ -292,11 +350,60 @@
           : "M " + p1.x + " " + p1.y + " H " + mx2 + " V " + dragLink.y + " H " + dragLink.x) +
         '"/>';
     }
+    var guides = "";
+    if (snapGuide) {
+      if (snapGuide.gx !== null && snapGuide.gx !== undefined) {
+        guides += '<line class="snap-line" x1="' + snapGuide.gx + '" y1="0" x2="' + snapGuide.gx + '" y2="2000"/>';
+      }
+      if (snapGuide.gy !== null && snapGuide.gy !== undefined) {
+        guides += '<line class="snap-line" x1="0" y1="' + snapGuide.gy + '" x2="3000" y2="' + snapGuide.gy + '"/>';
+      }
+    }
     var defs = edges.querySelector("defs");
     edges.innerHTML = "";
     if (defs) edges.appendChild(defs);
-    edges.insertAdjacentHTML("beforeend", paths + hooks);
+    edges.insertAdjacentHTML("beforeend", paths + hooks + guides);
     labels.innerHTML = chips;
+  }
+
+  /* ---------------------------------------------------------------- 拖动吸附 */
+  /* 业主反馈"拖拽不是很智能"。体感最明显的差别就是对齐：
+     拖到与别的节点左边/右边/顶边/底边/中线差不多齐的时候自动吸一下，并画条辅助线。
+     阈值用屏幕像素换算成画布坐标，缩放之后手感一致。 */
+  var SNAP_PX = 7;
+  var snapGuide = null; // { gx, gy } —— 需要画辅助线的画布坐标，null 表示那条轴线没吸附
+
+  function snapDrag(kind, nx, ny) {
+    var me = el(nodeId(kind));
+    var w = me ? me.offsetWidth : 380;
+    var h = me ? me.offsetHeight : 130;
+    var bestX = null, bestY = null;
+    var tol = SNAP_PX / scale;
+
+    ids().forEach(function (id) {
+      if (kindOf(id) === kind) return;
+      var o = nodeBox(id);
+      // 候选：两个左边齐、两个右边齐、两条中线齐
+      [
+        { v: o.x, line: o.x },
+        { v: o.x + o.w - w, line: o.x + o.w },
+        { v: o.x + o.w / 2 - w / 2, line: o.x + o.w / 2 }
+      ].forEach(function (c) {
+        var d = Math.abs(nx - c.v);
+        if (d < tol && (!bestX || d < bestX.d)) bestX = { d: d, v: c.v, line: c.line };
+      });
+      [
+        { v: o.y, line: o.y },
+        { v: o.y + o.h - h, line: o.y + o.h },
+        { v: o.y + o.h / 2 - h / 2, line: o.y + o.h / 2 }
+      ].forEach(function (c) {
+        var d = Math.abs(ny - c.v);
+        if (d < tol && (!bestY || d < bestY.d)) bestY = { d: d, v: c.v, line: c.line };
+      });
+    });
+
+    snapGuide = { gx: bestX ? bestX.line : null, gy: bestY ? bestY.line : null };
+    return { x: bestX ? bestX.v : nx, y: bestY ? bestY.v : ny };
   }
 
   /* ---------------------------------------------------------------- 拖拽改接 */
@@ -396,12 +503,13 @@
       if (moving) moving.classList.add("moving");
     }
     var pt = localPoint(e);
-    var nx = Math.max(0, Math.round(pt.x - nodeDrag.dx));
-    var ny = Math.max(0, Math.round(pt.y - nodeDrag.dy));
-    NODES[nodeDrag.kind] = { x: nx, y: ny };
+    // 不再 clamp 到 (0,0)：以前拖到画布左上角外面就顶住了，业主说"像被固定住"。
+    // 允许负坐标，拖出界也能原样拖回来。
+    var snapped = snapDrag(nodeDrag.kind, Math.round(pt.x - nodeDrag.dx), Math.round(pt.y - nodeDrag.dy));
+    NODES[nodeDrag.kind] = { x: snapped.x, y: snapped.y };
     var n = el(nodeId(nodeDrag.kind));
-    if (n) { n.style.left = nx + "px"; n.style.top = ny + "px"; }
-    drawEdges(); // 连线跟着节点走
+    if (n) { n.style.left = snapped.x + "px"; n.style.top = snapped.y + "px"; }
+    drawEdges(); // 连线 + 对齐辅助线都跟着走
   });
   world.addEventListener("pointerup", function (e) {
     if (nodeDrag) {
@@ -409,6 +517,8 @@
       var n = el(nodeId(nodeDrag.kind));
       if (n) n.classList.remove("moving");
       nodeDrag = null;
+      snapGuide = null; // 松手就收掉对齐辅助线
+      drawEdges();
       if (dragged) suppressNextClick(); // 拖完别顺手把配置面板弹出来
       return;
     }
@@ -419,6 +529,8 @@
       var n = el(nodeId(nodeDrag.kind));
       if (n) n.classList.remove("moving");
       nodeDrag = null;
+      snapGuide = null;
+      drawEdges();
       return;
     }
     endLink(-1, -1);
@@ -1082,7 +1194,12 @@
       batchRows: TASK.batchRows,
       commitMode: TASK.commitMode,
       stopOnError: TASK.stopOnError,
-      enabled: TASK.enabled
+      enabled: TASK.enabled,
+      // 画布布局一起存。少了这个，用户摆好的节点位置一切走就白摆了。
+      layout: {
+        nodes: NODES,
+        edges: EDGES.map(function (e) { return { from: e.from, to: e.to, label: e.label }; })
+      }
     };
   }
 
@@ -1192,7 +1309,7 @@
       markSaved();
       if (typeof window.SyncCanvas.onSaved === "function") window.SyncCanvas.onSaved(payload.task);
       showDialog("已保存", "同步任务已保存：<b>" + esc(payload.task.name) + "</b><br>" +
-        "可以继续点「立即同步」，或点左上角「← 同步任务」回到列表。");
+        "可以继续点「立即同步」，或点左上角「返回任务列表」回到列表。");
     }).catch(function (err) {
       showDialog("保存失败", esc(err.message));
     }).then(function () { setBusy(false); });

@@ -252,3 +252,67 @@ def test_dedupe_log_paragraphs_removes_exact_duplicates_only():
 def test_dedupe_log_paragraphs_keeps_normal_lines():
     text = "第一行\n第二行\n第一行"
     assert server.dedupe_log_paragraphs(text) == text, "非括号行不该被动"
+
+
+# ---------------------------------------------------------------- 同步子任务
+# 2026-10-14 起作业/定时任务里的「同步」类型放开。放开时补了两道校验：
+# 步骤必须指定 taskId，且那个任务必须真实存在 —— 否则要等到定时触发的那天
+# 才会发现引用了幽灵任务，用户根本不知道哪儿错了。
+
+def _make_sync_task() -> dict:
+    return server.save_sync_task({
+        "name": "单测同步任务",
+        "sourceConnectionId": "conn-src",
+        "sourceMode": "table",
+        "sourceTable": "some_table",
+        "targetConnectionId": "conn-dst",
+        "targetTable": "some_target",
+        "columns": [],
+        "syncMode": "full",
+        "batchRows": 1000,
+    })
+
+
+def test_sync_step_saves_when_referenced_task_exists():
+    """同步步骤引用的任务存在时，作业能正常保存（放开前这里一律被拒）。"""
+    task = _make_sync_task()
+    job = server.save_job({
+        "name": "含同步步骤的作业",
+        "steps": [{
+            "id": "s1", "type": "sync", "name": task["name"],
+            "enabled": True, "continueOnError": False,
+            "config": {"taskId": task["id"]},
+        }],
+    })
+    assert job["id"], "应该落库并返回 id"
+
+
+def test_sync_step_rejects_missing_task_id():
+    """步骤没选任务要当场报错，不能存进去等定时触发才炸。"""
+    import pytest
+    with pytest.raises(ValueError) as err:
+        server.save_job({
+            "name": "没选任务的作业",
+            "steps": [{
+                "id": "s1", "type": "sync", "name": "同步",
+                "enabled": True, "continueOnError": False, "config": {},
+            }],
+        })
+    assert "没有选择同步任务" in str(err.value)
+
+
+def test_sync_step_rejects_ghost_task():
+    """引用了不存在的同步任务（已删除）要拒绝，并把 taskId 带出来便于排查。"""
+    import pytest
+    with pytest.raises(ValueError) as err:
+        server.save_job({
+            "name": "引用幽灵任务的作业",
+            "steps": [{
+                "id": "s1", "type": "sync", "name": "幽灵任务",
+                "enabled": True, "continueOnError": False,
+                "config": {"taskId": "not-exist-id"},
+            }],
+        })
+    message = str(err.value)
+    assert "不存在" in message
+    assert "not-exist-id" in message, "错误信息里要带上 taskId，否则没法排查"

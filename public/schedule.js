@@ -4,6 +4,7 @@ const $$ = (selector) => [...document.querySelectorAll(selector)];
 let jobs = [];
 let schedules = [];
 let savedQueries = []; // 查询页保存的查询资产，定时子任务「查询」类型的候选来源
+let syncTasks = []; // 同步页保存的同步任务，定时子任务「同步」类型的候选来源
 let selectedScheduleId = "";
 let editingScheduleId = "";
 let editingJobId = "";
@@ -111,8 +112,18 @@ async function loadSavedQueries() {
   }
 }
 
+async function loadSyncTasks() {
+  try {
+    const payload = await requestJson("/api/sync/tasks");
+    syncTasks = payload.tasks || [];
+  } catch (error) {
+    console.warn("加载同步任务失败（同步类型不可用）:", error.message);
+    syncTasks = [];
+  }
+}
+
 async function refreshAll() {
-  await Promise.all([loadJobs(), loadSchedules(), loadSavedQueries()]);
+  await Promise.all([loadJobs(), loadSchedules(), loadSavedQueries(), loadSyncTasks()]);
 }
 
 async function refreshSchedulesLive(includeAll = false) {
@@ -245,6 +256,10 @@ function renderStepConfig() {
   if (type === "query") {
     candidates.push(...savedQueries.map((q) => ({ kind: "query", id: q.id, name: q.name })));
   }
+  // 同步类型：候选来自「同步」模块已保存的任务，步骤按 taskId 引用，执行时现读配置
+  if (type === "sync") {
+    candidates.push(...syncTasks.map((t) => ({ kind: "sync", id: t.id, name: t.name })));
+  }
   if (!candidates.some((item) => item.id === selectedAvailableJobId)) {
     selectedAvailableJobId = candidates[0]?.id || "";
   }
@@ -252,7 +267,9 @@ function renderStepConfig() {
     ? candidates
         .map((item) => `<button type="button" class="available-job ${item.id === selectedAvailableJobId ? "active" : ""}" data-id="${escapeHtml(item.id)}"><strong>${escapeHtml(item.name)}</strong></button>`)
         .join("")
-    : type === "query"
+    : type === "sync"
+      ? '<div class="empty-list">暂无可选同步任务，请先在「同步」页面新建并保存</div>'
+      : type === "query"
       ? '<div class="empty-list">暂无可选查询，请先在查询页面点击「保存查询」</div>'
       : `<div class="empty-list">暂无${typeText(type)}作业，请先在${typeText(type)}页面保存作业</div>`;
   $$("#stepConfig .available-job").forEach((button) =>
@@ -265,7 +282,22 @@ function renderStepConfig() {
 
 function addSelectedAvailableJob() {
   const type = document.querySelector('input[name="stepType"]:checked').value;
-  if (type === "sync") throw new Error("同步模块尚未开放。");
+  // 同步类型：候选来自已保存的同步任务，步骤按 taskId 引用（执行时现读配置）
+  const sync = syncTasks.find((t) => t.id === selectedAvailableJobId);
+  if (type === "sync") {
+    if (!sync) throw new Error("请先选择一个同步任务。");
+    draftSteps.push({
+      id: crypto.randomUUID(),
+      type: "sync",
+      name: sync.name,
+      enabled: true,
+      continueOnError: false,
+      config: { taskId: sync.id },
+    });
+    selectedStepIndex = draftSteps.length - 1;
+    renderDraftSteps();
+    return;
+  }
   // 查询类型：候选来自保存的查询资产，步骤按 queryId 引用（执行时读取最新 SQL + 连接）
   const query = savedQueries.find((q) => q.id === selectedAvailableJobId);
   if (type === "query" || query) {

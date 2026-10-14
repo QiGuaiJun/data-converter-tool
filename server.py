@@ -455,6 +455,9 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    # 画布布局（节点坐标 + 连线）。老库靠 _ensure_column 补列，
+    # 没有这个字段的任务读出来是 '{}'，前端回退到自动排列，不影响使用。
+    _ensure_column(conn, "_sync_tasks", "layout_json", "text not null default '{}'")
     conn.execute(
         """
         create table if not exists _sync_watermarks (
@@ -3110,6 +3113,35 @@ def fetch_export_rows(conn, sql: str, fields: dict[str, str], limit: int = 0) ->
     return columns, [list(row) for row in cursor.fetchall()]
 
 
+def count_export_rows(conn, sql: str, fields: dict[str, str]) -> "int | None":
+    """统计查询的**全量结果行数**（预览表只取前 MAX_PREVIEW_ROWS 行，界面要显示总数）。
+
+    走 ``select count(*) from (<sql>) export_preview_count``：不在客户端搬运数据，
+    内存占用恒定，且尊重 SQL 自带的 LIMIT / WHERE。极少数无法被包成子查询的语句
+    （某些方言的 SHOW / EXPLAIN）会抛错，此时返回 None，由调用方退回显示已取到的行数——
+    计数失败绝不能影响预览本身。
+    """
+    query = sql.strip().rstrip(";")
+    if not query:
+        return None
+    wrapped = f"select count(*) from ({query}) export_preview_count"
+    try:
+        if target_db_type(fields) == "mysql":
+            with conn.cursor() as cursor:
+                cursor.execute(wrapped)
+                row = cursor.fetchone()
+        else:
+            row = conn.execute(wrapped).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    try:
+        return int(row[0])
+    except (TypeError, ValueError):
+        return None
+
+
 def export_row_batches(conn, sql: str, fields: dict[str, str], fetch_size: int = EXPORT_FETCH_SIZE) -> Iterator[tuple[list[str], list[list[object]]]]:
     ensure_query_source(sql)
     query = sql.strip().rstrip(";")
@@ -4009,16 +4041,23 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
                     "sourceName": str(entry.get("name") or entry.get("table") or ""),
                     "columns": [],
                     "rows": [],
+                    "totalRows": 0,
+                    "totalRowsExact": False,
                     "ok": False,
                     "error": "查询解析失败（请检查表名或 SQL）。",
                 })
                 continue
             try:
                 columns, rows = fetch_export_rows(conn, sql, fields, MAX_PREVIEW_ROWS)
+                # 预览表只取前 MAX_PREVIEW_ROWS 行，但界面上的「行数」必须报**全量**：
+                # 用户拿它判断这条查询会导出多少数据，报 20 行会严重误导。
+                total_rows = count_export_rows(conn, sql, fields)
                 previews.append({
                     "sourceName": source_name,
                     "columns": columns,
                     "rows": [[cell_to_text(cell) for cell in row] for row in rows],
+                    "totalRows": total_rows if total_rows is not None else len(rows),
+                    "totalRowsExact": total_rows is not None,
                     "ok": True,
                     "error": None,
                 })
@@ -4027,6 +4066,8 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
                     "sourceName": source_name,
                     "columns": [],
                     "rows": [],
+                    "totalRows": 0,
+                    "totalRowsExact": False,
                     "ok": False,
                     "error": friendly_export_error(exc, fields),
                 })
@@ -4034,11 +4075,14 @@ def preview_export_job(payload: dict[str, object]) -> dict[str, object]:
         conn.close()
 
     # 顶层兼容字段：取值 = 第 1 个 item 的预览结果（旧调用方依赖 sourceName/columns/rows）。
+    # totalRows 是**全量行数**（不是预览取到的 MAX_PREVIEW_ROWS 行），旧调用方请改用 rows.length。
     first_preview = previews[0] if previews else None
     return {
         "sourceName": first_preview["sourceName"] if first_preview else "",
         "columns": first_preview["columns"] if first_preview else [],
         "rows": first_preview["rows"] if first_preview else [],
+        "totalRows": first_preview["totalRows"] if first_preview else 0,
+        "previewRowCount": len(first_preview["rows"]) if first_preview else 0,
         "itemCount": item_count,
         "sourceNames": source_names,
         "previews": previews,
@@ -4662,8 +4706,23 @@ def save_job(payload: dict[str, object]) -> dict[str, object]:
     steps = normalize_steps(payload.get("steps"))
     if not steps:
         raise ValueError("请至少添加一个子任务。")
-    if any(step["type"] == "sync" for step in steps):
-        raise ValueError("同步模块尚未开放，暂不能保存同步子任务。")
+    # 同步子任务 2026-10-14 起放开：normalize_steps 早就接受 sync 类型，
+    # 执行链路（execute_sync_task）也齐了，这里不必再挡。
+    # 只做一次配置校验 —— 步骤里引用的同步任务必须真的存在，
+    # 否则要等到定时触发的那天才会炸，用户根本不知道哪儿错了。
+    for step in steps:
+        if step["type"] != "sync":
+            continue
+        task_id = str((step.get("config") or {}).get("taskId") or "").strip()
+        if not task_id:
+            raise ValueError(f"步骤「{step.get('name') or '同步'}」没有选择同步任务。")
+        with connect_db() as conn:
+            exists = conn.execute("select 1 from _sync_tasks where id = ?", (task_id,)).fetchone()
+        if not exists:
+            raise ValueError(
+                f"步骤「{step.get('name') or '同步'}」引用的同步任务不存在（taskId={task_id}），"
+                "可能已被删除。请在「同步」页面确认后重新选择。"
+            )
     job_id = str(payload.get("id") or uuid.uuid4().hex)
     now = now_text()
     guard = payload.get("guard") if isinstance(payload.get("guard"), dict) else {}
@@ -5083,9 +5142,26 @@ def sync_task_public(row: sqlite3.Row) -> dict[str, object]:
         "commitMode": row["commit_mode"] or "batch",
         "stopOnError": bool(row["stop_on_error"]),
         "enabled": bool(row["enabled"]),
+        "layout": sync_layout_of(row),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
     }
+
+
+def sync_layout_of(row: sqlite3.Row) -> dict[str, object]:
+    """画布布局：{ nodes: {kind: {x, y}}, edges: [{from, to}] }。
+    老任务没有这一列（或存的是坏 JSON）时返回空对象，前端会按层级自动排。"""
+    try:
+        raw = row["layout_json"]
+    except (IndexError, KeyError):
+        return {}
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
 def list_sync_tasks() -> list[dict[str, object]]:
@@ -5154,6 +5230,10 @@ def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
     now = now_text()
     columns_json = json.dumps(sync_name_list(payload.get("columns")), ensure_ascii=False)
     key_json = json.dumps(key_columns, ensure_ascii=False)
+    # 画布布局。**payload 里没带 layout 时传 None**，更新走 coalesce 保留原值 ——
+    # 否则"只改个名字"会把用户摆好的节点位置清掉。
+    layout_payload = payload.get("layout")
+    layout_json = json.dumps(layout_payload, ensure_ascii=False) if isinstance(layout_payload, dict) else None
     with connect_db() as conn:
         existing = conn.execute("select created_at from _sync_tasks where id = ?", (task_id,)).fetchone()
         if existing:
@@ -5161,7 +5241,7 @@ def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
                 "update _sync_tasks set name=?, source_connection_id=?, source_mode=?, source_table=?,"
                 " source_sql=?, target_connection_id=?, target_table=?, columns_json=?, sync_mode=?,"
                 " key_columns_json=?, watermark_column=?, batch_rows=?, commit_mode=?, stop_on_error=?,"
-                " enabled=?, updated_at=? where id=?",
+                " enabled=?, layout_json=coalesce(?, layout_json), updated_at=? where id=?",
                 (
                     name, source_connection_id, source_mode, source_table, source_sql,
                     target_connection_id, target_table, columns_json, sync_mode, key_json,
@@ -5169,6 +5249,7 @@ def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
                     "batch" if str(payload.get("commitMode") or "batch") == "batch" else "all",
                     1 if payload.get("stopOnError", True) not in (False, "false", "0", 0) else 0,
                     1 if payload.get("enabled", True) not in (False, "false", "0", 0) else 0,
+                    layout_json,
                     now, task_id,
                 ),
             )
@@ -5177,8 +5258,8 @@ def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
                 "insert into _sync_tasks (id, name, source_connection_id, source_mode, source_table,"
                 " source_sql, target_connection_id, target_table, columns_json, sync_mode,"
                 " key_columns_json, watermark_column, batch_rows, commit_mode, stop_on_error,"
-                " enabled, created_at, updated_at)"
-                " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " enabled, layout_json, created_at, updated_at)"
+                " values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     task_id, name, source_connection_id, source_mode, source_table, source_sql,
                     target_connection_id, target_table, columns_json, sync_mode, key_json,
@@ -5186,6 +5267,7 @@ def save_sync_task(payload: dict[str, object]) -> dict[str, object]:
                     "batch" if str(payload.get("commitMode") or "batch") == "batch" else "all",
                     1 if payload.get("stopOnError", True) not in (False, "false", "0", 0) else 0,
                     1 if payload.get("enabled", True) not in (False, "false", "0", 0) else 0,
+                    layout_json or "{}",
                     now, now,
                 ),
             )
@@ -5291,8 +5373,14 @@ def sync_probe_source(task: sqlite3.Row) -> dict[str, object]:
     conn = connect_sync_db(connection_id)
     try:
         if source_mode == "sql":
+            # 与 preview / execute 走同一道门：单条 + 只读。probe 的最小角色是 viewer，
+            # 这里少一道校验，只读账号就能借它当提权通道。
+            probe_sql = sync_source_sql_text(task["source_sql"])
+            if not probe_sql:
+                raise ValueError("请填写源端 SQL。")
+            sync_assert_source_sql_readonly(probe_sql)
             with conn.cursor() as cur:
-                cur.execute(f"select * from ({str(task['source_sql']).strip()} ) sync_probe limit 0")
+                cur.execute(f"select * from ({probe_sql}) sync_probe limit 0")
                 describe = cur.description or []
             columns = [
                 {"name": item[0], "type": "（由 SQL 决定）", "dataType": "", "nullable": True,
@@ -5379,7 +5467,7 @@ _SYNC_TYPE_CODE_TO_SQL: dict[int, str] = {
     pymysql.constants.FIELD_TYPE.BIT: "bit(64)",
     # BLOB 家族**刻意都给 longtext**：MySQL 协议里 TEXT 和 BLOB 共用 type_code 252，
     # 光看 type_code 分不清（要靠 charsetnr，而 description 里没有）。业务库里这个类型
-    # 绝大多数是文本；真要是二进制，这份草稿本来也不会自动执行，人核一眼就能改。
+    # 绝大多数是文本；真要是二进制，界面上会给建表提示，人核一眼就能改。
     #
     # 全部走"最宽"的类型而不是推断宽度：宁可表大一点也不让数据被截断。
     pymysql.constants.FIELD_TYPE.BLOB: "longtext",
@@ -5387,27 +5475,70 @@ _SYNC_TYPE_CODE_TO_SQL: dict[int, str] = {
     pymysql.constants.FIELD_TYPE.MEDIUM_BLOB: "longtext",
     pymysql.constants.FIELD_TYPE.LONG_BLOB: "longtext",
     pymysql.constants.FIELD_TYPE.GEOMETRY: "longtext",
-    pymysql.constants.FIELD_TYPE.STRING: "longtext",
-    pymysql.constants.FIELD_TYPE.VAR_STRING: "longtext",
-    pymysql.constants.FIELD_TYPE.VARCHAR: "longtext",
-    pymysql.constants.FIELD_TYPE.CHAR: "longtext",
-    pymysql.constants.FIELD_TYPE.ENUM: "longtext",
-    pymysql.constants.FIELD_TYPE.SET: "longtext",
+    # STRING / VAR_STRING / VARCHAR **不在这里映射** —— 它们要带长度，
+    # 走 _sync_column_sql_type() 从结果集元数据里推。原先一律给 longtext 是错的。
 }
+
+# MySQL 协议里这三种都表示字符串，type_code 不同但处理方式一样。
+_SYNC_STRING_TYPE_CODES = frozenset({
+    pymysql.constants.FIELD_TYPE.STRING,      # char
+    pymysql.constants.FIELD_TYPE.VAR_STRING,  # varchar（多数表达式的返回类型）
+    pymysql.constants.FIELD_TYPE.VARCHAR,     # varchar
+    pymysql.constants.FIELD_TYPE.CHAR,        # char（另一个 code）
+    pymysql.constants.FIELD_TYPE.ENUM,        # enum 在结果集里也是字符串
+    pymysql.constants.FIELD_TYPE.SET,         # set 同上
+})
+
+# 字符串列取不到长度时的兜底。255 足够放手机号、年月、编码这类标识列，
+# 而且**能直接建索引/主键** —— longtext 不行（必须写前缀长度）。
+_SYNC_VARCHAR_FALLBACK = 255
+
+
+def _sync_column_sql_type(type_code: int, internal_size: int) -> str:
+    """把结果集元数据的类型翻译成建表用的列类型。
+
+    ⚠️ 字符串**不能一律给 longtext**（改前的行为）：
+      1. 语义不对 —— `TRIM(买家手机号)` 返回 varchar，建成 longtext 名不副实；
+      2. 更要命的是 longtext **不能直接做索引或主键**，必须有前缀长度，
+         用户拿它当键列时会撞 MySQL 报错，而且看不懂为什么。
+
+    有 `internal_size` 就按它推字符数：utf8mb4 下 1 字符最多 4 字节，所以除以 4。
+    取不到就退 255。
+    """
+    if type_code in _SYNC_STRING_TYPE_CODES:
+        size = internal_size // 4 if internal_size and internal_size > 0 else _SYNC_VARCHAR_FALLBACK
+        # 4000 字符 ≈ 16000 字节，给 InnoDB 单行上限留足余量；
+        # 再长的内容本来就该用 text，但那属于人工判断，不在这里替用户做主。
+        return f"varchar({max(1, min(size, 4000))})"
+    return _SYNC_TYPE_CODE_TO_SQL.get(type_code, "longtext")
 
 
 def sync_suggest_ddl(description, table: str) -> str:
     """按结果集元数据类型给出一份 CREATE TABLE 草稿。
 
-    **只用于给人看**（错误信息 / 预览提示），绝不自动执行 —— 它比 SHOW CREATE TABLE 差得远：
-    丢精度、丢默认值、丢索引、丢字符集。这就是为什么源端是自定义 SQL 时不代为建表，
-    而是把这份草稿交给人确认后再贴到目标库执行。
+    2026-10-14 起这份草稿**会被直接执行**（源端是自定义 SQL、目标表不存在时自动建），
+    同时也会作为「建表提示」展示给用户核对。所以类型映射必须靠谱：
+      · 字符串走 _sync_column_sql_type()，按 internal_size 推 varchar 长度
+        —— 早先一律给 longtext，导致手机号、年月这些列建成大文本，
+        既名不副实，又做不了索引/主键；
+      · 数值/日期/JSON 走 _SYNC_TYPE_CODE_TO_SQL，取的都是"最宽"档
+        （decimal → decimal(38,10)），宁可表大一点也不截断数据。
+
+    仍然抄不到的东西：索引、字符集、默认值、字段注释 —— 界面上会提示用户核对。
     """
     lines = []
     for item in description or []:
         name = str(item[0])
         type_code = int(item[1])
-        column_type = _SYNC_TYPE_CODE_TO_SQL.get(type_code, "longtext")
+        # pymysql 的 description 每项是
+        # (name, type_code, display_size, internal_size, precision, scale, null_ok)；
+        # internal_size 对字符串是最大字节数，用来推 varchar 长度。
+        internal = 0
+        try:
+            internal = int(item[3] or 0)
+        except (TypeError, ValueError, IndexError):
+            internal = 0
+        column_type = _sync_column_sql_type(type_code, internal)
         lines.append(f"  {db_quote(name, _SYNC_MYSQL_FIELDS)} {column_type} null")
     if not lines:
         return ""
@@ -5428,9 +5559,13 @@ def ensure_sync_target_table(src_conn, dst_conn, db_name: str, source_mode: str,
     而且实测源表列全部可空，推断会都建成 not null。
     ⚠️ 解析列定义段时不能用 rpartition(")") —— KEY 行里也有括号，会截错（实测踩到）。
 
-    自定义 SQL 源：**不代为建表**。此时没有源表可抄，只能从结果集元数据猜类型，
-    而猜出来的表可能悄悄丢精度（decimal→double）。这里给出 CREATE TABLE 草稿让人确认，
-    而不是自己执行——宁可多一步，也不要建出一张"看着能跑、实际在掉精度"的表。
+    自定义 SQL 源：没有源表可抄，按结果集元数据建（走 sync_suggest_ddl）。
+    映射表取的都是"最宽"类型（decimal → decimal(38,10)、未知 → longtext），
+    宁可表大一点也不截断数据。代价是索引、字符集、默认值、注释抄不到，
+    所以界面会提示"类型是推断的，建议核对"。
+    ⚠️ 早先这里只给草稿、拒绝代建，理由是"怕掉精度"—— 但那个理由跟映射表
+    实际实现不符（它并不会把 decimal 变 double），业主按"应该会自动重建"提了需求，
+    于是改成真建。
     """
     with dst_conn.cursor() as cur:
         cur.execute(
@@ -5441,13 +5576,19 @@ def ensure_sync_target_table(src_conn, dst_conn, db_name: str, source_mode: str,
         if int(cur.fetchone()[0]) > 0:
             return False
     if str(source_mode or "table") == "sql":
+        # 源端是自定义 SQL，没有源表结构可抄，只能按结果集元数据建。
+        # 类型表刻意全部取"最宽"：decimal 给 decimal(38,10)、未知类型退回 longtext、
+        # TEXT/BLOB 统一 longtext —— 宁可表大一点，也不让数据被截断或掉精度。
+        # （早先这里只给草稿不代建，理由是怕掉精度；但映射表实际比那个理由谨慎得多。）
         draft = sync_suggest_ddl(source_description, table)
-        hint = f"\n可参考这份草稿先在目标库建表（类型仅为推断，请按实际调整）：\n{draft}" if draft else ""
-        raise ValueError(
-            f"目标表 {dst_fields.get('dbName')}.{table} 不存在。"
-            "源端是自定义 SQL 时无法沿用源表结构，自动建表可能掉精度，因此这一步不做。"
-            f"{hint}"
-        )
+        if not draft:
+            raise ValueError(
+                f"目标表 {dst_fields.get('dbName')}.{table} 不存在，"
+                "而且还没探测出源端列（先点节点上的「探测源端」），无法自动建表。"
+            )
+        with dst_conn.cursor() as cur:
+            cur.execute(draft)
+        return True
     with src_conn.cursor() as cur:
         cur.execute(f"show create table {db_quote(db_name, {'targetDbType': 'mysql'})}."
                     f"{db_quote(source_table, {'targetDbType': 'mysql'})}")
@@ -5762,6 +5903,49 @@ def sync_resolve_task(config: dict[str, object]) -> dict[str, object]:
 _SYNC_MYSQL_FIELDS: dict[str, str] = {"targetDbType": "mysql"}
 
 
+def sync_source_sql_text(raw: object) -> str:
+    """把用户写的源端 SQL 收拾成"可以直接包进子查询"的文本。
+
+    这条 SQL 最终会被包成 `select * from ( ... ) sync_probe limit 0`，
+    而 `split_sql_statements` 早在文档里写明它会**去掉尾部分号**
+    （不变量 3：「去掉首尾空白 + 尾部分号后的原输入」）——
+    但 probe / select 两条路径都直接用了 `.strip()` 后的原文，
+    用户在末尾顺手打个 `;` 就撞 1064 语法错误（`near '; ) sync_probe limit 0'`），
+    还看不出是自己多打了一个分号。
+
+    这里统一走一遍切分取第一条。
+
+    ⚠️ **多条语句必须直接拒绝，不能只取第一条**：实测 `select 1; select 2;`
+    如果按 parts[0] 处理，就变成"静默执行第一条"，用户以为自己写的都跑了。
+    空输入返回空串，交给调用方报错。
+    """
+    statements = split_sql_statements(str(raw or ""))
+    if len(statements) > 1:
+        raise ValueError(
+            f"源端 SQL 只能写一条语句，当前解析出 {len(statements)} 条。"
+            "要跑多条请去「数据查询」模块。"
+        )
+    return statements[0] if statements else ""
+
+
+def sync_assert_source_sql_readonly(sql: str) -> None:
+    """源端 SQL 必须是**单条只读**语句。probe 与 preview/execute 共用这一道。
+
+    理由有两层：
+      1. /api/sync/probe 与 /api/sync/preview 的最小角色是 viewer（只读），
+         若这里能跑 DROP/DELETE，那两个只读接口就成了只读账号的提权通道；
+      2. 即便是 operator，这条路也只该是"读源数据"的入口，写语句归查询控制台管。
+    判据直接复用查询控制台的现成分级，不另立一套口径。
+    """
+    risk = classify_sql_risk(sql)
+    if str(risk.get("level")) != "safe":
+        reasons = "；".join(str(item) for item in (risk.get("reasons") or []))
+        raise ValueError(
+            f"源端 SQL 必须是只读查询，当前判定为「{risk.get('level')}」"
+            f"（{str(risk.get('keyword') or '').upper()}）：{reasons or '不是只读语句'}。"
+        )
+
+
 def sync_select_sql(source_mode: str, source_sql: str, db_name: str, table: str,
                     columns: list[str]) -> str:
     """源端读数据的 SELECT 骨架（**不含** where / order / limit）。
@@ -5771,7 +5955,7 @@ def sync_select_sql(source_mode: str, source_sql: str, db_name: str, table: str,
     """
     selected = ", ".join(db_quote(name, _SYNC_MYSQL_FIELDS) for name in columns)
     if str(source_mode or "table") == "sql":
-        return f"select {selected} from ({str(source_sql).strip()}) sync_src"
+        return f"select {selected} from ({sync_source_sql_text(source_sql)}) sync_src"
     return (
         f"select {selected} from {db_quote(db_name, _SYNC_MYSQL_FIELDS)}"
         f".{db_quote(table, _SYNC_MYSQL_FIELDS)}"
@@ -5787,27 +5971,14 @@ def sync_source_columns_of(task: dict[str, object], src_conn, db_name: str) -> t
     preview 却只在整表模式下可用，界面上就会出现"预览能过、执行报错"。
     """
     if str(task.get("source_mode") or "table") == "sql":
-        sql = str(task.get("source_sql") or "").strip()
+        sql = sync_source_sql_text(task.get("source_sql"))
         if not sql:
             raise ValueError("请填写源端 SQL。")
-        # 源端 SQL 必须是**单条只读语句**。理由有两层：
-        #   1. /api/sync/probe 与 /api/sync/preview 的最小角色是 viewer（只读），
-        #      若这里能跑 DROP/DELETE，那两个只读接口就成了只读账号的提权通道；
-        #   2. 即便是 operator，这也只该是"读源数据"的入口，写语句是查询控制台的职责。
-        # 判据直接复用查询控制台的现成分级，不另立一套口径。
-        statements = split_sql_statements(sql)
-        if len(statements) != 1:
-            raise ValueError(
-                f"源端 SQL 只能写一条语句，当前解析出 {len(statements)} 条。"
-                "要跑多条请去「数据查询」模块。"
-            )
-        risk = classify_sql_risk(statements[0])
-        if str(risk.get("level")) != "safe":
-            reasons = "；".join(str(item) for item in (risk.get("reasons") or []))
-            raise ValueError(
-                f"源端 SQL 必须是只读查询，当前判定为「{risk.get('level')}」"
-                f"（{str(risk.get('keyword') or '').upper()}）：{reasons or '不是只读语句'}。"
-            )
+        # 「单条 + 只读」两道判据都收在 sync_source_sql_text / sync_assert_source_sql_readonly
+        # 里了（probe、preview、execute 走同一份），这里只管取值和报错。
+        if not sql:
+            raise ValueError("请填写源端 SQL。")
+        sync_assert_source_sql_readonly(sql)
         with src_conn.cursor() as cur:
             cur.execute(f"select * from ({sql}) sync_probe limit 0")
             return [str(item[0]) for item in (cur.description or [])], cur.description
@@ -5927,13 +6098,14 @@ def sync_preview_task(config: dict[str, object], *, sample_rows: int = 3) -> dic
         if existing_target is None:
             will_create = True
             if str(task.get("source_mode") or "table") == "sql":
-                # 这条路 execute 也会拦（ensure_sync_target_table 拒绝猜类型），
-                # 必须在预览就讲清楚并给出可执行的建表草稿，否则用户只会看到"执行失败"。
+                # 目标表会按结果集类型自动建（与整表模式走同一个 ensure_sync_target_table）。
+                # 这里把草稿和"哪些抄不到"讲清楚，但**不拦** —— 拦了用户就得多绕一步手工建表，
+                # 而业主要的正是"表不存在就自动重建"。
                 create_hint = sync_suggest_ddl(source_description, target_table)
-                blockers.append(
-                    f"目标表 {dst_db}.{target_table} 不存在，而源端是自定义 SQL ——"
-                    "没有可沿用的源表结构，自动建表可能掉精度，所以不会代建。"
-                    "请按下面草稿先在目标库建表（类型仅为推断，请核对后再执行）。"
+                warnings.append(
+                    f"目标表 {dst_db}.{target_table} 不存在，执行时会按源端结果集的类型自动创建。"
+                    "类型取的是「最宽」值（decimal(38,10)、拿不准的给 longtext），"
+                    "但索引、字符集、默认值、字段注释抄不到 —— 建完建议核对一下结构。"
                 )
         else:
             will_create = False
@@ -7133,7 +7305,17 @@ def run_saved_job(job_id: str, schedule_id: str = "", visited: set[str] | None =
                     nested_first = _NESTED_PREFIX_RE.sub("", nested_first).strip()
                     step_message = f"子作业结果：成功 —— {nested_first}"
             elif step_type == "sync":
-                raise ValueError("同步模块尚未开放。")
+                # 同步步骤按 taskId 引用已保存的同步任务，执行时现读配置 ——
+                # 与 query 步骤同一个思路：改了同步任务，定时跑到的那次自动用新的。
+                sync_task_id = str(config.get("taskId") or "").strip()
+                if not sync_task_id:
+                    raise ValueError("同步步骤没有指定任务。请重新选择。")
+                sync_result = execute_sync_task({"taskId": sync_task_id})
+                sync_parts = [f"读取 {sync_result['rowsRead']} 行", f"写入 {sync_result['rowsWritten']} 行"]
+                if sync_result.get("rowsUpdated"):
+                    sync_parts.append(f"更新 {sync_result['rowsUpdated']} 行")
+                sync_parts.append(f"耗时 {round(sync_result['elapsedMs'] / 1000, 1)} 秒")
+                step_message = "同步完成：" + "、".join(sync_parts)
             else:
                 raise ValueError("不支持的子任务类型。")
         except Exception as exc:

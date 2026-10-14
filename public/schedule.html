@@ -3,11 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>定时任务 - 数据导表工具</title>
+    <title>DataConverter</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/styles.css?v=20261008_logs2" />
-    <link rel="stylesheet" href="/theme.css?v=20261010_r5" />
-    <link rel="stylesheet" href="/theme-classic.css?v=20261010_r5" />
+    <link rel="stylesheet" href="/styles.css?v=20261014_nobg" />
+    <link rel="stylesheet" href="/theme.css?v=20261014_backbtn" />
+    <link rel="stylesheet" href="/theme-classic.css?v=20261014_nobg" />
   </head>
   <body data-page="schedule">
     <div class="desktop-shell">
@@ -97,7 +97,7 @@
           <legend>选择要添加的子任务类型：</legend>
           <label><input type="radio" name="stepType" value="import" checked /> 导入</label>
           <label><input type="radio" name="stepType" value="export" /> 导出</label>
-          <label class="disabled"><input type="radio" name="stepType" value="sync" disabled /> 同步</label>
+          <label><input type="radio" name="stepType" value="sync" /> 同步</label>
           <label><input type="radio" name="stepType" value="query" /> 查询</label>
           <label><input type="radio" name="stepType" value="job" /> 作业</label>
         </fieldset>
@@ -189,8 +189,8 @@
       </form>
     </dialog>
 
-    <script src="/schedule.js?v=20261008_logs2"></script>
+    <script src="/schedule.js?v=20261014_syncstep"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
-  <script src="/shell.js?v=20260922_auth2"></script></body>
+  <script src="/shell.js?v=20261014_logfmt"></script></body>
 </html>

@@ -103,6 +103,66 @@
     document.body.appendChild(dock);
   }
 
+  /* ------------------------------------------------------------------ 日志渲染
+     作业模块的运行日志有一套业主拍板过的格式（2026-10-08）：
+       · 每条记录可折叠，最新一条默认展开；
+       · 元信息走 .run-meta-grid —— 一行一个维度、标签加粗成列；
+       · 正文按行渲染，`标签：值` 的标签加粗，路径行等宽。
+     同步模块当初另写了一套，把四行信息糊成一大段（业主 2026-10-14 反馈
+     "日志格式并没有之前我们确定好的格式"）。渲染能力放这里供全站共用；
+     样式（.log-item / .run-meta-grid / .log-line）本来就在 styles.css 里，不必动。 */
+  function dcEscape(value) {
+    return String(value == null ? "" : value).replace(/[&<>"']/g, function (ch) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch];
+    });
+  }
+
+  /* 按行分层：`标签：值` 的标签加粗、路径行等宽、其余普通。
+     ⚠️ 标签里不允许出现括号或斜杠 —— 否则 `源文件无更新（C://x）` 会被切成
+     标签「源文件无更新（C」，盘符里的冒号把句子截断了（2026-10-08 实测踩到）。 */
+  function dcRenderMessageLines(text) {
+    return String(text == null ? "" : text)
+      .split(/\r?\n/)
+      .map(function (line) {
+        var trimmed = line.trim();
+        if (!trimmed) return "";
+        if (/^产出文件（/.test(trimmed)) {
+          return '<span class="log-line"><b class="log-wide">' + dcEscape(trimmed) + "</b></span>";
+        }
+        var match = trimmed.match(/^([^：:（）()\\/]{2,8})[：:]\s*(.*)$/);
+        if (match) {
+          return '<span class="log-line"><b>' + dcEscape(match[1]) + "</b>" + dcEscape(match[2]) + "</span>";
+        }
+        if (/^[A-Za-z]:[\\/]|^\\\\/.test(trimmed)) {
+          return '<span class="log-line log-path">' + dcEscape(trimmed) + "</span>";
+        }
+        return '<span class="log-line">' + dcEscape(line) + "</span>";
+      })
+      .join("");
+  }
+
+  /** 耗时人话化：47495 → 47.5 秒；小于 1 秒保留毫秒。 */
+  function dcHumanMs(value) {
+    var ms = Number(value);
+    if (!isFinite(ms) || ms < 0) return String(value == null ? "" : value);
+    if (ms < 1000) return ms + " 毫秒";
+    if (ms < 60000) return (ms / 1000).toFixed(1) + " 秒";
+    return Math.floor(ms / 60000) + " 分 " + Math.round((ms % 60000) / 1000) + " 秒";
+  }
+
+  function dcStateClass(status) {
+    if (status === "成功") return "success";
+    if (status === "跳过") return "skipped";
+    return "failed";
+  }
+
+  window.DCLog = {
+    escape: dcEscape,
+    lines: dcRenderMessageLines,
+    humanMs: dcHumanMs,
+    stateClass: dcStateClass
+  };
+
   // 站内跳转（点侧边栏/按钮切页面）不触发关闭提醒，否则每次换页都弹窗。
   var internalNavigation = false;
   document.addEventListener(

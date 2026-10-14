@@ -241,3 +241,62 @@ def test_sync_tables_are_created_by_schema():
         }
     assert "_sync_tasks" in names
     assert "_sync_watermarks" in names
+
+
+# ---------------------------------------------------------------- 建表类型推断
+# 2026-10-14：字符串列原先一律给 longtext，业主反馈"自动创建表的类型不正确"。
+# 现在的规则：字符串按结果集给的 internal_size 推 varchar 长度（utf8mb4 下除以 4），
+# 取不到退 255。原因是 longtext 既不符合语义，又不能直接做索引/主键。
+
+def _field(name):
+    import pymysql
+    return pymysql.constants.FIELD_TYPE
+
+
+def _desc(*rows):
+    """构造 pymysql 风格的 description：(name, type_code, display, internal, precision, scale, null_ok)"""
+    return [(r[0], r[1], None, r[2], None, None, None) for r in rows]
+
+
+def test_string_columns_get_varchar_not_longtext():
+    F = _field("x")
+    desc = _desc(
+        ("player_id", F.VAR_STRING, 44),   # 手机号 11 字符 → 11
+        ("年月", F.VAR_STRING, 28),         # '%Y-%m' 7 字符 → 7
+        ("单字符", F.STRING, 4),            # char(1) → varchar(1)
+    )
+    ddl = server.sync_suggest_ddl(desc, "t")
+    assert "`player_id` varchar(11) null" in ddl, ddl
+    assert "`年月` varchar(7) null" in ddl, ddl
+    assert "`单字符` varchar(1) null" in ddl, ddl
+    assert "longtext" not in ddl, "字符串列不该再建成 longtext"
+
+
+def test_string_column_without_size_falls_back_to_255():
+    """取不到长度时退 255 —— 够放标识列，且能直接建索引。"""
+    F = _field("x")
+    ddl = server.sync_suggest_ddl(_desc(("name", F.VAR_STRING, 0)), "t")
+    assert "`name` varchar(255) null" in ddl, ddl
+
+
+def test_overlong_string_is_capped():
+    """超长字符串封顶 4000 字符，给 InnoDB 单行上限留余量。"""
+    F = _field("x")
+    ddl = server.sync_suggest_ddl(_desc(("big", F.VAR_STRING, 40000)), "t")
+    assert "`big` varchar(4000) null" in ddl, ddl
+
+
+def test_numeric_and_datetime_types_unchanged():
+    """数值/日期不受本次改动影响，仍取"最宽"档。"""
+    F = _field("x")
+    desc = _desc(
+        ("用户数", F.LONGLONG, 20),
+        ("留存率", F.NEWDECIMAL, 12),
+        ("时间", F.DATETIME, 19),
+        ("备注", F.BLOB, 65535),
+    )
+    ddl = server.sync_suggest_ddl(desc, "t")
+    assert "`用户数` bigint null" in ddl
+    assert "`留存率` decimal(38,10) null" in ddl
+    assert "`时间` datetime null" in ddl
+    assert "`备注` longtext null" in ddl, "BLOB/TEXT 仍走 longtext（协议里分不清 BLOB 与 TEXT）"

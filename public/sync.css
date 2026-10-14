@@ -333,7 +333,7 @@ body[data-page="sync"] #listStatus {
   color: var(--muted-soft);
   font-size: 13px;
 }
-/* 画布顶部条：左边「← 同步任务」，中间任务名，右边保存状态 */
+/* 画布顶部条：左边「返回任务列表」，中间任务名，右边保存状态 */
 .canvas-view .tb-name {
   padding-left: 12px;
   border-left: 1px solid var(--hairline);
@@ -393,6 +393,21 @@ body[data-page="sync"] .sync-panel {
   border-radius: var(--r-lg);
   background: var(--canvas);
   overflow: hidden;
+}
+/* 20261014 业主反馈「运行日志太靠上」：任务表只有几行时，它紧贴着任务表冒出来，
+   看起来像挂在页面上半截。让任务表按内容高、把剩余空间全给运行日志，
+   日志区自己滚 —— 这样它稳在页面下半部分，内容也能多看几条。 */
+/* ⚠️ 用 id 而不是 :nth-of-type —— .sync-toolbar 也是 <section>，
+   `:nth-of-type(2)` 命中的是**任务表**，会把 flex:1 加错地方（实测正好反了）。 */
+body[data-page="sync"] #runPanel {
+  flex: 1 1 auto;
+  min-height: 240px;
+  display: flex;
+  flex-direction: column;
+}
+body[data-page="sync"] #runPanel .sync-runs {
+  flex: 1 1 auto;
+  overflow: auto;
 }
 body[data-page="sync"] .sync-panel-head {
   display: flex;
@@ -454,18 +469,45 @@ body[data-page="sync"] .sync-table .c-name {
   color: var(--ink);
   font-weight: 600;
 }
-body[data-page="sync"] .sync-table th:nth-child(1) { width: 26%; }
-body[data-page="sync"] .sync-table th:nth-child(2) { width: 22%; }
-body[data-page="sync"] .sync-table th:nth-child(3) { width: 22%; }
-body[data-page="sync"] .sync-table th:nth-child(4) { width: 12%; }
-body[data-page="sync"] .sync-table th:nth-child(5) { width: 18%; }
+body[data-page="sync"] .sync-table th:nth-child(1) { width: 22%; }
+body[data-page="sync"] .sync-table th:nth-child(2) { width: 15%; }
+body[data-page="sync"] .sync-table th:nth-child(3) { width: 20%; }
+body[data-page="sync"] .sync-table th:nth-child(4) { width: 20%; }
+body[data-page="sync"] .sync-table th:nth-child(5) { width: 11%; }
+body[data-page="sync"] .sync-table th:nth-child(6) { width: 18%; }
+
+/* 列表页的启用/停用开关：点一下就切，不用进画布 */
+body[data-page="sync"] .state-toggle {
+  min-height: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--canvas);
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+body[data-page="sync"] .state-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--canvas);
+  transform: none;
+  box-shadow: none;
+}
+body[data-page="sync"] .state-toggle.off {
+  border-color: var(--hairline);
+  background: var(--surface-card);
+  color: var(--muted-soft);
+}
 body[data-page="sync"] .sync-empty {
   padding: 18px 14px;
   color: var(--muted-soft);
   font-size: 13px;
 }
 
-/* ---------------------------------------------------------------- 运行历史 */
+/* ---------------------------------------------------------------- 运行日志 */
 body[data-page="sync"] .sync-runs {
   display: flex;
   flex-direction: column;
@@ -1034,4 +1076,52 @@ body[data-page^="sync"] .sync-dialog-card > footer button.danger {
 .canvas-view .node.moving {
   cursor: grabbing;
   z-index: 5; /* 拖动时压在别的节点上面 */
+}
+
+/* 拖动节点时的对齐辅助线（与别的节点左边/右边/顶边/底边/中线对齐时出现） */
+.canvas-view .snap-line {
+  stroke: var(--primary);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+  opacity: 0.85;
+  pointer-events: none;
+}
+/* 拖起来的时候给个明确反馈，别让人怀疑"拖没拖动" */
+.canvas-view .node.moving {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* 画布顶部条右侧的「运行日志」 */
+.canvas-view .sync-toolbar .tb-right {
+  margin-left: auto;
+}
+/* 行内操作按钮（启用/停用、运行），比表格里塞大按钮克制一些 */
+body[data-page="sync"] .row-ops {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+body[data-page="sync"] .row-run {
+  min-height: 0;
+  padding: 2px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-pill);
+  background: var(--canvas);
+  box-shadow: none;
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 1.6;
+  cursor: pointer;
+}
+body[data-page="sync"] .row-run:hover {
+  border-color: var(--primary);
+  background: var(--surface-card);
+  transform: none;
+  box-shadow: none;
+}
+body[data-page="sync"] .row-run:disabled {
+  color: var(--muted-soft);
+  border-color: var(--hairline);
+  background: var(--canvas);
 }
