@@ -1,0 +1,26 @@
+{
+  "pass": true,
+  "expectedFromApi": {
+    "totalRows": 894,
+    "apiPreviewRows": 20,
+    "sourceName": "query"
+  },
+  "ui": {
+    "status": "预览完成。",
+    "meta": "共 894 行 · 16 列（表格显示前 20 行）",
+    "statusClass": "success",
+    "renderedRows": 20,
+    "renderedCols": 16
+  },
+  "parsedUiRows": 894,
+  "checks": {
+    "界面行数 == 接口全量行数": true,
+    "界面行数 != 表格实际渲染行数": true,
+    "表格仍只渲染前 N 行": true,
+    "meta 带全量口径字样（共…行）": true,
+    "meta 不带来源名前缀": true,
+    "meta 以「共」开头": true,
+    "状态为绿色成功": true
+  },
+  "note": "表格实际渲染行数应与 MAX_PREVIEW_ROWS 一致，而界面报的行数是全量 count(*) 结果。"
+}

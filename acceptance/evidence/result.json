@@ -1,0 +1,17 @@
+{
+  "bad": {
+    "status": "query — (1146, \"Table 'lcdp-analysis.中秋试饮' doesn't exist\")",
+    "statusClass": "error",
+    "meta": "query · 预览失败",
+    "panel": "查询 1 · query：预览失败 — (1146, \"Table 'lcdp-analysis.中秋试饮' doesn't exist\")",
+    "panelClass": "table-wrap"
+  },
+  "good": {
+    "status": "预览完成。",
+    "statusClass": "success",
+    "meta": "共 894 行 · 16 列（表格显示前 20 行）",
+    "panel": "核销时间时间权益名称核销次数权益来源客户姓名客户手机号核销人员核销人员手机号健康顾问归属市场首次消费时间是否历史消费客户小票转化金额云购转化金额转化金额2026-09-09 12:00:592026-09-0920元产品券1森山中秋试饮 -品鉴会沙春艳13002635455娥娥13957563972邓运娥绍兴商务商超2026-09-09新客506.000.00506.002026-09-26 14:22:222026-09-2620元产",
+    "panelClass": "table-wrap"
+  },
+  "pass": true
+}

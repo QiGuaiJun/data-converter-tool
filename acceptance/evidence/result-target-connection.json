@@ -1,0 +1,94 @@
+{
+  "layout": {
+    "exists": true,
+    "insideExportLeft": true,
+    "insideHiddenTopbar": false,
+    "visible": true,
+    "selRect": {
+      "x": 457,
+      "y": 1121,
+      "w": 169,
+      "h": 32
+    },
+    "modeGroupBottom": 1107,
+    "belowExportMode": true,
+    "groupLabel": "链接信息：",
+    "strongText": "目标连接：",
+    "hint": "表列表与 SQL 都在该库执行",
+    "options": [
+      "生产库",
+      "sr",
+      "本地 SQLite"
+    ],
+    "selectedId": "894acb6a26d841519d8e96a328d77b92",
+    "selectedName": "生产库",
+    "statusOnLoad": "已新建导出任务，请配置导出内容和选项。"
+  },
+  "下拉位于左侧面板内（不在隐藏顶栏）": {
+    "ok": true,
+    "detail": {
+      "insideExportLeft": true,
+      "insideHiddenTopbar": false
+    }
+  },
+  "下拉可见且有尺寸": {
+    "ok": true,
+    "detail": {
+      "x": 457,
+      "y": 1121,
+      "w": 169,
+      "h": 32
+    }
+  },
+  "位置在「导出模式」组下方": {
+    "ok": true,
+    "detail": "select.top=1121 > modeGroup.bottom=1107"
+  },
+  "行标签正确": {
+    "ok": true,
+    "detail": {
+      "strong": "目标连接：",
+      "label": "链接信息："
+    }
+  },
+  "选项 = 连接名 + 本地 SQLite": {
+    "ok": true,
+    "detail": [
+      "生产库",
+      "sr",
+      "本地 SQLite"
+    ]
+  },
+  "默认选中第一条连接": {
+    "ok": true,
+    "detail": "selected=生产库 (894acb6a26d841519d8e96a328d77b92)"
+  },
+  "bad": {
+    "status": "query — (1146, \"Table 'lcdp-analysis.中秋试饮' doesn't exist\")",
+    "statusClass": "error",
+    "meta": "query · 预览失败",
+    "panel": "查询 1 · query：预览失败 — (1146, \"Table 'lcdp-analysis.中秋试饮' doesn't exist\")"
+  },
+  "默认连错库时预览显示红色错误": {
+    "ok": true,
+    "detail": "query — (1146, \"Table 'lcdp-analysis.中秋试饮' doesn't exist\")"
+  },
+  "afterSwitch": {
+    "selected": "sr",
+    "status": "已切换连接。可直接编写 SQL，或点击“选择表”读取表列表。"
+  },
+  "good": {
+    "status": "预览完成。",
+    "statusClass": "success",
+    "meta": "共 894 行 · 16 列（表格显示前 20 行）",
+    "panel": "核销时间时间权益名称核销次数权益来源客户姓名客户手机号核销人员核销人员手机号健康顾问归属市场首次消费时间是否历史消费客户小票转化金额云购转化金额转化金额2026-09-09 12:00:592026-09-0920元产品券1森山中秋试饮 -品鉴会沙春艳13002635455娥娥13957563972邓运娥绍兴商务商超2"
+  },
+  "下拉切库后预览成功且有数据": {
+    "ok": true,
+    "detail": {
+      "meta": "共 894 行 · 16 列（表格显示前 20 行）",
+      "status": "预览完成。"
+    }
+  },
+  "pass": true
+}

@@ -804,13 +804,37 @@ async function previewExport() {
     });
     // 后端真实预览全部 item 时返回 previews（每个 item 一块）。多结果集逐块渲染，
     // 不再遮盖"仅预览第 1 条"；单结果/旧字段则沿用原有展示，保证行为一致。
-    if (Array.isArray(result.previews) && result.previews.length > 1) {
-      renderPreviewTables(exportPreviewTable, result.previews);
-      const totalRows = result.previews.reduce((sum, p) => sum + (p.rows ? p.rows.length : 0), 0);
-      exportPreviewMeta.textContent = `共 ${result.previews.length} 条查询 · 合计预览 ${totalRows} 行`;
-      setStatus("预览完成。", "success");
+    const previews = Array.isArray(result.previews) ? result.previews : [];
+    const singleFailed = previews.length === 1 && previews[0].ok === false;
+    // 单条预览失败（previews[0].ok === false）必须走错误占位分支：
+    // 以前它落进下面的 else，界面显示「N 行 0 列 / 暂无数据 / 预览完成。」，
+    // 真实原因（连错库、表不存在、SQL 报错）被静默吞掉，用户只看到空表。
+    if (previews.length > 1 || singleFailed) {
+      renderPreviewTables(exportPreviewTable, previews);
+      if (previews.length > 1) {
+        // 「合计行数」= 各查询的**全量**结果行数之和，不是表格里取到的前 20 行。
+        const totalRows = previews.reduce((sum, p) => sum + totalRowCount(p), 0);
+        exportPreviewMeta.textContent = `共 ${previews.length} 条查询 · 合计 ${formatRowCount(totalRows)} 行`;
+      } else {
+        exportPreviewMeta.textContent = `${previews[0].sourceName || "查询"} · 预览失败`;
+      }
+      const failures = previews.filter((p) => p.ok === false);
+      if (failures.length) {
+        const first = failures[0];
+        const prefix = previews.length > 1 ? `${failures.length}/${previews.length} 条查询预览失败：` : "";
+        setStatus(`${prefix}${first.sourceName || "查询"} — ${first.error || "未知错误"}`, "error");
+      } else {
+        setStatus("预览完成。", "success");
+      }
     } else {
-      const previewLabel = `${result.sourceName} · ${result.rows.length} 行 · ${result.columns.length} 列`;
+      // 单条查询：「N 行」= 该查询的全量结果行数（表格只展示前 MAX_PREVIEW_ROWS 行）。
+      // 前缀不显示来源名（2026-10-12 业主口径）——该字段多为无意义的 query/表名，
+      // 版面留给真正的信息；来源归属由多查询时的分块标题承担。
+      const total = totalRowCount(result);
+      const columns = result.columns || [];
+      const shown = (result.rows || []).length;
+      const previewLabel = `共 ${formatRowCount(total)} 行 · ${columns.length} 列`
+        + (total > shown ? `（表格显示前 ${shown} 行）` : "");
       exportPreviewMeta.textContent = previewLabel;
       renderTable(exportPreviewTable, result.columns, result.rows);
       setStatus("预览完成。", "success");
@@ -820,6 +844,22 @@ async function previewExport() {
   } finally {
     previewExportButton.disabled = false;
   }
+}
+
+// 预览「行数」口径（2026-10-12 业主明确）：报的是查询的**全量结果行数**，
+// 不是预览表格当前取到的行数（后者恒定 ≤ 20 行，会严重误导对数据量的判断）。
+// totalRows 由后端 select count(*) 包一层统计；统计失败（极少数语句）时退回已取到的行数。
+function totalRowCount(preview) {
+  if (!preview) return 0;
+  const total = Number(preview.totalRows);
+  if (Number.isFinite(total) && total >= 0) return total;
+  return preview.rows ? preview.rows.length : 0;
+}
+
+function formatRowCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0";
+  return n.toLocaleString("en-US");
 }
 
 // 多查询预览：每个 item 一块（带来源名与列头），失败的 item 显示错误占位而非整块崩。
@@ -836,7 +876,10 @@ function renderPreviewTables(container, previews) {
       head.textContent = `查询 ${index + 1} · ${title}：预览失败 — ${preview.error || "未知错误"}`;
       block.appendChild(head);
     } else {
-      head.textContent = `查询 ${index + 1} · ${title} · ${preview.rows.length} 行 · ${preview.columns.length} 列`;
+      const total = totalRowCount(preview);
+      const shown = preview.rows.length;
+      head.textContent = `查询 ${index + 1} · ${title} · 共 ${formatRowCount(total)} 行 · ${preview.columns.length} 列`
+        + (total > shown ? `（显示前 ${shown} 行）` : "");
       block.appendChild(head);
       const host = document.createElement("div");
       block.appendChild(host);
