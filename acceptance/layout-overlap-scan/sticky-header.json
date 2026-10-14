@@ -1,0 +1,97 @@
+{
+  "single": {
+    "maxScroll": 2712,
+    "appliedScrollTop": 400,
+    "offsetBefore": 2,
+    "thOffsetFromWrapTop": 1,
+    "thBottomOffsetFromWrapTop": 36,
+    "headerIntersectsDataRows": false,
+    "thPosition": "sticky",
+    "thTop": "0px",
+    "thZIndex": "3",
+    "thBackground": "rgb(245, 240, 232)",
+    "wrapOverflow": "auto",
+    "tableOverflow": "visible",
+    "theadHeight": 35,
+    "topElementAtHeaderCorner": "TH."
+  },
+  "multi": {
+    "scrolledIntoBlock1": {
+      "scrollTop": 150,
+      "head1Top": 1,
+      "th1Top": 33,
+      "head1Z": "4",
+      "th1Z": "3"
+    },
+    "scrolledIntoBlock2": {
+      "scrollTop": 2470,
+      "head2Top": 1,
+      "th2Top": 33,
+      "mutualOverlap": 0,
+      "innerWrapOverflow": "visible"
+    }
+  },
+  "checks": [
+    [
+      "单表：th 为 sticky",
+      true
+    ],
+    [
+      "单表：th top=0",
+      true
+    ],
+    [
+      "单表：滚动后表头仍贴容器顶(<=1px)",
+      true
+    ],
+    [
+      "单表：表头未随内容滚走",
+      true
+    ],
+    [
+      "单表：表头处最上层是 TH 而非数据行",
+      true
+    ],
+    [
+      "单表：表头底色不透明",
+      true
+    ],
+    [
+      "单表：table overflow 被覆盖为 visible",
+      true
+    ],
+    [
+      "单表：滚动容器仍是 .table-wrap",
+      true
+    ],
+    [
+      "多表：块标题吸顶 0",
+      true
+    ],
+    [
+      "多表：第一块列名行吸在标题下方(≈32px)",
+      true
+    ],
+    [
+      "多表：滚到第二块时块标题吸顶 0",
+      true
+    ],
+    [
+      "多表：第二块列名行吸在 32px",
+      true
+    ],
+    [
+      "多表：标题与列名行不重叠",
+      true
+    ],
+    [
+      "多表：块内 .table-wrap 不再是滚动容器",
+      true
+    ],
+    [
+      "无 JS 报错",
+      true
+    ]
+  ],
+  "errors": []
+}

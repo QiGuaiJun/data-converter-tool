@@ -10,9 +10,10 @@
  *     导出：总览=「新增导出」/ 编辑已存=「保存修改」/ 编辑未存=「保存为新任务」
  *  3. 导入编辑器有 **localStorage 草稿**（P2-16），且 `startNewImportTask()` 在**有未保存草稿时故意复用草稿**（P2-32）
  *     → 验证「新增导入清空编辑器」必须先把草稿清掉，否则复用的是草稿（预期行为）。
- *  4. 导出页顶栏 `.export-topbar` 是 `hidden style="display:none"`（刻意隐藏）→ `#exportConnection`、
- *     `#saveExportConfig` 在界面上**不可点击**；保存入口已迁移到 `#newExportTask`。
- *     目标库选择器同样位于该隐藏顶栏内，故复跑时以程序设 `__sqlite` 指向本地库。
+ *  4. 导出页顶栏 `.export-topbar` 是 `hidden style="display:none"`（刻意隐藏）→ `#saveExportConfig`
+ *     在界面上**不可点击**；保存入口已迁移到 `#newExportTask`。
+ *     （20261012 起 `#exportConnection` 已从该隐藏顶栏移到左侧面板「目标连接」组，界面上可见可选；
+ *     本脚本写这条时它仍在隐藏栏内，故复跑时以程序设 `__sqlite` 指向本地库——该写法现在依然有效。）
  */
 const { chromium } = require('playwright');
 const fs = require('fs');

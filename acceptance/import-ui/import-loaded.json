@@ -1,0 +1,608 @@
+{
+  "1600x900": {
+    "docH": 1413,
+    "innerH": 900,
+    "fileList": {
+      "x": 249,
+      "y": 342,
+      "w": 606,
+      "h": 120,
+      "fs": "14px",
+      "pad": "14px",
+      "radius": "18px",
+      "display": "grid"
+    },
+    "fileListCls": "file-list",
+    "fileItems": [
+      {
+        "tag": "DIV",
+        "cls": "file-item",
+        "text": "1导入样例-中秋试饮.csv",
+        "x": 264,
+        "y": 357,
+        "w": 576,
+        "h": 29,
+        "fs": "14px",
+        "pad": "3px 4px",
+        "radius": "0px",
+        "display": "grid"
+      }
+    ],
+    "fileItemCount": 1,
+    "pickerButtons": [
+      {
+        "text": "关联本机原文件",
+        "x": 547,
+        "y": 281,
+        "w": 124,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择文件",
+        "x": 681,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择目录",
+        "x": 773,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      }
+    ],
+    "basicOptions": {
+      "x": 249,
+      "y": 478,
+      "w": 606,
+      "h": 376,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "optionGroups": [
+      {
+        "text": "目标表：",
+        "x": 249,
+        "y": 478,
+        "w": 606,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "字段匹配：",
+        "x": 249,
+        "y": 554,
+        "w": 606,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "数据类型：",
+        "x": 249,
+        "y": 602,
+        "w": 606,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "导入模式：",
+        "x": 249,
+        "y": 650,
+        "w": 606,
+        "h": 129,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "grid"
+      },
+      {
+        "text": "目标连接：",
+        "x": 249,
+        "y": 789,
+        "w": 606,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      }
+    ],
+    "previewTable": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "12px",
+      "display": "grid",
+      "cls": "table-wrap empty",
+      "tableCount": 0,
+      "rows": 0,
+      "cols": 0
+    },
+    "dock": {
+      "x": 216,
+      "y": 1261,
+      "w": 1384,
+      "h": 152,
+      "fs": "14px",
+      "pad": "12px 16px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "dockCells": [
+      {
+        "text": "已导入表",
+        "x": 232,
+        "y": 1274,
+        "w": 300,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "表数据",
+        "x": 544,
+        "y": 1274,
+        "w": 598,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "导入日志",
+        "x": 1154,
+        "y": 1274,
+        "w": 430,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      }
+    ],
+    "leftPickerWrap": {
+      "x": 379,
+      "y": 281,
+      "w": 476,
+      "h": 32,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "flex"
+    }
+  },
+  "1440x900": {
+    "docH": 1449,
+    "innerH": 900,
+    "fileList": {
+      "x": 249,
+      "y": 342,
+      "w": 530,
+      "h": 120,
+      "fs": "14px",
+      "pad": "14px",
+      "radius": "18px",
+      "display": "grid"
+    },
+    "fileListCls": "file-list",
+    "fileItems": [
+      {
+        "tag": "DIV",
+        "cls": "file-item",
+        "text": "1导入样例-中秋试饮.csv",
+        "x": 264,
+        "y": 357,
+        "w": 500,
+        "h": 29,
+        "fs": "14px",
+        "pad": "3px 4px",
+        "radius": "0px",
+        "display": "grid"
+      }
+    ],
+    "fileItemCount": 1,
+    "pickerButtons": [
+      {
+        "text": "关联本机原文件",
+        "x": 471,
+        "y": 281,
+        "w": 124,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择文件",
+        "x": 605,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择目录",
+        "x": 697,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      }
+    ],
+    "basicOptions": {
+      "x": 249,
+      "y": 478,
+      "w": 530,
+      "h": 376,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "optionGroups": [
+      {
+        "text": "目标表：",
+        "x": 249,
+        "y": 478,
+        "w": 530,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "字段匹配：",
+        "x": 249,
+        "y": 554,
+        "w": 530,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "数据类型：",
+        "x": 249,
+        "y": 602,
+        "w": 530,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "导入模式：",
+        "x": 249,
+        "y": 650,
+        "w": 530,
+        "h": 129,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "grid"
+      },
+      {
+        "text": "目标连接：",
+        "x": 249,
+        "y": 789,
+        "w": 530,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      }
+    ],
+    "previewTable": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "12px",
+      "display": "grid",
+      "cls": "table-wrap empty",
+      "tableCount": 0,
+      "rows": 0,
+      "cols": 0
+    },
+    "dock": {
+      "x": 216,
+      "y": 1297,
+      "w": 1224,
+      "h": 152,
+      "fs": "14px",
+      "pad": "12px 16px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "dockCells": [
+      {
+        "text": "已导入表",
+        "x": 232,
+        "y": 1310,
+        "w": 300,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "表数据",
+        "x": 544,
+        "y": 1310,
+        "w": 438,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "导入日志",
+        "x": 994,
+        "y": 1310,
+        "w": 430,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      }
+    ],
+    "leftPickerWrap": {
+      "x": 379,
+      "y": 281,
+      "w": 400,
+      "h": 32,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "flex"
+    }
+  },
+  "1366x768": {
+    "docH": 1449,
+    "innerH": 768,
+    "fileList": {
+      "x": 249,
+      "y": 342,
+      "w": 494,
+      "h": 120,
+      "fs": "14px",
+      "pad": "14px",
+      "radius": "18px",
+      "display": "grid"
+    },
+    "fileListCls": "file-list",
+    "fileItems": [
+      {
+        "tag": "DIV",
+        "cls": "file-item",
+        "text": "1导入样例-中秋试饮.csv",
+        "x": 264,
+        "y": 357,
+        "w": 464,
+        "h": 29,
+        "fs": "14px",
+        "pad": "3px 4px",
+        "radius": "0px",
+        "display": "grid"
+      }
+    ],
+    "fileItemCount": 1,
+    "pickerButtons": [
+      {
+        "text": "关联本机原文件",
+        "x": 435,
+        "y": 281,
+        "w": 124,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择文件",
+        "x": 569,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      },
+      {
+        "text": "选择目录",
+        "x": 661,
+        "y": 281,
+        "w": 82,
+        "h": 32,
+        "fs": "14px",
+        "pad": "0px 12px",
+        "radius": "8px",
+        "display": "flex"
+      }
+    ],
+    "basicOptions": {
+      "x": 249,
+      "y": 478,
+      "w": 494,
+      "h": 376,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "optionGroups": [
+      {
+        "text": "目标表：",
+        "x": 249,
+        "y": 478,
+        "w": 494,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "字段匹配：",
+        "x": 249,
+        "y": 554,
+        "w": 494,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "数据类型：",
+        "x": 249,
+        "y": 602,
+        "w": 494,
+        "h": 38,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      },
+      {
+        "text": "导入模式：",
+        "x": 249,
+        "y": 650,
+        "w": 494,
+        "h": 129,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "grid"
+      },
+      {
+        "text": "目标连接：",
+        "x": 249,
+        "y": 789,
+        "w": 494,
+        "h": 66,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "0px",
+        "display": "flex"
+      }
+    ],
+    "previewTable": {
+      "x": 0,
+      "y": 0,
+      "w": 0,
+      "h": 0,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "12px",
+      "display": "grid",
+      "cls": "table-wrap empty",
+      "tableCount": 0,
+      "rows": 0,
+      "cols": 0
+    },
+    "dock": {
+      "x": 216,
+      "y": 1297,
+      "w": 1150,
+      "h": 152,
+      "fs": "14px",
+      "pad": "12px 16px",
+      "radius": "0px",
+      "display": "grid"
+    },
+    "dockCells": [
+      {
+        "text": "已导入表",
+        "x": 232,
+        "y": 1310,
+        "w": 300,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "表数据",
+        "x": 544,
+        "y": 1310,
+        "w": 364,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      },
+      {
+        "text": "导入日志",
+        "x": 920,
+        "y": 1310,
+        "w": 430,
+        "h": 127,
+        "fs": "14px",
+        "pad": "0px",
+        "radius": "12px",
+        "display": "block"
+      }
+    ],
+    "leftPickerWrap": {
+      "x": 379,
+      "y": 281,
+      "w": 364,
+      "h": 32,
+      "fs": "14px",
+      "pad": "0px",
+      "radius": "0px",
+      "display": "flex"
+    }
+  }
+}

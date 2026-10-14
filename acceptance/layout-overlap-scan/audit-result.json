@@ -1,0 +1,1642 @@
+{
+  "base": "http://127.0.0.1:51978",
+  "generatedAt": "2026-10-12T07:30:06.231Z",
+  "runs": [
+    {
+      "page": "index",
+      "url": "/",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            819,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            808,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        }
+      ],
+      "overflowCount": 1,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-index-1440x900.png"
+    },
+    {
+      "page": "export",
+      "url": "/export.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            819,
+            -580,
+            78,
+            20
+          ],
+          "parentRect": [
+            808,
+            -615,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        }
+      ],
+      "overflowCount": 1,
+      "winH": 900,
+      "docH": 1525,
+      "shot": "audit-export-1440x900.png"
+    },
+    {
+      "page": "tables",
+      "url": "/tables.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [
+        {
+          "el": "section.table-detail-view.active",
+          "client": [
+            836,
+            619
+          ],
+          "scroll": [
+            836,
+            629
+          ],
+          "rect": [
+            587,
+            252,
+            836,
+            619
+          ],
+          "text": "选择表后显示字段结构"
+        }
+      ],
+      "clippedCount": 1,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-tables-1440x900.png"
+    },
+    {
+      "page": "query",
+      "url": "/query.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [
+        {
+          "a": "div.sql-editor-body",
+          "b": "div.sql-editor-bar",
+          "aRect": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bRect": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "aPaint": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bPaint": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgba(0, 0, 0, 0)",
+          "aZ": "auto",
+          "bZ": "3"
+        },
+        {
+          "a": "div.sql-editor-body",
+          "b": "button.sql-editor-btn",
+          "aRect": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bRect": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "aPaint": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bPaint": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgb(250, 249, 245)",
+          "aZ": "auto",
+          "bZ": "auto"
+        },
+        {
+          "a": "textarea#querySql",
+          "b": "div.sql-editor-bar",
+          "aRect": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bRect": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "aPaint": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bPaint": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgba(0, 0, 0, 0)",
+          "aZ": "1",
+          "bZ": "3"
+        },
+        {
+          "a": "textarea#querySql",
+          "b": "button.sql-editor-btn",
+          "aRect": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bRect": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "aPaint": [
+            541,
+            224,
+            868,
+            230
+          ],
+          "bPaint": [
+            1355,
+            230,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgb(250, 249, 245)",
+          "aZ": "1",
+          "bZ": "auto"
+        }
+      ],
+      "overlapCount": 4,
+      "clipped": [
+        {
+          "el": "aside.query-saved-panel",
+          "client": [
+            278,
+            318
+          ],
+          "scroll": [
+            278,
+            325
+          ],
+          "rect": [
+            232,
+            156,
+            280,
+            320
+          ],
+          "text": " 已保存查询刷新 SQL中秋试饮活动2026-09-05 09:33:56 "
+        },
+        {
+          "el": "section.query-editor-panel",
+          "client": [
+            896,
+            318
+          ],
+          "scroll": [
+            896,
+            340
+          ],
+          "rect": [
+            526,
+            156,
+            898,
+            320
+          ],
+          "text": " 查询名称：支持任意 SQL（SELECT / DDL / DML，多语句用分号分隔） SELECT 1 AS valu"
+        }
+      ],
+      "clippedCount": 2,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-query-1440x900.png"
+    },
+    {
+      "page": "sync",
+      "url": "/sync.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-sync-1440x900.png"
+    },
+    {
+      "page": "jobs",
+      "url": "/jobs.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            275,
+            1318,
+            1110,
+            641
+          ],
+          "parentRect": [
+            258,
+            1274,
+            1140,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            275,
+            1377,
+            1110,
+            641
+          ],
+          "parentRect": [
+            258,
+            1333,
+            1140,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            275,
+            1435,
+            1110,
+            641
+          ],
+          "parentRect": [
+            258,
+            1392,
+            1140,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            275,
+            1494,
+            1110,
+            561
+          ],
+          "parentRect": [
+            258,
+            1450,
+            1140,
+            49
+          ],
+          "dx": 0,
+          "dy": 556
+        }
+      ],
+      "overflowCount": 4,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-jobs-1440x900.png"
+    },
+    {
+      "page": "schedule",
+      "url": "/schedule.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-schedule-1440x900.png"
+    },
+    {
+      "page": "connections",
+      "url": "/connections.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-connections-1440x900.png"
+    },
+    {
+      "page": "api",
+      "url": "/api.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            663,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            646,
+            10,
+            75,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        },
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            830,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        },
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item",
+          "rect": [
+            849,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        }
+      ],
+      "overflowCount": 3,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-api-1440x900.png"
+    },
+    {
+      "page": "audit",
+      "url": "/audit.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-audit-1440x900.png"
+    },
+    {
+      "page": "docs",
+      "url": "/docs.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            339,
+            758,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            570,
+            758,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            800,
+            758,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            1031,
+            758,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            1262,
+            758,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            339,
+            1113,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            570,
+            1113,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            800,
+            1113,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            1031,
+            1113,
+            123,
+            18
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            121,
+            16
+          ],
+          "scroll": [
+            121,
+            42
+          ],
+          "rect": [
+            1262,
+            1113,
+            123,
+            18
+          ],
+          "text": " "
+        }
+      ],
+      "clippedCount": 10,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-docs-1440x900.png"
+    },
+    {
+      "page": "users",
+      "url": "/users.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-users-1440x900.png"
+    },
+    {
+      "page": "feedback",
+      "url": "/feedback.html",
+      "size": "1440x900",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item",
+          "rect": [
+            663,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            646,
+            10,
+            75,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        },
+        {
+          "el": "span",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            830,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        },
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            849,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        }
+      ],
+      "overflowCount": 3,
+      "winH": 900,
+      "docH": 900,
+      "shot": "audit-feedback-1440x900.png"
+    },
+    {
+      "page": "index",
+      "url": "/",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            819,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            808,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        }
+      ],
+      "overflowCount": 1,
+      "winH": 560,
+      "docH": 560,
+      "shot": "audit-index-1080x560.png"
+    },
+    {
+      "page": "export",
+      "url": "/export.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            819,
+            -1700,
+            78,
+            20
+          ],
+          "parentRect": [
+            808,
+            -1735,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        }
+      ],
+      "overflowCount": 1,
+      "winH": 560,
+      "docH": 2536,
+      "shot": "audit-export-1080x560.png"
+    },
+    {
+      "page": "tables",
+      "url": "/tables.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [
+        {
+          "el": "section.table-detail-view.active",
+          "client": [
+            502,
+            408
+          ],
+          "scroll": [
+            502,
+            418
+          ],
+          "rect": [
+            561,
+            263,
+            502,
+            408
+          ],
+          "text": "选择表后显示字段结构"
+        }
+      ],
+      "clippedCount": 1,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 688,
+      "shot": "audit-tables-1080x560.png"
+    },
+    {
+      "page": "query",
+      "url": "/query.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [
+        {
+          "a": "div.sql-editor-body",
+          "b": "div.sql-editor-bar",
+          "aRect": [
+            221,
+            464,
+            828,
+            230
+          ],
+          "bRect": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "aPaint": [
+            221,
+            464,
+            828,
+            58
+          ],
+          "bPaint": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgba(0, 0, 0, 0)",
+          "aZ": "auto",
+          "bZ": "3"
+        },
+        {
+          "a": "div.sql-editor-body",
+          "b": "button.sql-editor-btn",
+          "aRect": [
+            221,
+            464,
+            828,
+            230
+          ],
+          "bRect": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "aPaint": [
+            221,
+            464,
+            828,
+            58
+          ],
+          "bPaint": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgb(250, 249, 245)",
+          "aZ": "auto",
+          "bZ": "auto"
+        },
+        {
+          "a": "textarea#querySql",
+          "b": "div.sql-editor-bar",
+          "aRect": [
+            221,
+            464,
+            828,
+            230
+          ],
+          "bRect": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "aPaint": [
+            221,
+            464,
+            828,
+            58
+          ],
+          "bPaint": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgba(0, 0, 0, 0)",
+          "aZ": "1",
+          "bZ": "3"
+        },
+        {
+          "a": "textarea#querySql",
+          "b": "button.sql-editor-btn",
+          "aRect": [
+            221,
+            464,
+            828,
+            230
+          ],
+          "bRect": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "aPaint": [
+            221,
+            464,
+            828,
+            58
+          ],
+          "bPaint": [
+            995,
+            470,
+            46,
+            23
+          ],
+          "area": 1049,
+          "sharePct": 100,
+          "aBg": "rgba(0, 0, 0, 0)",
+          "bBg": "rgb(250, 249, 245)",
+          "aZ": "1",
+          "bZ": "auto"
+        }
+      ],
+      "overlapCount": 4,
+      "clipped": [
+        {
+          "el": "aside.query-saved-panel",
+          "client": [
+            856,
+            178
+          ],
+          "scroll": [
+            856,
+            185
+          ],
+          "rect": [
+            206,
+            201,
+            858,
+            180
+          ],
+          "text": " 已保存查询刷新 SQL中秋试饮活动2026-09-05 09:33:56 "
+        },
+        {
+          "el": "section.query-editor-panel",
+          "client": [
+            856,
+            124
+          ],
+          "scroll": [
+            856,
+            340
+          ],
+          "rect": [
+            206,
+            395,
+            858,
+            126
+          ],
+          "text": " 查询名称：支持任意 SQL（SELECT / DDL / DML，多语句用分号分隔） SELECT 1 AS valu"
+        }
+      ],
+      "clippedCount": 2,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 688,
+      "shot": "audit-query-1080x560.png"
+    },
+    {
+      "page": "sync",
+      "url": "/sync.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 560,
+      "shot": "audit-sync-1080x560.png"
+    },
+    {
+      "page": "jobs",
+      "url": "/jobs.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            249,
+            1247,
+            776,
+            641
+          ],
+          "parentRect": [
+            232,
+            1204,
+            806,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            249,
+            1306,
+            776,
+            641
+          ],
+          "parentRect": [
+            232,
+            1262,
+            806,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            249,
+            1365,
+            776,
+            641
+          ],
+          "parentRect": [
+            232,
+            1321,
+            806,
+            49
+          ],
+          "dx": 0,
+          "dy": 636
+        },
+        {
+          "el": "div.log-body",
+          "parent": "details.log-item.success",
+          "rect": [
+            249,
+            1423,
+            776,
+            642
+          ],
+          "parentRect": [
+            232,
+            1380,
+            806,
+            49
+          ],
+          "dx": 0,
+          "dy": 637
+        }
+      ],
+      "overflowCount": 4,
+      "winH": 560,
+      "docH": 791,
+      "shot": "audit-jobs-1080x560.png"
+    },
+    {
+      "page": "schedule",
+      "url": "/schedule.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 588,
+      "shot": "audit-schedule-1080x560.png"
+    },
+    {
+      "page": "connections",
+      "url": "/connections.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "section.conn-card.conn-list-card",
+          "parent": "main.conn-shell",
+          "rect": [
+            206,
+            368,
+            858,
+            320
+          ],
+          "parentRect": [
+            190,
+            68,
+            890,
+            492
+          ],
+          "dx": 0,
+          "dy": 128
+        }
+      ],
+      "overflowCount": 1,
+      "winH": 560,
+      "docH": 560,
+      "shot": "audit-connections-1080x560.png"
+    },
+    {
+      "page": "api",
+      "url": "/api.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            663,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            646,
+            10,
+            75,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        },
+        {
+          "el": "span",
+          "parent": "a.ribbon-item",
+          "rect": [
+            830,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        },
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item",
+          "rect": [
+            849,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        }
+      ],
+      "overflowCount": 3,
+      "winH": 560,
+      "docH": 560,
+      "shot": "audit-api-1080x560.png"
+    },
+    {
+      "page": "audit",
+      "url": "/audit.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 688,
+      "shot": "audit-audit-1080x560.png"
+    },
+    {
+      "page": "docs",
+      "url": "/docs.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            346,
+            1008,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            610,
+            1008,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            875,
+            1008,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            346,
+            1363,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            610,
+            1383,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            875,
+            1383,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            346,
+            1757,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            610,
+            1757,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            875,
+            1757,
+            150,
+            33
+          ],
+          "text": " "
+        },
+        {
+          "el": "div.thm-table",
+          "client": [
+            148,
+            31
+          ],
+          "scroll": [
+            148,
+            42
+          ],
+          "rect": [
+            346,
+            2132,
+            150,
+            33
+          ],
+          "text": " "
+        }
+      ],
+      "clippedCount": 10,
+      "overflow": [
+        {
+          "el": "aside.docs-nav",
+          "parent": "div.docs-site-body",
+          "rect": [
+            0,
+            106,
+            248,
+            482
+          ],
+          "parentRect": [
+            0,
+            106,
+            1080,
+            455
+          ],
+          "dx": 0,
+          "dy": 28
+        },
+        {
+          "el": "main#docsMain.docs-workspace",
+          "parent": "div.docs-site-body",
+          "rect": [
+            248,
+            106,
+            832,
+            482
+          ],
+          "parentRect": [
+            0,
+            106,
+            1080,
+            455
+          ],
+          "dx": 0,
+          "dy": 28
+        }
+      ],
+      "overflowCount": 2,
+      "winH": 560,
+      "docH": 588,
+      "shot": "audit-docs-1080x560.png"
+    },
+    {
+      "page": "users",
+      "url": "/users.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [],
+      "overflowCount": 0,
+      "winH": 560,
+      "docH": 688,
+      "shot": "audit-users-1080x560.png"
+    },
+    {
+      "page": "feedback",
+      "url": "/feedback.html",
+      "size": "1080x560",
+      "jsErrors": [],
+      "overlap": [],
+      "overlapCount": 0,
+      "clipped": [],
+      "clippedCount": 0,
+      "overflow": [
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item",
+          "rect": [
+            663,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            646,
+            10,
+            75,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        },
+        {
+          "el": "span",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            830,
+            45,
+            78,
+            20
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 5
+        },
+        {
+          "el": "span.module-status",
+          "parent": "a.ribbon-item.active",
+          "rect": [
+            849,
+            70,
+            47,
+            22
+          ],
+          "parentRect": [
+            819,
+            10,
+            100,
+            50
+          ],
+          "dx": 0,
+          "dy": 32
+        }
+      ],
+      "overflowCount": 3,
+      "winH": 560,
+      "docH": 560,
+      "shot": "audit-feedback-1080x560.png"
+    }
+  ]
+}

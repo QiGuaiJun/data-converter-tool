@@ -32,3 +32,9 @@ test_mysql_import.py
 .env.*
 !.env.example
 *.log
+
+# 图标候选（临时预览页；选定后只留 favicon.svg，整个目录删掉）
+public/icons/
+
+# 各次审计的截图目录：体积大且可一键复跑，不入库（脚本与说明本身入库）
+acceptance/*/shots/

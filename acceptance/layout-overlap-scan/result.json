@@ -1,0 +1,6495 @@
+{
+  "base": "http://127.0.0.1:51978",
+  "export": [
+    {
+      "size": "1920x1080",
+      "shot": "export-1920x1080.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 331254,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            249,
+            -283,
+            693,
+            478
+          ],
+          "bRect": [
+            249,
+            -283,
+            695,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 285736,
+          "sharePct": 86,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            -283,
+            695,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 258590,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            213,
+            815,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 465086,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            234,
+            718,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 443254,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            753,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 145496,
+          "sharePct": 91,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            718,
+            1790,
+            770
+          ],
+          "bRect": [
+            1489,
+            683,
+            415,
+            385
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 132121,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            234,
+            718,
+            1790,
+            770
+          ],
+          "bRect": [
+            1490,
+            709,
+            413,
+            329
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 232812,
+          "sharePct": 49,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            232,
+            683,
+            1245,
+            385
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 130706,
+          "sharePct": 82,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            753,
+            1789,
+            734
+          ],
+          "bRect": [
+            1489,
+            683,
+            415,
+            385
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 216624,
+          "sharePct": 49,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            233,
+            717,
+            1243,
+            359
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 117402,
+          "sharePct": 86,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            235,
+            753,
+            1789,
+            734
+          ],
+          "bRect": [
+            1490,
+            709,
+            413,
+            329
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 247914,
+          "sharePct": 35,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            216,
+            670,
+            1704,
+            410
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 51386,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            507,
+            815,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            213,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            262,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            311,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            360,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            409,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            458,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 22956,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            249,
+            603,
+            815,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "select#exportConnection",
+          "area": 13027,
+          "sharePct": 98,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            457,
+            606,
+            415,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 12261,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            718,
+            1790,
+            770
+          ],
+          "bRect": [
+            1490,
+            1043,
+            413,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 12261,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            753,
+            1789,
+            734
+          ],
+          "bRect": [
+            1490,
+            1043,
+            413,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFileName",
+          "area": 12131,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            485,
+            314,
+            391,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFolder",
+          "area": 10307,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            542,
+            265,
+            332,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "div#exportResults.logs",
+          "area": 10925,
+          "sharePct": 89,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            1047,
+            1789,
+            37
+          ],
+          "bRect": [
+            1490,
+            1043,
+            413,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportTaskName",
+          "area": 9383,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            527,
+            216,
+            293,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#sheetName",
+          "area": 12811,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            464,
+            412,
+            580,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#outputName",
+          "area": 10755,
+          "sharePct": 71,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            528,
+            363,
+            472,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 10737,
+          "sharePct": 71,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            369,
+            507,
+            695,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 10737,
+          "sharePct": 71,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            369,
+            538,
+            695,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 10737,
+          "sharePct": 71,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            369,
+            570,
+            695,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            753,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            790,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            827,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            863,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            900,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            937,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            973,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 22163,
+          "sharePct": 34,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -276,
+            604,
+            2639
+          ],
+          "bRect": [
+            235,
+            1010,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1251,
+      "dockInfo": {
+        "dockRect": [
+          216,
+          670,
+          1704,
+          410
+        ],
+        "dockScrollH": 409,
+        "dockClientH": 409,
+        "headRect": [
+          233,
+          684,
+          1235,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            233,
+            717,
+            1243,
+            359
+          ],
+          "scrollH": 770,
+          "clientH": 357
+        },
+        "logs": {
+          "rect": [
+            1490,
+            1043,
+            413,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 494,
+      "docH": 1574,
+      "winH": 1080
+    },
+    {
+      "size": "1600x900",
+      "shot": "export-1600x900.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            249,
+            -395,
+            544,
+            478
+          ],
+          "bRect": [
+            249,
+            -395,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -395,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 94538,
+          "sharePct": 89,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1249,
+            571,
+            335,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 83755,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1250,
+            597,
+            333,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 145775,
+          "sharePct": 46,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            232,
+            571,
+            1005,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 82598,
+          "sharePct": 78,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1249,
+            571,
+            335,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 133453,
+          "sharePct": 46,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            605,
+            1003,
+            290
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 71886,
+          "sharePct": 83,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1250,
+            597,
+            333,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 157272,
+          "sharePct": 33,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            216,
+            558,
+            1384,
+            342
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            395,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            150,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            199,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            248,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            297,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            346,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            491,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 9886,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1250,
+            863,
+            333,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 9886,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1250,
+            863,
+            333,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "div#exportResults.logs",
+          "area": 9886,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            861,
+            1789,
+            37
+          ],
+          "bRect": [
+            1250,
+            863,
+            333,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "select#exportConnection",
+          "area": 8412,
+          "sharePct": 99,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            457,
+            494,
+            266,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFileName",
+          "area": 7516,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            485,
+            202,
+            242,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "table",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tbody",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tr",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            1302,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "section.export-basic",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            306,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "div.export-group",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            306,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            297,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFolder",
+          "area": 5692,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            542,
+            153,
+            183,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "strong",
+          "area": 11403,
+          "sharePct": 46,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            572,
+            995,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            395,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            426,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            458,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#sheetName",
+          "area": 8196,
+          "sharePct": 59,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            464,
+            300,
+            431,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 4806,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1408,
+            641,
+            131,
+            37
+          ],
+          "bRect": [
+            1249,
+            571,
+            335,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 4806,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1408,
+            641,
+            131,
+            37
+          ],
+          "bRect": [
+            1250,
+            597,
+            333,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 4806,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1408,
+            678,
+            131,
+            37
+          ],
+          "bRect": [
+            1249,
+            571,
+            335,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 4806,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1408,
+            678,
+            131,
+            37
+          ],
+          "bRect": [
+            1250,
+            597,
+            333,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1087,
+      "dockInfo": {
+        "dockRect": [
+          216,
+          558,
+          1384,
+          342
+        ],
+        "dockScrollH": 341,
+        "dockClientH": 341,
+        "headRect": [
+          233,
+          572,
+          995,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            233,
+            605,
+            1003,
+            290
+          ],
+          "scrollH": 770,
+          "clientH": 288
+        },
+        "logs": {
+          "rect": [
+            1250,
+            863,
+            333,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 606,
+      "docH": 1506,
+      "winH": 900
+    },
+    {
+      "size": "1440x900",
+      "shot": "export-1440x900.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            249,
+            -395,
+            544,
+            478
+          ],
+          "bRect": [
+            249,
+            -395,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -395,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 145775,
+          "sharePct": 52,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            232,
+            571,
+            880,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 84661,
+          "sharePct": 89,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1124,
+            571,
+            300,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 74952,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1125,
+            597,
+            298,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 133453,
+          "sharePct": 52,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            605,
+            878,
+            290
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 157272,
+          "sharePct": 38,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            216,
+            558,
+            1224,
+            342
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 73969,
+          "sharePct": 78,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1124,
+            571,
+            300,
+            317
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 64331,
+          "sharePct": 83,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1125,
+            597,
+            298,
+            261
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            395,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            150,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            199,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            248,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            297,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            346,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            491,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "bRect": [
+            1125,
+            863,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "bRect": [
+            1125,
+            863,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            861,
+            1789,
+            37
+          ],
+          "bRect": [
+            1125,
+            863,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "select#exportConnection",
+          "area": 8412,
+          "sharePct": 99,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            457,
+            494,
+            266,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFileName",
+          "area": 7516,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            485,
+            202,
+            242,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "table",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            234,
+            606,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tbody",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            641,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tr",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1315,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            1302,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "strong",
+          "area": 11403,
+          "sharePct": 53,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            572,
+            870,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "section.export-basic",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            306,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            101,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "div.export-group",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            306,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            297,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFolder",
+          "area": 5692,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            542,
+            153,
+            183,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            395,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            426,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 7609,
+          "sharePct": 64,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            369,
+            458,
+            546,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#sheetName",
+          "area": 8196,
+          "sharePct": 59,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            464,
+            300,
+            431,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportTaskName",
+          "area": 4608,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            527,
+            104,
+            144,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 16871,
+          "sharePct": 26,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            641,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 16871,
+          "sharePct": 26,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            678,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tr",
+          "area": 16871,
+          "sharePct": 26,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -388,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            715,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1091,
+      "dockInfo": {
+        "dockRect": [
+          216,
+          558,
+          1224,
+          342
+        ],
+        "dockScrollH": 341,
+        "dockClientH": 341,
+        "headRect": [
+          233,
+          572,
+          870,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            233,
+            605,
+            878,
+            290
+          ],
+          "scrollH": 770,
+          "clientH": 288
+        },
+        "logs": {
+          "rect": [
+            1125,
+            863,
+            298,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 606,
+      "docH": 1506,
+      "winH": 900
+    },
+    {
+      "size": "1366x768",
+      "shot": "export-1366x768.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            249,
+            -477,
+            544,
+            478
+          ],
+          "bRect": [
+            249,
+            -477,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -477,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            19,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            234,
+            524,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            559,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 122703,
+          "sharePct": 57,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            232,
+            489,
+            806,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 110381,
+          "sharePct": 57,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            523,
+            804,
+            240
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 69609,
+          "sharePct": 87,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            524,
+            1790,
+            770
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 60000,
+          "sharePct": 96,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            234,
+            524,
+            1790,
+            770
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 134200,
+          "sharePct": 40,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            216,
+            476,
+            1150,
+            292
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 58917,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            559,
+            1789,
+            734
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 49380,
+          "sharePct": 79,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            235,
+            559,
+            1789,
+            734
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            313,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            19,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            68,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            117,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            166,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            215,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            264,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            409,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            524,
+            1790,
+            770
+          ],
+          "bRect": [
+            1051,
+            731,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            559,
+            1789,
+            734
+          ],
+          "bRect": [
+            1051,
+            731,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "select#exportConnection",
+          "area": 8412,
+          "sharePct": 99,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            457,
+            412,
+            266,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFileName",
+          "area": 7516,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            485,
+            120,
+            242,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "table",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1233,
+            395,
+            17
+          ],
+          "bRect": [
+            234,
+            524,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tbody",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1233,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            559,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tr",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1233,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            1220,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "strong",
+          "area": 11403,
+          "sharePct": 58,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -470,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            490,
+            796,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6480,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            559,
+            182,
+            37
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6480,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            596,
+            182,
+            37
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6480,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            633,
+            182,
+            37
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6480,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            669,
+            182,
+            37
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6480,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            706,
+            182,
+            37
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6443,
+          "sharePct": 96,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            559,
+            182,
+            37
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6443,
+          "sharePct": 96,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            596,
+            182,
+            37
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6443,
+          "sharePct": 96,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            633,
+            182,
+            37
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6443,
+          "sharePct": 96,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            669,
+            182,
+            37
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "th",
+          "b": "div",
+          "area": 6207,
+          "sharePct": 97,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            524,
+            182,
+            35
+          ],
+          "bRect": [
+            1050,
+            489,
+            300,
+            267
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "th",
+          "b": "span#exportResultMeta",
+          "area": 6172,
+          "sharePct": 96,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            524,
+            182,
+            35
+          ],
+          "bRect": [
+            1051,
+            515,
+            298,
+            210
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "section.export-basic",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            224,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            19,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1055,
+      "dockInfo": {
+        "dockRect": [
+          216,
+          476,
+          1150,
+          292
+        ],
+        "dockScrollH": 291,
+        "dockClientH": 291,
+        "headRect": [
+          233,
+          490,
+          796,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            233,
+            523,
+            804,
+            240
+          ],
+          "scrollH": 770,
+          "clientH": 238
+        },
+        "logs": {
+          "rect": [
+            1051,
+            731,
+            298,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 688,
+      "docH": 1456,
+      "winH": 768
+    },
+    {
+      "size": "1280x720",
+      "shot": "export-1280x720.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            249,
+            -513,
+            544,
+            478
+          ],
+          "bRect": [
+            249,
+            -513,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -513,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -17,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            234,
+            488,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            523,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 117264,
+          "sharePct": 64,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            232,
+            453,
+            720,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 104941,
+          "sharePct": 64,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            487,
+            718,
+            228
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 66061,
+          "sharePct": 86,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            488,
+            1790,
+            770
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 128761,
+          "sharePct": 43,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            216,
+            440,
+            1064,
+            280
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 56476,
+          "sharePct": 95,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            234,
+            488,
+            1790,
+            770
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 55369,
+          "sharePct": 72,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            523,
+            1789,
+            734
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 45855,
+          "sharePct": 78,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            235,
+            523,
+            1789,
+            734
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            277,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            -17,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            32,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            81,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            130,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            179,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            228,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            249,
+            373,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            234,
+            488,
+            1790,
+            770
+          ],
+          "bRect": [
+            965,
+            683,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 8847,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            235,
+            523,
+            1789,
+            734
+          ],
+          "bRect": [
+            965,
+            683,
+            298,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "select#exportConnection",
+          "area": 8412,
+          "sharePct": 99,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            457,
+            376,
+            266,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "strong",
+          "area": 11403,
+          "sharePct": 65,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            233,
+            454,
+            710,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "input#exportFileName",
+          "area": 7516,
+          "sharePct": 97,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            260,
+            -506,
+            460,
+            2751
+          ],
+          "bRect": [
+            485,
+            84,
+            242,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "table",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1197,
+            395,
+            17
+          ],
+          "bRect": [
+            234,
+            488,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tbody",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1197,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            523,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "tr",
+          "area": 6717,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            1197,
+            395,
+            17
+          ],
+          "bRect": [
+            235,
+            1184,
+            1789,
+            37
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            523,
+            182,
+            37
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            523,
+            182,
+            37
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            560,
+            182,
+            37
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            560,
+            182,
+            37
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            597,
+            182,
+            37
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            597,
+            182,
+            37
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            633,
+            182,
+            37
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "span#exportResultMeta",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            633,
+            182,
+            37
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "td",
+          "b": "div",
+          "area": 6678,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            670,
+            182,
+            37
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "th",
+          "b": "div",
+          "area": 6397,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            1045,
+            488,
+            182,
+            35
+          ],
+          "bRect": [
+            964,
+            453,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "th",
+          "b": "span#exportResultMeta",
+          "area": 6397,
+          "sharePct": 100,
+          "aText": true,
+          "bText": true,
+          "aRect": [
+            1045,
+            488,
+            182,
+            35
+          ],
+          "bRect": [
+            965,
+            479,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "span.sql-t-c",
+          "b": "section.export-basic",
+          "area": 5765,
+          "sharePct": 100,
+          "aText": true,
+          "bText": false,
+          "aRect": [
+            260,
+            188,
+            339,
+            17
+          ],
+          "bRect": [
+            249,
+            -17,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1045,
+      "dockInfo": {
+        "dockRect": [
+          216,
+          440,
+          1064,
+          280
+        ],
+        "dockScrollH": 279,
+        "dockClientH": 279,
+        "headRect": [
+          233,
+          454,
+          710,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            233,
+            487,
+            718,
+            228
+          ],
+          "scrollH": 770,
+          "clientH": 226
+        },
+        "logs": {
+          "rect": [
+            965,
+            683,
+            298,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 724,
+      "docH": 1444,
+      "winH": 720
+    },
+    {
+      "size": "1152x648",
+      "shot": "export-1152x648.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "code",
+          "b": "section.export-right",
+          "area": 394875,
+          "sharePct": 66,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            202,
+            -502,
+            700,
+            859
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            219,
+            -1457,
+            544,
+            478
+          ],
+          "bRect": [
+            219,
+            -1457,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.tab-body.export-tab-body",
+          "area": 359006,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -441,
+            666,
+            781
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.tab-panel.active",
+          "area": 326816,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -425,
+            666,
+            711
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1457,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -961,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            208,
+            416,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            209,
+            452,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 117264,
+          "sharePct": 74,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            206,
+            381,
+            618,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 104941,
+          "sharePct": 75,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            207,
+            415,
+            616,
+            228
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 128761,
+          "sharePct": 48,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            190,
+            368,
+            962,
+            280
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 66061,
+          "sharePct": 86,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            208,
+            416,
+            1790,
+            770
+          ],
+          "bRect": [
+            836,
+            381,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 56476,
+          "sharePct": 95,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            208,
+            416,
+            1790,
+            770
+          ],
+          "bRect": [
+            837,
+            407,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 55369,
+          "sharePct": 72,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            209,
+            452,
+            1789,
+            734
+          ],
+          "bRect": [
+            836,
+            381,
+            300,
+            255
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 45855,
+          "sharePct": 78,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            209,
+            452,
+            1789,
+            734
+          ],
+          "bRect": [
+            837,
+            407,
+            298,
+            199
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportRemark",
+          "area": 44147,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            189,
+            666,
+            96
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "fieldset",
+          "area": 39864,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            37,
+            666,
+            87
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -667,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.footer-actions",
+          "area": 22146,
+          "sharePct": 72,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            277,
+            634,
+            49
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.tabs.export-tabs",
+          "area": 20234,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -485,
+            666,
+            44
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 13536,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -12,
+            434,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -961,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -912,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -863,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -814,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -765,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -716,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -571,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -425,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -373,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -321,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.inline-row",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -269,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -217,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -165,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -113,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.inline-row",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -15,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.inline-row",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            220,
+            76,
+            664,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.inline-row",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            137,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.two-col",
+          "area": 14716,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -61,
+            666,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 10112,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1450,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -61,
+            327,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1525,
+      "dockInfo": {
+        "dockRect": [
+          190,
+          368,
+          962,
+          280
+        ],
+        "dockScrollH": 279,
+        "dockClientH": 279,
+        "headRect": [
+          207,
+          382,
+          608,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            207,
+            415,
+            616,
+            228
+          ],
+          "scrollH": 770,
+          "clientH": 226
+        },
+        "logs": {
+          "rect": [
+            837,
+            612,
+            298,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 1656,
+      "docH": 2304,
+      "winH": 648
+    },
+    {
+      "size": "1080x560",
+      "shot": "export-1080x560.png",
+      "pageErrors": [],
+      "hits": [
+        {
+          "a": "code",
+          "b": "section.export-right",
+          "area": 394875,
+          "sharePct": 66,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            202,
+            -762,
+            700,
+            859
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "pre.sql-editor-hl",
+          "b": "textarea#exportSql.export-sql",
+          "area": 260032,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            219,
+            -1717,
+            544,
+            478
+          ],
+          "bRect": [
+            219,
+            -1717,
+            546,
+            480
+          ],
+          "zA": "0",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.tab-body.export-tab-body",
+          "area": 359006,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -701,
+            666,
+            781
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.tab-panel.active",
+          "area": 326816,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -685,
+            666,
+            711
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportSql.export-sql",
+          "area": 217513,
+          "sharePct": 83,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1717,
+            546,
+            480
+          ],
+          "zA": "auto",
+          "zB": "1"
+        },
+        {
+          "a": "code",
+          "b": "section.export-basic",
+          "area": 196849,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1221,
+            666,
+            428
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "section.bottom-dock.export-dock",
+          "area": 207698,
+          "sharePct": 52,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            190,
+            108,
+            890,
+            452
+          ],
+          "zA": "auto",
+          "zB": "4"
+        },
+        {
+          "a": "code",
+          "b": "table",
+          "area": 354041,
+          "sharePct": 28,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            208,
+            178,
+            1790,
+            770
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "tbody",
+          "area": 337422,
+          "sharePct": 27,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            209,
+            214,
+            1789,
+            734
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 154735,
+          "sharePct": 54,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            206,
+            121,
+            858,
+            336
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div#exportPreviewTable.table-wrap",
+          "area": 128761,
+          "sharePct": 54,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            207,
+            177,
+            856,
+            280
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div",
+          "area": 66915,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            208,
+            178,
+            1790,
+            770
+          ],
+          "bRect": [
+            206,
+            470,
+            858,
+            78
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div",
+          "area": 66876,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            209,
+            214,
+            1789,
+            734
+          ],
+          "bRect": [
+            206,
+            470,
+            858,
+            78
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "textarea#exportRemark",
+          "area": 44147,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -71,
+            666,
+            96
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "fieldset",
+          "area": 39864,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -223,
+            666,
+            87
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group.vertical",
+          "area": 39117,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -927,
+            666,
+            85
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "div#exportResults.logs",
+          "area": 25383,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            208,
+            178,
+            1790,
+            770
+          ],
+          "bRect": [
+            207,
+            523,
+            856,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "div#exportResults.logs",
+          "area": 25368,
+          "sharePct": 100,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            209,
+            214,
+            1789,
+            734
+          ],
+          "bRect": [
+            207,
+            523,
+            856,
+            30
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "strong",
+          "area": 21003,
+          "sharePct": 100,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            208,
+            178,
+            1790,
+            770
+          ],
+          "bRect": [
+            207,
+            471,
+            848,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "strong",
+          "area": 20991,
+          "sharePct": 100,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            209,
+            214,
+            1789,
+            734
+          ],
+          "bRect": [
+            207,
+            471,
+            848,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "strong",
+          "area": 20991,
+          "sharePct": 100,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            209,
+            470,
+            1789,
+            37
+          ],
+          "bRect": [
+            207,
+            471,
+            848,
+            25
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div",
+          "area": 35948,
+          "sharePct": 54,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            206,
+            470,
+            858,
+            78
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "table",
+          "b": "span#exportResultMeta",
+          "area": 18543,
+          "sharePct": 100,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            208,
+            178,
+            1790,
+            770
+          ],
+          "bRect": [
+            207,
+            496,
+            856,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tbody",
+          "b": "span#exportResultMeta",
+          "area": 18532,
+          "sharePct": 100,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            209,
+            214,
+            1789,
+            734
+          ],
+          "bRect": [
+            207,
+            496,
+            856,
+            22
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.footer-actions",
+          "area": 22146,
+          "sharePct": 72,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            235,
+            17,
+            634,
+            49
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "div",
+          "area": 31386,
+          "sharePct": 48,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            209,
+            470,
+            1789,
+            37
+          ],
+          "bRect": [
+            206,
+            470,
+            858,
+            78
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "tr",
+          "b": "div",
+          "area": 31386,
+          "sharePct": 48,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            209,
+            507,
+            1789,
+            37
+          ],
+          "bRect": [
+            206,
+            470,
+            858,
+            78
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.tabs.export-tabs",
+          "area": 20234,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -745,
+            666,
+            44
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 13536,
+          "sharePct": 97,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -272,
+            434,
+            32
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1221,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1172,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1123,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1074,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -1025,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -976,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.export-group",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -831,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -685,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -633,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "label",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": true,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -581,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        },
+        {
+          "a": "code",
+          "b": "div.inline-row",
+          "area": 17475,
+          "sharePct": 69,
+          "aText": false,
+          "bText": false,
+          "aRect": [
+            230,
+            -1710,
+            460,
+            2751
+          ],
+          "bRect": [
+            219,
+            -529,
+            666,
+            38
+          ],
+          "zA": "auto",
+          "zB": "auto"
+        }
+      ],
+      "hitCount": 1606,
+      "dockInfo": {
+        "dockRect": [
+          190,
+          108,
+          890,
+          452
+        ],
+        "dockScrollH": 451,
+        "dockClientH": 451,
+        "headRect": [
+          207,
+          122,
+          848,
+          25
+        ],
+        "tableWrap": {
+          "rect": [
+            207,
+            177,
+            856,
+            280
+          ],
+          "scrollH": 770,
+          "clientH": 278
+        },
+        "logs": {
+          "rect": [
+            207,
+            523,
+            856,
+            30
+          ],
+          "scrollH": 28,
+          "clientH": 28
+        }
+      },
+      "scrollY": 1916,
+      "docH": 2476,
+      "winH": 560
+    }
+  ],
+  "pages": []
+}

@@ -1,0 +1,814 @@
+[
+  {
+    "size": "1920x1080",
+    "dock": {
+      "rect": [
+        216,
+        1164,
+        1704,
+        410
+      ],
+      "height": "410.391px",
+      "position": "sticky",
+      "rows": "385.391px",
+      "cols": "1245px 415px"
+    },
+    "cell": {
+      "rect": [
+        232,
+        1177,
+        1245,
+        385
+      ],
+      "display": "grid",
+      "rows": "24.7969px 0px 358.594px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          233,
+          1178,
+          1235,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          233,
+          1203,
+          1243,
+          0
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+        "scrollH": 22,
+        "clientH": 0
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          233,
+          1211,
+          1243,
+          359
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=358.594px/minH=220px",
+        "scrollH": 770,
+        "clientH": 357
+      }
+    ],
+    "title": [
+      233,
+      1178,
+      1235,
+      25
+    ],
+    "meta": {
+      "rect": [
+        233,
+        1203,
+        1243,
+        0
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      233,
+      1211,
+      1243,
+      359
+    ],
+    "thead": [
+      235,
+      1212,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      235,
+      1212,
+      1789,
+      35
+    ],
+    "firstRow": [
+      235,
+      1247,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        249,
+        1097,
+        815,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 1080,
+    "scrollY": 0,
+    "docH": 1574
+  },
+  {
+    "size": "1440x900",
+    "dock": {
+      "rect": [
+        201,
+        612,
+        1224,
+        342
+      ],
+      "height": "342px",
+      "position": "sticky",
+      "rows": "317px",
+      "cols": "880px 300px"
+    },
+    "cell": {
+      "rect": [
+        217,
+        625,
+        880,
+        317
+      ],
+      "display": "grid",
+      "rows": "24.7969px 0px 290.203px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          218,
+          626,
+          870,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          218,
+          651,
+          878,
+          0
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+        "scrollH": 22,
+        "clientH": 0
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          218,
+          659,
+          878,
+          290
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=290.203px/minH=220px",
+        "scrollH": 770,
+        "clientH": 288
+      }
+    ],
+    "title": [
+      218,
+      626,
+      870,
+      25
+    ],
+    "meta": {
+      "rect": [
+        218,
+        651,
+        878,
+        0
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      218,
+      659,
+      878,
+      290
+    ],
+    "thead": [
+      220,
+      660,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      220,
+      660,
+      1789,
+      35
+    ],
+    "firstRow": [
+      220,
+      695,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        234,
+        545,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 900,
+    "scrollY": 552,
+    "docH": 1506
+  },
+  {
+    "size": "1366x768",
+    "dock": {
+      "rect": [
+        -16,
+        546,
+        1150,
+        292
+      ],
+      "height": "291.828px",
+      "position": "sticky",
+      "rows": "266.828px",
+      "cols": "806px 300px"
+    },
+    "cell": {
+      "rect": [
+        0,
+        559,
+        806,
+        267
+      ],
+      "display": "grid",
+      "rows": "24.7969px 0px 240.031px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          1,
+          560,
+          796,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          1,
+          585,
+          804,
+          0
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+        "scrollH": 22,
+        "clientH": 0
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          1,
+          593,
+          804,
+          240
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=240.031px/minH=220px",
+        "scrollH": 770,
+        "clientH": 238
+      }
+    ],
+    "title": [
+      1,
+      560,
+      796,
+      25
+    ],
+    "meta": {
+      "rect": [
+        1,
+        585,
+        804,
+        0
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      1,
+      593,
+      804,
+      240
+    ],
+    "thead": [
+      3,
+      594,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      3,
+      594,
+      1789,
+      35
+    ],
+    "firstRow": [
+      3,
+      629,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        17,
+        479,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 768,
+    "scrollY": 618,
+    "docH": 1456
+  },
+  {
+    "size": "1280x720",
+    "dock": {
+      "rect": [
+        -102,
+        522,
+        1064,
+        280
+      ],
+      "height": "280px",
+      "position": "sticky",
+      "rows": "255px",
+      "cols": "720px 300px"
+    },
+    "cell": {
+      "rect": [
+        -86,
+        535,
+        720,
+        255
+      ],
+      "display": "grid",
+      "rows": "24.7969px 0px 228.203px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          -85,
+          536,
+          710,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          -85,
+          561,
+          718,
+          0
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+        "scrollH": 22,
+        "clientH": 0
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          -85,
+          569,
+          718,
+          228
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=228.203px/minH=220px",
+        "scrollH": 770,
+        "clientH": 226
+      }
+    ],
+    "title": [
+      -85,
+      536,
+      710,
+      25
+    ],
+    "meta": {
+      "rect": [
+        -85,
+        561,
+        718,
+        0
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      -85,
+      569,
+      718,
+      228
+    ],
+    "thead": [
+      -83,
+      570,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      -83,
+      570,
+      1789,
+      35
+    ],
+    "firstRow": [
+      -83,
+      605,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        -69,
+        455,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 720,
+    "scrollY": 642,
+    "docH": 1444
+  },
+  {
+    "size": "1120x640",
+    "dock": {
+      "rect": [
+        190,
+        380,
+        930,
+        280
+      ],
+      "height": "280px",
+      "position": "sticky",
+      "rows": "255px",
+      "cols": "586px 300px"
+    },
+    "cell": {
+      "rect": [
+        206,
+        393,
+        586,
+        255
+      ],
+      "display": "grid",
+      "rows": "24.7969px 0px 228.203px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          207,
+          394,
+          576,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          207,
+          419,
+          584,
+          0
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+        "scrollH": 22,
+        "clientH": 0
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          207,
+          427,
+          584,
+          228
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=228.203px/minH=220px",
+        "scrollH": 770,
+        "clientH": 226
+      }
+    ],
+    "title": [
+      207,
+      394,
+      576,
+      25
+    ],
+    "meta": {
+      "rect": [
+        207,
+        419,
+        584,
+        0
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=0px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      207,
+      427,
+      584,
+      228
+    ],
+    "thead": [
+      209,
+      429,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      209,
+      429,
+      1789,
+      35
+    ],
+    "firstRow": [
+      209,
+      464,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        219,
+        -559,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 640,
+    "scrollY": 1644,
+    "docH": 2304
+  },
+  {
+    "size": "1080x560",
+    "dock": {
+      "rect": [
+        190,
+        340,
+        890,
+        452
+      ],
+      "height": "451.656px",
+      "position": "sticky",
+      "rows": "336.484px 78.1719px",
+      "cols": "858px"
+    },
+    "cell": {
+      "rect": [
+        206,
+        353,
+        858,
+        336
+      ],
+      "display": "grid",
+      "rows": "24.7969px 21.6875px 288px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          207,
+          354,
+          848,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          207,
+          379,
+          856,
+          22
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=21.6875px/minH=auto",
+        "scrollH": 22,
+        "clientH": 22
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          207,
+          409,
+          856,
+          280
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=280px/minH=220px",
+        "scrollH": 770,
+        "clientH": 278
+      }
+    ],
+    "title": [
+      207,
+      354,
+      848,
+      25
+    ],
+    "meta": {
+      "rect": [
+        207,
+        379,
+        856,
+        22
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=21.6875px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      207,
+      409,
+      856,
+      280
+    ],
+    "thead": [
+      209,
+      410,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      209,
+      410,
+      1789,
+      35
+    ],
+    "firstRow": [
+      209,
+      446,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        219,
+        -599,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 560,
+    "scrollY": 1684,
+    "docH": 2476
+  },
+  {
+    "size": "1040x520",
+    "dock": {
+      "rect": [
+        190,
+        320,
+        850,
+        452
+      ],
+      "height": "451.656px",
+      "position": "sticky",
+      "rows": "336.484px 78.1719px",
+      "cols": "818px"
+    },
+    "cell": {
+      "rect": [
+        206,
+        333,
+        818,
+        336
+      ],
+      "display": "grid",
+      "rows": "24.7969px 21.6875px 288px",
+      "overflow": "hidden"
+    },
+    "kids": [
+      {
+        "sel": "strong",
+        "rect": [
+          207,
+          334,
+          808,
+          25
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=24.7969px/minH=auto",
+        "scrollH": 25,
+        "clientH": 25
+      },
+      {
+        "sel": "span#exportPreviewMeta",
+        "rect": [
+          207,
+          359,
+          816,
+          22
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=visible/h=21.6875px/minH=auto",
+        "scrollH": 22,
+        "clientH": 22
+      },
+      {
+        "sel": "div#exportPreviewTable.table-wrap",
+        "rect": [
+          207,
+          389,
+          816,
+          280
+        ],
+        "css": "block/static/gridRow=auto:auto/ovf=auto/h=280px/minH=220px",
+        "scrollH": 770,
+        "clientH": 278
+      }
+    ],
+    "title": [
+      207,
+      334,
+      808,
+      25
+    ],
+    "meta": {
+      "rect": [
+        207,
+        359,
+        816,
+        22
+      ],
+      "css": "block/static/gridRow=auto:auto/ovf=visible/h=21.6875px/minH=auto",
+      "text": "query · 20 行 · 16 列"
+    },
+    "wrapTop": [
+      207,
+      389,
+      816,
+      280
+    ],
+    "thead": [
+      209,
+      390,
+      1789,
+      35
+    ],
+    "hdrRow": [
+      209,
+      390,
+      1789,
+      35
+    ],
+    "firstRow": [
+      209,
+      426,
+      1789,
+      37
+    ],
+    "formLastGroup": {
+      "rect": [
+        219,
+        -619,
+        666,
+        38
+      ],
+      "text": " 目标连接： 链接信息： 生产库sr本地 SQLite 表列表与 SQL 都在该"
+    },
+    "winH": 520,
+    "scrollY": 1704,
+    "docH": 2476
+  }
+]

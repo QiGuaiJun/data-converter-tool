@@ -1,0 +1,112 @@
+{
+  "1280x720/list": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": []
+  },
+  "1280x720/editor": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": [
+      {
+        "kind": "clip-x",
+        "el": "input#importTaskPath",
+        "text": "已自动关联网页托管源文件",
+        "clip": 215,
+        "w": 688,
+        "h": 32,
+        "overflow": "clip/clip"
+      }
+    ]
+  },
+  "1152x700/list": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": []
+  },
+  "1152x700/editor": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": [
+      {
+        "kind": "clip-x",
+        "el": "input#importTaskPath",
+        "text": "已自动关联网页托管源文件",
+        "clip": 309,
+        "w": 594,
+        "h": 32,
+        "overflow": "clip/clip"
+      }
+    ]
+  },
+  "1080x560/list": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": []
+  },
+  "1080x560/editor": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": [
+      {
+        "kind": "clip-x",
+        "el": "input#importTaskPath",
+        "text": "已自动关联网页托管源文件",
+        "clip": 374,
+        "w": 522,
+        "h": 32,
+        "overflow": "clip/clip"
+      }
+    ]
+  },
+  "1024x600/list": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": []
+  },
+  "1024x600/editor": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": [
+      {
+        "kind": "clip-x",
+        "el": "input#importTaskPath",
+        "text": "已自动关联网页托管源文件",
+        "clip": 433,
+        "w": 466,
+        "h": 32,
+        "overflow": "clip/clip"
+      }
+    ]
+  },
+  "960x640/list": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": []
+  },
+  "960x640/editor": {
+    "docOverflowX": 0,
+    "runImport": null,
+    "previewButton": null,
+    "clipped": [
+      {
+        "kind": "clip-x",
+        "el": "input#importTaskPath",
+        "text": "已自动关联网页托管源文件",
+        "clip": 493,
+        "w": 402,
+        "h": 32,
+        "overflow": "clip/clip"
+      }
+    ]
+  }
+}
