@@ -72,29 +72,16 @@ body.theme-classic {
   --pink-soft: #ffe7f3;
 }
 
-/* 旧主题的卡片是半透明白，叠在淡蓝底上 */
-body.theme-classic:not(.plain-mode) {
-  background:
-    linear-gradient(rgba(248, 251, 255, 0.05), rgba(244, 248, 255, 0.12)),
-    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
-}
-body.theme-classic:not(.plain-mode) .desktop-shell,
-body.theme-classic:not(.plain-mode) .app-ribbon,
-body.theme-classic:not(.plain-mode) .app-workspace {
-  background: rgba(244, 248, 255, 0.78);
-}
-body.theme-classic:not(.plain-mode) .app-sidebar {
-  background: rgba(238, 245, 255, 0.84);
-}
-
-/* 素色模式：淡蓝纯色，不带任何背景图 */
-body.theme-classic.plain-mode,
-body.theme-classic.plain-mode .desktop-shell,
-body.theme-classic.plain-mode .app-ribbon,
-body.theme-classic.plain-mode .app-workspace {
+/* 20261014：应用自带壁纸已按业主要求去除，经典主题用淡蓝纯色底。
+   之前这里靠"外壳半透明 + 壁纸透出来"来区分壁纸/素色两种模式，
+   壁纸没了就没有模式之分，外壳恢复不透明。 */
+body.theme-classic,
+body.theme-classic .desktop-shell,
+body.theme-classic .app-ribbon,
+body.theme-classic .app-workspace {
   background: var(--canvas);
 }
-body.theme-classic.plain-mode .app-sidebar {
+body.theme-classic .app-sidebar {
   background: #eef5ff;
 }
 

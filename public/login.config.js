@@ -13,7 +13,7 @@ window.LOGIN_CONFIG = {
   brandEn: "DATA CONVERTER TOOL",     // 品牌英文副标题（会转成大写显示）
 
   /* ---- 浏览器标签页标题 ---- */
-  pageTitle: "登录 - Fe数据导表工具",
+  pageTitle: "DataConverter",          // 浏览器标签标题（2026-10-14 起全站固定）
 
   /* ---- 卡片内文字 ---- */
   loginTitle: "",                     // 卡片里的大标题，留空则不显示

@@ -255,7 +255,7 @@ def test_page_request_redirects_to_login(client):
     status, _, body = client.request("GET", "/")
     assert status == 200, status
     # 客户端只保留响应体前 200 字符，足以看到登录页标题
-    assert "登录 - 数据导表工具" in str(body)
+    assert "DataConverter" in str(body)
 
 
 def test_sub_page_redirect_keeps_next(client):

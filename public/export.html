@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>导出功能 - 数据导表工具</title>
+    <title>DataConverter</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/styles.css?v=20261008_logs2" />
+    <link rel="stylesheet" href="/styles.css?v=20261014_nobg" />
     <link rel="stylesheet" href="/sql-editor.css?v=20260911_sql_editor" />
-    <link rel="stylesheet" href="/theme.css?v=20261010_r5" />
-    <link rel="stylesheet" href="/theme-classic.css?v=20261010_r5" />
+    <link rel="stylesheet" href="/theme.css?v=20261014_backbtn" />
+    <link rel="stylesheet" href="/theme-classic.css?v=20261014_nobg" />
   </head>
   <body>
     <div class="desktop-shell">
@@ -43,13 +43,12 @@
         </aside>
         <section class="app-workspace">
     <main class="export-shell">
-      <!-- 顶栏工具条（连接下拉 / 保存 / 开始 / 结束 / 导入 / 选项说明）按需求整体隐藏。
-           刻意只隐藏、不删除：export.js 里有多处 #exportConnection 引用（导出连接、任务快照），
-           移除节点会抛 TypeError。需要恢复时删掉 style 与 hidden 即可。 -->
+      <!-- 顶栏工具条（保存 / 开始 / 结束 / 导入 / 选项说明）按需求整体隐藏。
+           刻意只隐藏、不删除：export.js 里引用了 #saveExportConfig / #startExport / #stopExport，
+           移除节点会抛 TypeError。需要恢复时删掉 style 与 hidden 即可。
+           注：#exportConnection 于 20261012 从本栏移出，改为左侧面板「目标连接」下拉（可见可选），
+           仍复用同一个 id，export.js 的连接逻辑无需改动。 -->
       <section class="export-topbar" hidden style="display: none">
-        <select id="exportConnection">
-          <option value="">读取连接中...</option>
-        </select>
         <button id="saveExportConfig" type="button">保存</button>
         <button id="startExport" type="button">开始</button>
         <button id="stopExport" type="button">结束</button>
@@ -129,6 +128,16 @@
             <label><input type="radio" name="exportMode" value="workbook" checked /> 覆盖工作簿：如果目标文件已存在，则覆盖整个目标文件</label>
             <label><input type="radio" name="exportMode" value="sheet" /> 覆盖工作表：如果目标文件指定工作表已存在，则仅覆盖指定工作表</label>
             <label><input type="radio" name="exportMode" value="data" /> 覆盖数据：如果目标文件指定工作表已存在，则仅覆盖指定工作表数据</label>
+          </div>
+
+          <div class="export-group">
+            <strong>目标连接：</strong>
+            <label for="exportConnection">链接信息：</label>
+            <select id="exportConnection">
+              <option value="">读取连接中...</option>
+            </select>
+            <span></span>
+            <span class="field-hint">表列表与 SQL 都在该库执行</span>
           </div>
         </section>
       </section>
@@ -228,8 +237,8 @@
     </div>
 
     <script src="/sql-editor.js?v=20260911_sql_editor"></script>
-    <script src="/export.js?v=20260914_defect_fix3"></script>
+    <script src="/export.js?v=20261012_preview_meta"></script>
     <script src="/version.js?v=20260910_app_version"></script>
 
-  <script src="/shell.js?v=20260922_auth2"></script></body>
+  <script src="/shell.js?v=20261014_logfmt"></script></body>
 </html>

@@ -688,11 +688,11 @@
   }
 
   function setEditMode(editing) {
-    // 页面顶部标题块已移除（2026-09-12，为省 43px 纵向空间、减少滚动）：
-    // 「新建/编辑」文案改为同步到浏览器标签标题；#pageTitle 仍是视觉隐藏的 h1，
-    // 存在则一并更新（保留空值保护，避免节点被再次移除时抛 null 引用）。
+    // 页面顶部标题块已移除（2026-09-12，为省 43px 纵向空间、减少滚动）。
+    // ⚠️ 2026-10-14 起浏览器标签标题统一为固定品牌名 DataConverter（业主拍板），
+    // 这里**不再改 document.title** —— 原来会在「新建 / 编辑」之间来回跳。
+    // #pageTitle 仍是视觉隐藏的 h1，存在则继续更新（保留空值保护，避免节点被移除时抛 null 引用）。
     var label = editing ? '编辑数据库连接' : '新建数据库连接';
-    document.title = label + ' - 数据导表工具';
     var titleEl = byId('pageTitle');
     if (titleEl) { titleEl.textContent = label; }
   }

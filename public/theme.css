@@ -2071,37 +2071,54 @@ em,
 }
 
 /* ==========================================================================
-   7. 外观双模式：壁纸 / 素色
+   8. 「返回」按钮统一外观
    --------------------------------------------------------------------------
-   shell.js 会在 body 上挂 `plain-mode` 类（localStorage 记住），右下角那个
-   小圆按钮负责切换。但主题把每一块外壳都刷成了**不透明**奶油色
-   （body / .desktop-shell / .app-ribbon / .app-workspace / .app-sidebar），
-   铺满整屏之后 body 的背景图根本透不出来 ——
-   于是"素色"和"壁纸"画面一模一样，用户点了按钮只会以为按钮坏了。
+   导入 / 导出的「返回任务列表」和同步画布左上的「返回任务列表」是同一类动作，
+   但三处一直各长各的：
+     · 导入 / 导出 —— 走 .module-task-toolbar button，32px 高 / 0 12px 内边距 /
+                      白底 + #c7c7c7 灰框，在一排工具按钮里是颗完整的按钮；
+     · 同步画布    —— 直接吃全局 button 默认，36px 高 / 6px 16px 内边距，
+                      而且底色就是 var(--canvas)，跟它所在工具条的底色完全相同，
+                      于是它跟工具条糊在一起，只剩一圈很淡的描边。
+   并排看明显不是一家（业主 2026-10-14 指出）。这里抽成一条共用规则，
+   三个 id 共用同一份声明，避免以后再各改各的又走散。
 
-   修法：壁纸模式让外壳半透明，背景图从缝里透出来；素色模式维持纯色。
-   透明度取在"看得见壁纸"和"正文仍然清楚"之间，别调得太透。
+   ⚠️ 色值刻意与既有的 .module-task-toolbar button 保持一致 ——
+   目的是**不改动导入 / 导出的现有观感**，只把同步那个拉齐。
+   将来若要换成主题变量，改这一处即可，三处同时生效。
    ========================================================================== */
-body:not(.plain-mode) {
-  background:
-    linear-gradient(rgba(250, 249, 245, 0.04), rgba(250, 249, 245, 0.10)),
-    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
+#backToList,
+#backImportTaskList,
+#backExportTaskList {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 84px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #c7c7c7;
+  border-radius: var(--r-md);
+  background: #fff;
+  color: #222;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  box-shadow: none;
 }
-body:not(.plain-mode) .desktop-shell,
-body:not(.plain-mode) .app-ribbon,
-body:not(.plain-mode) .app-workspace {
-  background: rgba(250, 249, 245, 0.78);
+
+#backToList:not(:disabled):hover,
+#backImportTaskList:not(:disabled):hover,
+#backExportTaskList:not(:disabled):hover {
+  border-color: #8fbadd;
+  background: #eef7ff;
 }
-body:not(.plain-mode) .app-sidebar {
-  background: rgba(244, 239, 230, 0.84);
-}
-/* 素色模式：一块纯色到底，没有任何背景图 */
-body.plain-mode,
-body.plain-mode .desktop-shell,
-body.plain-mode .app-ribbon,
-body.plain-mode .app-workspace {
-  background: var(--canvas);
-}
-body.plain-mode .app-sidebar {
-  background: var(--surface-soft);
+
+#backToList:disabled,
+#backImportTaskList:disabled,
+#backExportTaskList:disabled {
+  border-color: transparent;
+  background: #f4f4f4;
+  color: #aaa;
+  cursor: default;
 }

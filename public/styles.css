@@ -507,8 +507,24 @@ body {
   grid-template-columns: minmax(500px, 0.92fr) minmax(500px, 1fr);
 }
 
+/* 20261012 修正：导入页左右两栏的天然高度差很大（左栏是文件/连接那段短表单，
+   右栏是数据筛选 + CSV 配置 + 备注那一长串）。grid 默认 align-items: stretch 会把
+   左栏**拉到和右栏一样高**，左栏表单结束后就空出一大片 —— 这些空白还把底部的
+   「已导入表 / 表数据 / 导入日志」面板顶到视口外，业主报的就是这个。
+   让两栏各按自己的内容高度排。 */
+.app-workspace .import-shell > .left-pane,
+.app-workspace .import-shell > .right-pane,
+.app-workspace .export-shell > .export-left,
+.app-workspace .export-shell > .export-right {
+  align-self: start;
+}
+
+/* 20261012 修正：原 `minmax(700px,1fr) minmax(650px,.95fr)` 最小合计 1362px，
+   而 .app-workspace 在 1366 / 1440 / 1536 视口下只有 1150 / 1224 / 1320px，
+   右栏被推出视口且页面不产生横向滚动条 —— 「预览 / 开始导出」整个按钮点不到。
+   最小合计 1012px，与 .import-shell 对齐。 */
 .app-workspace .export-shell {
-  grid-template-columns: minmax(700px, 1fr) minmax(650px, 0.95fr);
+  grid-template-columns: minmax(440px, 1fr) minmax(560px, 0.95fr);
 }
 
 .app-workspace .right-pane .two-col {
@@ -1522,8 +1538,12 @@ textarea {
   resize: vertical;
 }
 
+/* 20261012 修正：原来 240px，一个可选的「备注」框占掉近三分之一屏 ——
+   右栏被它撑到 985px，连带把整个导入页顶得超过一屏，底部的
+   「已导入表 / 表数据 / 导入日志」要滚动才看得到（业主报的"下面组件不清"）。
+   96px 约 4 行，够写备注了。 */
 #remark {
-  min-height: 240px;
+  min-height: 96px;
 }
 
 #customSql {
@@ -1799,7 +1819,8 @@ th {
 
 .export-shell {
   display: grid;
-  grid-template-columns: minmax(700px, 1fr) minmax(650px, 0.95fr);
+  /* 最小合计 1012px，见 .app-workspace .export-shell 处的 20261012 修正说明。 */
+  grid-template-columns: minmax(440px, 1fr) minmax(560px, 0.95fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 8px 12px;
   min-height: 790px;
@@ -1984,6 +2005,22 @@ th {
 .export-tab-body label > input[type="number"] {
   min-width: 260px;
   width: 100%;
+}
+
+/* 20261012 修正：「前缀 / 后缀」这类 .two-col 并排行，格子只有 ~126px，
+   但上面那条 260px 最小宽把输入框撑出格子 134px，压住右列的标签和输入框。 */
+.export-tab-body .two-col label > input:not([type]),
+.export-tab-body .two-col label > input[type="text"] {
+  min-width: 0;
+}
+
+/* 20261012 补充：即便放开输入框最小宽，两列并排本身也会溢出 ——
+   列 1 是 max-content（「为导出的文件名增加前缀：」约 168px），列 2 还带 120px 下限，
+   而右侧栏变窄后每列只有 ~130px。窄栏下改为各占整行，输入框反而更宽。 */
+@media (max-width: 1599px) {
+  .app-workspace .export-tab-body .two-col {
+    grid-template-columns: 1fr;
+  }
 }
 
 .export-tab-body .inline-row {
@@ -3061,7 +3098,12 @@ legend,
 }
 
 .file-list {
-  height: 300px;
+  /* 2026-10-12：原来写死 300px —— 只选 1 个文件时也是 300px（一行文件 + 270px 空白），
+     窄视口切成单列后更夸张：一整块 800×300 的空画布把「目标表 / 字段映射 / 导入模式」全推到屏外。
+     改为随内容伸缩：空态 120px 起、最多 300px（文件多时内部滚动，overflow 见 1312 行）。 */
+  height: auto;
+  min-height: 120px;
+  max-height: 300px;
   margin-top: 16px;
   border: 1px dashed #c7dcfb;
   border-radius: 18px;
@@ -3070,6 +3112,12 @@ legend,
   display: grid;
   align-content: start;
   padding: 14px;
+}
+
+/* 空态（"尚未选择文件"）在 120px 的框里居中，不再贴顶留一截空白。 */
+.file-list:not(:has(.file-item)) {
+  align-content: center;
+  justify-items: center;
 }
 
 .basic-options {
@@ -3130,6 +3178,13 @@ input.line-input[list] {
   border: 0;
   background: transparent;
   padding: 16px 0 54px;
+}
+
+/* 20261012 修正：底部 .footer-actions 是 absolute，占 高 49 + bottom 14 = 63px，
+   而上面 54px 的下内边距不够 → 备注框最后 9px 被按钮行压住（按钮行还有不透明底色）。
+   导出页单独放行到 72px；其它 .tab-body 页面不受影响。 */
+.app-workspace .export-right .tab-body {
+  padding-bottom: 72px;
 }
 
 .tab-panel.active {
@@ -5131,16 +5186,22 @@ th {
   align-items: stretch;
 }
 
+/* 每格固定 3 个子元素：<strong>标题</strong> / <span>统计</span> / 内容区。
+   20261012 修正：原来是 `auto minmax(0,1fr)` 两行，对 3 个子元素会错位 ——
+   「预览结果」格的 span 落进 1fr 行被压成 0 高（文字溢出、压到表头上），
+   「导出结果」格的 span 反而吃掉整行、把日志挤到隐式行贴底。 */
 .app-workspace .export-dock > div {
   min-height: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   align-content: stretch;
 }
 
+/* 20261012：去掉 `height:100%`。它按栅格区高度算，再加上 margin-top:8px 就会
+   比栅格区高出 8px，被格子的 overflow:hidden 裁掉 —— 表格最后 8px 看不见。
+   交给栅格默认的 stretch 撑满「区高 − margin」即可。 */
 .app-workspace .export-dock .table-wrap {
   width: 100%;
-  height: 100%;
   min-height: 220px;
   max-height: none;
   margin: 8px 0 0;
@@ -5151,6 +5212,51 @@ th {
   width: max-content;
   min-width: 100%;
   white-space: nowrap;
+  /* 20261012「标题行锁定」前提①：全局 table{border-radius:12px;overflow:hidden}
+     （styles.css:3270）会让 <table> 自己成为 th 的最近滚动容器 —— 而它永远不滚动，
+     于是 sticky 表头形同失效。这里覆盖回 visible，滚动容器交回 .table-wrap。
+     圆角一并去掉（外框的圆角由 .table-wrap 提供，内层表格再圆会被吸顶表头顶出缝）。 */
+  overflow: visible;
+  border-radius: 0;
+}
+
+/* 前提②：多查询预览时块内还有一个 .table-wrap（renderTable 渲染的 host）。
+   它自带 overflow:auto，同样会截断 sticky 链，故在导出区把它彻底降级为非滚动容器 ——
+   滚动只由最外层 .table-wrap 承担，表头才能吸在最外层顶部。 */
+.app-workspace .export-dock .preview-block .table-wrap {
+  overflow: visible;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+}
+
+/* 标题行（列名行）吸顶：长表向下滚动时始终看得到列名。
+   背景必须不透明（--surface-soft 是实色），否则数据行会从表头背后透出来。 */
+.app-workspace .export-dock .table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-soft, #f5f9ff);
+  color: var(--muted, #526982);
+  font-weight: 800;
+  box-shadow: inset 0 -1px 0 var(--hairline, #dce7f4);
+}
+
+/* 多查询预览：块标题（“查询 1 · xxx · 共 N 行”）也吸顶，列名行吸在它下方，
+   这样滚动时既知道是哪个查询、也知道每列是什么。高度固定才能算出 th 的偏移量。 */
+.app-workspace .export-dock .preview-block-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: var(--export-preview-head-h, 32px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.app-workspace .export-dock .preview-block .table-wrap thead th {
+  top: var(--export-preview-head-h, 32px);
 }
 
 /* M12-001 多结果集预览：每个查询结果是一块，块之间必须有可见分隔。
@@ -5175,8 +5281,8 @@ th {
   white-space: nowrap;
 }
 
+/* 同上：`height:100%` 去掉，改由栅格 stretch 撑满。 */
 .app-workspace .export-dock .logs {
-  height: 100%;
   max-height: none;
   overflow: auto;
 }
@@ -5192,12 +5298,12 @@ th {
   }
 }
 
-/* User-selected application wallpaper. Content panels remain translucent for readability. */
+/* 20261014：应用自带壁纸与「素色 / 壁纸」开关已按业主要求一并去除，
+   页面底色改为纯色由主题变量提供（奶油主题 --canvas #faf9f5 / 经典主题 #f4f8ff）。
+   图片文件 public/assets/app-background.png 保留在仓库里，将来想换回来只需恢复这一段。 */
 body {
   min-height: 100vh;
-  background:
-    linear-gradient(rgba(245, 249, 255, 0.04), rgba(245, 249, 255, 0.10)),
-    url("/assets/app-background.png?v=20260720") center center / cover fixed no-repeat;
+  background: var(--bg, #faf9f5);
 }
 
 /* 改进G「素色模式」：关闭背景壁纸改用纯色画布。
@@ -5552,3 +5658,112 @@ body.plain-mode {
 }
 .audit-pager button:disabled { opacity: 0.5; cursor: default; }
 .audit-retention { margin-left: auto; color: #8a8578; }
+
+/* ==========================================================================
+   2026-10-12 整改（导入模块体检）：控件尺寸统一 + 窄视口不再裁掉右栏
+   ========================================================================== */
+
+/* ① 控件尺寸统一。
+   清点导入编辑器（1600×900）全部可见控件的实测高度，同一屏里出现四档：
+     输入框 / 下拉            32px
+     工具栏按钮               34px
+     伪装成按钮的 label / a   35.7px（button 与 label 的行高盒模型不同造成 1.7px 差）
+     右侧页签 .tab            37.7px
+   并排时底边参差。统一到 32px 高 / 8px 圆角 / 水平 12px 内边距，并用 flex 居中 + line-height:1，
+   避免再出现 1px 级的高度漂移。
+   ⚠️ 只覆盖「表单控件」容器，不碰 .module-task-item 这类列表按钮（它有自己的 30px 行高与图标布局）。 */
+.module-task-toolbar button,
+.picker-buttons > button,
+.picker-buttons > label.button,
+.basic-options button,
+.basic-options a.button,
+.basic-options select,
+.basic-options input:not([type="radio"]):not([type="checkbox"]),
+.import-target-connection button,
+.import-target-connection a.button,
+.import-target-connection select,
+.module-task-editor input,
+.app-workspace .tabs .tab,
+.export-topbar button,
+.export-tab-body button,
+.export-tab-body select,
+.export-tab-body input:not([type="radio"]):not([type="checkbox"]),
+.tab-body button,
+.tab-body select,
+.tab-body input:not([type="radio"]):not([type="checkbox"]) {
+  box-sizing: border-box;
+  height: 32px;
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.module-task-toolbar button,
+.picker-buttons > button,
+.picker-buttons > label.button,
+.basic-options button,
+.basic-options a.button,
+.import-target-connection button,
+.import-target-connection a.button,
+.app-workspace .tabs .tab,
+.export-topbar button,
+.export-tab-body button,
+.tab-body button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  line-height: 1;
+}
+
+/* 纯图标按钮（「…」自定义映射、「+」追加筛选/列）：改成 32×32 方形，
+   不再被 0 12px 内边距撑成 44px 宽的窄条。 */
+#openMapping,
+.basic-options .option-group > button[type="button"],
+.tab-body .form-line > button[type="button"] {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  font-size: 15px;
+}
+
+/* ② 窄视口下右栏被推出可视区（= 用户说的「缩略时部分组件内容看不全」）。
+   本文件 2057 行的 @media (max-width:1250px) 里写了
+   `.import-shell, .export-shell, .bottom-dock { grid-template-columns: 1fr }`，
+   但这条特异性只有 (0,1,0)，低于 `.app-workspace .import-shell` / `.app-workspace .export-shell`
+   （(0,2,0)，见 506 / 514 行）—— 单列规则被静默压住，从未生效。
+   于是工作区窄于两列最小宽度之和时（导入 500+500+16=1016px、导出 440+560+12=1012px），
+   右栏整体越界：实测 1152×700 下 .right-pane 越界 66px、「其他选项」页签 17px、
+   「开始导入」按钮 33px，全被 .app-workspace 的 overflow 藏起来（用户只能看到被切开的一半）。
+   这里用同等特异性重写，真正切成单列。阈值 1320px：工作区宽 ≈ 视口 − 216px 侧栏 − 32px 内边距，
+   1366 视口仍有 1118px，两列够用；1280 及以下改为上下堆叠。 */
+@media (max-width: 1320px) {
+  .app-workspace .import-shell,
+  .app-workspace .export-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-workspace .import-shell > *,
+  .app-workspace .export-shell > * {
+    grid-column: 1;
+  }
+
+  /* 同一个坑的第二处：底栏三列 `.bottom-dock`（5152 行，0,1,0）也压住了媒体查询里的单列规则，
+     最小合计 240+360+320+2×16 ≈ 952px —— 1080/1024/960 视口下「导入日志」整块越界 70/126/190px。 */
+  .app-workspace .bottom-dock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 单列堆叠后三块内容纵向排开，塞不进固定 152px 高：
+     配合 `> div { overflow: hidden }`，实测每块内容被裁 19 / 83 / 96px（= "日志和表数据显示不全"）。
+     窄视口让底栏随内容撑开、回到文档流末尾 —— sticky + 自适应高度会堆成半屏遮住正文。 */
+  .app-workspace .bottom-dock {
+    height: auto;
+    position: static;
+  }
+
+  .app-workspace .bottom-dock > div {
+    overflow: visible;
+  }
+}
+
