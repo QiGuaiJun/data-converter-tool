@@ -379,6 +379,16 @@ async function saveBackingJob() {
   return saved.job;
 }
 
+/* 关闭对话框时清空草稿状态（Q-002）。理由同 jobs.js 的 resetJobDialogState()：
+   原来只在 openScheduleDialog() 里重置，绕开它就留残留。 */
+function resetScheduleDialogState() {
+  editingScheduleId = "";
+  draftSteps = [];
+  selectedStepIndex = -1;
+  selectedAvailableJobId = "";
+  draftRule = { mode: "interval", amount: 1, unit: "hours" };
+}
+
 async function saveSchedule() {
   const name = $("#scheduleName").value.trim();
   if (!name) throw new Error("请填写任务名称。");
@@ -663,20 +673,36 @@ $("#editSchedule").addEventListener("click", () => {
   const item = selectedSchedule();
   if (item) openScheduleDialog(item);
 });
-$("#deleteSchedule").addEventListener("click", async () => {
-  if (!selectedScheduleId || !confirm("确认删除当前定时任务？")) return;
-  await requestJson(`/api/schedules?id=${encodeURIComponent(selectedScheduleId)}`, { method: "DELETE" });
-  selectedScheduleId = "";
-  await loadSchedules();
-});
-$("#startSchedule").addEventListener("click", () => changeState(true).catch((error) => setStatus(error.message, "error")));
-$("#pauseSchedule").addEventListener("click", () => changeState(false).catch((error) => setStatus(error.message, "error")));
-$("#runScheduleNow").addEventListener("click", () => runSelectedScheduleNow().catch((error) => setStatus(error.message, "error")));
+// ⚠️ 会写库 / 会触发的按钮一律走 DCBusy.run 防重复提交（Q-003）。
+// 这几个按钮的 disabled 由 updateToolbarState() 按"选中态"算出来，所以还原之后
+// 必须让它重算，不能盲目恢复成可点（否则会把本应灰掉的按钮点亮）。
+$("#deleteSchedule").addEventListener("click", () =>
+  DCBusy.run($("#deleteSchedule"), "删除中…", async () => {
+    if (!selectedScheduleId || !confirm("确认删除当前定时任务？")) return;
+    await requestJson(`/api/schedules?id=${encodeURIComponent(selectedScheduleId)}`, { method: "DELETE" });
+    selectedScheduleId = "";
+    await loadSchedules();
+  }, updateToolbarState).catch((error) => setStatus(error.message, "error")),
+);
+$("#startSchedule").addEventListener("click", () =>
+  DCBusy.run($("#startSchedule"), "启用中…", () => changeState(true), updateToolbarState).catch((error) => setStatus(error.message, "error")),
+);
+$("#pauseSchedule").addEventListener("click", () =>
+  DCBusy.run($("#pauseSchedule"), "停用中…", () => changeState(false), updateToolbarState).catch((error) => setStatus(error.message, "error")),
+);
+$("#runScheduleNow").addEventListener("click", () =>
+  DCBusy.run($("#runScheduleNow"), "执行中…", () => runSelectedScheduleNow(), updateToolbarState).catch((error) => setStatus(error.message, "error")),
+);
 $("#viewScheduleLog").addEventListener("click", () => openLogDialog().catch((error) => setStatus(error.message, "error")));
 $("#refreshSchedules").addEventListener("click", () => refreshSchedulesLive(true).catch((error) => setStatus(error.message, "error")));
 $("#closeScheduleDialog").addEventListener("click", () => $("#scheduleDialog").close());
 $("#cancelSchedule").addEventListener("click", () => $("#scheduleDialog").close());
-$("#saveSchedule").addEventListener("click", () => saveSchedule().catch((error) => setStatus(error.message, "error")));
+$("#saveSchedule").addEventListener("click", () =>
+  DCBusy.run($("#saveSchedule"), "保存中…", () => saveSchedule()).catch((error) => setStatus(error.message, "error")),
+);
+
+// Q-002：与作业模块同一个病根——关闭对话框时清掉草稿状态，避免残留污染下一次编辑。
+$("#scheduleDialog").addEventListener("close", resetScheduleDialogState);
 $("#addStep").addEventListener("click", () => {
   try {
     addSelectedAvailableJob();

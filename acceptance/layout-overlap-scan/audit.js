@@ -159,10 +159,26 @@ async function enterExportEditor(page) {
 (async () => {
   fs.mkdirSync(SHOTS, { recursive: true });
   const browser = await chromium.launch();
+
+  // 开启认证的实例（如流实验收沙箱）需要先登录：设 DCT_USER / DCT_PASS 即生效
+  let storageState;
+  if (process.env.DCT_USER) {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    await p.goto(`${BASE}/login.html`, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await p.fill('#loginUsername', process.env.DCT_USER);
+    await p.fill('#loginPassword', process.env.DCT_PASS || '');
+    await p.click('#loginSubmit');
+    await p.waitForURL((u) => !u.pathname.includes('login.html'), { timeout: 15000 }).catch(() => {});
+    storageState = await ctx.storageState();
+    await ctx.close();
+    console.log(`[auth] 已登录 ${process.env.DCT_USER}`);
+  }
+
   const report = { base: BASE, generatedAt: new Date().toISOString(), runs: [] };
   for (const [w, h] of SIZES) {
     for (const [name, url] of PAGES) {
-      const page = await browser.newPage({ viewport: { width: w, height: h } });
+      const page = await browser.newPage({ viewport: { width: w, height: h }, storageState });
       const errs = [];
       page.on('pageerror', (e) => errs.push(String(e.message).slice(0, 200)));
       const row = { page: name, url, size: `${w}x${h}`, jsErrors: errs };

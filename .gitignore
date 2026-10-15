@@ -38,3 +38,8 @@ public/icons/
 
 # 各次审计的截图目录：体积大且可一键复跑，不入库（脚本与说明本身入库）
 acceptance/*/shots/
+
+# 各次"流程审计"用的沙箱目录：里面有真实业务源文件（xlsx）、imports.db 与 .secret_key。
+# 仓库是公开的，一旦被 git add -A 扫进去就是真实客户数据外泄 —— 绝不入库。
+acceptance/*-sandbox/
+acceptance/*/data/

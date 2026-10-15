@@ -163,6 +163,54 @@
     stateClass: dcStateClass
   };
 
+  /* 防重复提交（2026-10-15）。
+     背景：sync / export / connections / query 各自在自己模块里临时 disable 按钮，
+     而 jobs / schedule 两处**一处都没做** —— `await` 期间按钮照样可点，
+     连点「保存」会 POST 多次、连点「复制」会造出多条副本。
+     这里收成一处共用实现，新模块直接调用，别再各写各的。
+
+     ⚠️ 还原时**不能盲目** `disabled = false`：工具栏按钮的 disabled 常常由"选中态"决定
+     （例如 schedule.js 的 updateToolbarState），所以结束后要调 `after()` 让调用方重算。
+     省略 `after` 时退化为"恢复成点击之前的状态"。
+     返回 Promise；重复点击只丢弃这一次调用，不会重复发请求。 */
+  function dcBusyRun(button, busyText, action, after) {
+    // 同一个按钮正在跑 → 丢弃这次点击（第二道防护；第一道是浏览器不给 disabled 按钮派发 click）
+    if (button && button.dataset.dcBusy === "1") return Promise.resolve();
+    var originalText = "";
+    var wasDisabled = false;
+    if (button) {
+      originalText = button.textContent;
+      wasDisabled = button.disabled;
+      button.dataset.dcBusy = "1";
+      button.disabled = true;
+      // aria-busy：视觉改了文案，读屏软件也要知道这个控件正在忙（Q-008）
+      button.setAttribute("aria-busy", "true");
+      if (busyText) button.textContent = busyText;
+    }
+    var restore = function () {
+      if (button && button.isConnected) {
+        delete button.dataset.dcBusy;
+        button.removeAttribute("aria-busy");
+        button.textContent = originalText;
+        button.disabled = wasDisabled;
+      }
+      if (typeof after === "function") after();
+    };
+    var result;
+    try {
+      result = action();
+    } catch (error) {
+      restore();
+      return Promise.reject(error);
+    }
+    return Promise.resolve(result).then(
+      function (value) { restore(); return value; },
+      function (error) { restore(); throw error; }
+    );
+  }
+
+  window.DCBusy = { run: dcBusyRun };
+
   // 站内跳转（点侧边栏/按钮切页面）不触发关闭提醒，否则每次换页都弹窗。
   var internalNavigation = false;
   document.addEventListener(

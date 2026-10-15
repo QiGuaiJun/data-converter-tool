@@ -460,6 +460,17 @@ function collectGuard() {
   return {};
 }
 
+/* 关闭对话框时清空草稿状态（Q-002）。
+   原来只在 openJobDialog() 里重置 editingJobId / draftSteps / selectedStepIndex，
+   所以「取消」之后模块级变量仍留着上一次的内容；任何绕过 openJobDialog 的路径
+   （异常、以后新增入口）都会带着脏状态进下一次编辑。这里统一收口。 */
+function resetJobDialogState() {
+  editingJobId = "";
+  draftSteps = [];
+  selectedStepIndex = -1;
+  draftSourceJobId = "";
+}
+
 async function openJobDialog(job = null) {
   editingJobId = job?.id || "";
   $("#addStepType").value = "import";
@@ -509,13 +520,33 @@ async function runSelectedJob() {
 
 $("#newJob").addEventListener("click", () => openJobDialog());
 $("#editJob").addEventListener("click", () => { const job = jobs.find((item) => item.id === selectedJobId); if (job) openJobDialog(job); });
-$("#duplicateJob").addEventListener("click", () => duplicateSelectedJob().catch((error) => setStatus(error.message, "error")));
-$("#deleteJob").addEventListener("click", async () => { if (!selectedJobId || !confirm("确认删除当前作业？")) return; await requestJson(`/api/jobs?id=${encodeURIComponent(selectedJobId)}`, { method: "DELETE" }); selectedJobId = ""; await loadJobs(); });
-$("#runJob").addEventListener("click", () => runSelectedJob().catch((error) => setStatus(error.message, "error")));
+// ⚠️ 会写库 / 会造数据的按钮一律走 DCBusy.run 防重复提交（Q-003）：
+// 它们内部都有 await，期间按钮不置灰的话连点两次就发两个请求
+// ——「复制」最直观，会一次造出多条副本。
+$("#duplicateJob").addEventListener("click", () =>
+  DCBusy.run($("#duplicateJob"), "复制中…", () => duplicateSelectedJob()).catch((error) => setStatus(error.message, "error")),
+);
+$("#deleteJob").addEventListener("click", () =>
+  DCBusy.run($("#deleteJob"), "删除中…", async () => {
+    if (!selectedJobId || !confirm("确认删除当前作业？")) return;
+    await requestJson(`/api/jobs?id=${encodeURIComponent(selectedJobId)}`, { method: "DELETE" });
+    selectedJobId = "";
+    await loadJobs();
+  }).catch((error) => setStatus(error.message, "error")),
+);
+$("#runJob").addEventListener("click", () =>
+  DCBusy.run($("#runJob"), "执行中…", () => runSelectedJob()).catch((error) => setStatus(error.message, "error")),
+);
 $("#refreshJobs").addEventListener("click", () => Promise.all([loadJobs(), loadRuns()]));
 $("#closeJobDialog").addEventListener("click", () => $("#jobDialog").close());
 $("#cancelJob").addEventListener("click", () => $("#jobDialog").close());
-$("#saveJob").addEventListener("click", () => saveJob().catch((error) => setStatus(error.message, "error")));
+$("#saveJob").addEventListener("click", () =>
+  DCBusy.run($("#saveJob"), "保存中…", () => saveJob()).catch((error) => setStatus(error.message, "error")),
+);
+
+// Q-002：对话框无论以哪种方式关闭（右上角 ×、取消、ESC、保存成功后自动关），
+// 都把草稿状态清干净。原来只在 openJobDialog() 里重置，绕开它的路径会留下残留。
+$("#jobDialog").addEventListener("close", resetJobDialogState);
 $("#addStep").addEventListener("click", () => { try { draftSteps.push(draftStepFromSelection()); selectedStepIndex = draftSteps.length - 1; renderDraftSteps(); } catch (error) { setStatus(error.message, "error"); } });
 $("#addStepType").addEventListener("change", renderTaskOptions);
 $("#addStepTask").addEventListener("change", renderAddTaskHint);

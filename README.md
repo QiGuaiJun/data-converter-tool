@@ -139,6 +139,21 @@ deployment-data/data-converter-backup-20260712-120000.zip
 python scripts/restore_data_backup.py /path/to/data-converter-backup-xxxx.zip
 ```
 
+## 运行环境与浏览器基线
+
+| 项 | 基线 | 依据 |
+|---|---|---|
+| 后端 | **Python 3.13**（本机 `.venv` 与云服务器实测均为 3.13.x） | 依赖清单见 `requirements.txt`；安装走内网镜像，见文件顶部注释 |
+| 浏览器 | **Chrome ≥ 88 / Edge ≥ 88**（Chromium 内核） | 前端用了 `<dialog>`（Chrome 37+）、可选链 `?.` 与空值合并 `??`（Chrome 80+）、`Set` / `Map` / `async await` / `fetch` |
+| 构建链 | **无** —— `public/` 是直接吃的静态资源，不经过打包 | 因此仓库里没有 npm 构建步骤；`.browserslistrc` 只是把基线写下来，供以后真接入打包/降级工具时复用 |
+| 实测 | Chromium 与 **Edge 151.0.7922.34** 均通过 | `bash scripts/run_layout_walk.sh`：1280 / 1440 / 1920 / 2560 四档 × 10 个页面，外加 Edge 跑 4 个页面 |
+
+**不支持 Internet Explorer。**
+
+**未适配手机。** 界面是桌面风格的工作台，`public/styles.css` 的最小断点是 720px，
+720px 以下没有专门规则 —— 用手机打开**能用，但版面会挤**。移动端适配不在当前交付范围内；
+以后真要做，按「侧栏折叠 + 工作区单列」拆一版，而不是在现有断点上继续叠。
+
 ## 测试
 
 ```powershell
