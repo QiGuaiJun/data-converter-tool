@@ -8,6 +8,14 @@ uploads
 exports
 logs
 
+# 2026-09-17 起运行数据实际落在 runtime/ 下（含真实数据库 imports.db、上传源文件、导出结果）。
+# Dockerfile 是 COPY . .，不排除就会把整份运行数据打进镜像；以下目录同理，都不是运行时该带的。
+runtime/
+deployment-data/
+acceptance/
+archive/
+public/icons/
+
 .env
 .env.*
 !*.example

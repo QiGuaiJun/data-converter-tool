@@ -287,7 +287,9 @@ def test_api_request_without_session_returns_401_json(client):
 
 
 def test_static_assets_are_not_blocked(client):
-    for path in ("/styles.css", "/shell.js", "/favicon.svg"):
+    # favicon.svg 已由 SVG 迁移到 PNG/ICO 系列（上次改实现时漏改了这里的断言，
+    # 导致本用例期望 200、实际 404），这里同步跟进为当前真实存在的静态资源。
+    for path in ("/styles.css", "/shell.js", "/favicon-32.png", "/favicon-16.png", "/favicon.ico"):
         status, _, _ = client.request("GET", path)
         assert status == 200, f"{path} 应放行（否则登录页自身样式加载不了）"
 

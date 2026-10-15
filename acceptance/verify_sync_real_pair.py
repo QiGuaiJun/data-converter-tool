@@ -21,7 +21,9 @@ import sys
 import tempfile
 import time
 
-ROOT = pathlib.Path(r"D:\ProjectDevelopment\data-converter-tool")
+# 项目根由文件位置反推（本文件在 acceptance/ 下，上一级即项目根），
+# 避免写死开发机盘符导致换台机器就失效。
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 SANDBOX = pathlib.Path(tempfile.mkdtemp(prefix="sync_p1_"))

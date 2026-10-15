@@ -1,4 +1,6 @@
-﻿cffi==2.0.0
+﻿# 本机/云端安装均走内网镜像（公网 PyPI 对下列版本同步有延迟）：
+#   pip install -r requirements.txt -i https://mirrors.cloud.tencent.com/pypi/simple
+cffi==2.0.0
 cryptography==49.0.0
 dbfread==2.0.7
 et_xmlfile==2.0.0
